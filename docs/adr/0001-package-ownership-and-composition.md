@@ -1,9 +1,9 @@
 # ADR-0001: Package ownership and composition
 
-- Status: Accepted
+- Status: Superseded by ADR-0007
 - Date: 2026-08-03
 - Supersedes: None
-- Superseded by: None
+- Superseded by: ADR-0007
 - Implementation: Existing implementation; retrospective record.
 
 ## Context

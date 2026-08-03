@@ -41,17 +41,18 @@ details or recurring benchmark measurements.
 
 | ADR | Title | Date |
 | --- | --- | --- |
-| [0001](0001-package-ownership-and-composition.md) | Package ownership and composition | 2026-08-03 |
 | [0002](0002-event-driven-worker-lifecycle.md) | Event-driven worker lifecycle | 2026-08-03 |
 | [0003](0003-local-settings-and-profile-contract.md) | Local settings and profile contract | 2026-08-03 |
 | [0004](0004-native-full-duplex-audio-helper.md) | Native full-duplex audio helper | 2026-08-03 |
 | [0005](0005-lazy-local-model-adapters.md) | Lazy local model adapters | 2026-08-03 |
+| [0007](0007-reusable-application-runtime-boundary.md) | Reusable application runtime boundary | 2026-08-03 |
 
 ### Draft
 
 | ADR | Title | Date |
 | --- | --- | --- |
 | [0006](0006-natural-voice-conversation-policy.md) | Natural voice conversation policy | 2026-08-03 |
+| [0008](0008-python-menu-bar-desktop-frontend.md) | Python menu-bar desktop frontend | 2026-08-03 |
 
 ### Rejected
 
@@ -59,4 +60,6 @@ No records.
 
 ### Superseded or deprecated
 
-No records.
+| ADR | Title | Date | Status |
+| --- | --- | --- | --- |
+| [0001](0001-package-ownership-and-composition.md) | Package ownership and composition | 2026-08-03 | Superseded by ADR-0007 |
