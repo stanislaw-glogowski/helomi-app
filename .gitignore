@@ -1,0 +1,39 @@
+# IDEs and AIs
+.agents
+.idea
+.junie
+.DS_Store
+
+# Python
+__pycache__/
+*.py[oc]
+.coverage*
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+wheels/
+*.egg-info
+.venv
+
+# Native
+native/**/.build/
+native/**/.swiftpm/
+src/**/bin/
+
+# Envs
+.env
+.env.*
+!.env.example
+
+# Benchmarks
+benchmarks/*/reports/
+
+# Resources
+.helomi/models/*
+.helomi/profiles/*
+.helomi/settings.override.yml
+!.helomi/profiles/alexa
+
+# Ignore
+!.gitkeep

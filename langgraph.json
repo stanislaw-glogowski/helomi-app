@@ -1,0 +1,9 @@
+{
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "helomi-conversation": "./src/helomi/conversation/studio.py:conversation_graph"
+  },
+  "env": ".env"
+}
