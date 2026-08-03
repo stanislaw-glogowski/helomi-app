@@ -49,7 +49,9 @@ details or recurring benchmark measurements.
 
 ### Draft
 
-No records.
+| ADR | Title | Date |
+| --- | --- | --- |
+| [0006](0006-natural-voice-conversation-policy.md) | Natural voice conversation policy | 2026-08-03 |
 
 ### Rejected
 
