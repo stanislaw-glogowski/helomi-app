@@ -33,10 +33,11 @@ class ConversationGraph:
             {
                 "activation": nodes.OPENING,
                 "user_turn": nodes.REPLY,
+                "maintenance": nodes.SUMMARIZE,
             },
         )
         builder.add_edge(nodes.OPENING, END)
-        builder.add_edge(nodes.REPLY, nodes.SUMMARIZE)
+        builder.add_edge(nodes.REPLY, END)
         builder.add_edge(nodes.SUMMARIZE, END)
         self._compiled = builder.compile(checkpointer=checkpointer)
 

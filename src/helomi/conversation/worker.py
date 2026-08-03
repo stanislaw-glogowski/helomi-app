@@ -44,6 +44,9 @@ class Worker(Component):
         self._profile_preparation = profile_preparation
         self._graph_queue: asyncio.Queue[ConversationInput] = asyncio.Queue()
         self._active_reply: asyncio.Task[None] | None = None
+        self._active_reply_id: ReplyId | None = None
+        self._last_reply_id: ReplyId | None = None
+        self._maintenance_task: asyncio.Task[None] | None = None
         self._delivery_context = ""
         self._shutdown_event = asyncio.Event()
         self._start_event = start_event
@@ -69,6 +72,7 @@ class Worker(Component):
             await self._shutdown_event.wait()
             self._logger.debug("Canceling tasks")
 
+            await self._preempt_maintenance()
             for task in tasks:
                 task.cancel()
 
@@ -89,10 +93,12 @@ class Worker(Component):
                 try:
                     match event:
                         case GenerateReply(input):
+                            await self._preempt_maintenance()
                             self._graph_queue.put_nowait(input)
-                        case CancelReply(spoken_text):
-                            await self._cancel_reply(spoken_text)
+                        case CancelReply(spoken_text, reply_id):
+                            await self._cancel_reply(spoken_text, reply_id)
                         case ShutdownEvent():
+                            await self._preempt_maintenance()
                             self._shutdown_event.set()
                 finally:
                     events.task_done()
@@ -101,24 +107,44 @@ class Worker(Component):
         while not self._shutdown_event.is_set():
             conversation_input = await self._graph_queue.get()
             reply_id = self._next_reply_id()
+            completed = False
 
             try:
                 self._event_bus.publish(ReplyGenerationStarted(reply_id))
+                self._active_reply_id = reply_id
                 self._active_reply = asyncio.create_task(
                     self._stream(reply_id, conversation_input)
                 )
                 try:
                     await self._active_reply
+                    completed = True
                 except asyncio.CancelledError:
                     current = asyncio.current_task()
                     if current is not None and current.cancelling():
                         raise
             finally:
                 self._active_reply = None
+                self._active_reply_id = None
+                self._last_reply_id = reply_id
                 self._event_bus.publish(ReplyGenerationCompleted(reply_id))
                 self._graph_queue.task_done()
+            if (
+                completed
+                and isinstance(conversation_input, UserTurn)
+                and not self._shutdown_event.is_set()
+            ):
+                self._maintenance_task = asyncio.create_task(self._summarize())
 
-    async def _cancel_reply(self, spoken_text: str) -> None:
+    async def _cancel_reply(self, spoken_text: str, reply_id: ReplyId | None) -> None:
+        if reply_id is not None:
+            expected_reply_id = (
+                self._active_reply_id
+                if self._active_reply_id is not None
+                else self._last_reply_id
+            )
+            if reply_id != expected_reply_id:
+                return
+        await self._preempt_maintenance()
         active_reply = self._active_reply
         if active_reply is not None:
             active_reply.cancel()
@@ -141,6 +167,23 @@ class Worker(Component):
             if spoken_text
             else "The previous answer was interrupted before any part was delivered. "
             "Do not assume the user heard it."
+        )
+
+    async def _preempt_maintenance(self) -> None:
+        maintenance = self._maintenance_task
+        if maintenance is None:
+            return
+        self._maintenance_task = None
+        maintenance.cancel()
+        with suppress(asyncio.CancelledError):
+            await maintenance
+
+    async def _summarize(self) -> None:
+        config: RunnableConfig = {"configurable": {"thread_id": self.THREAD_ID}}
+        await self._graph.compiled.ainvoke(
+            input={"input_kind": "maintenance", "messages": []},
+            config=config,
+            context=self._context,
         )
 
     async def _stream(

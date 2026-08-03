@@ -328,7 +328,7 @@ def test_worker_interrupts_active_reply_after_sustained_speech() -> None:
             FakeTranscription(),
             synthesis,
             playback,
-            WorkerOptions(barge_in_speech_frames=3),
+            WorkerOptions(sustained_barge_in_frames=3),
         )
 
         with bus.subscribe(CancelReply) as cancellations:
@@ -386,7 +386,7 @@ def test_worker_restores_playback_after_false_barge_in() -> None:
             FakeTranscription(),
             FakeSynthesis(),
             playback,
-            WorkerOptions(barge_in_speech_frames=3),
+            WorkerOptions(sustained_barge_in_frames=3),
         )
         task = asyncio.create_task(worker.run())
         await asyncio.wait_for(_wait_until(lambda: capture.entered), 1)
@@ -421,11 +421,136 @@ def test_worker_restores_playback_after_false_barge_in() -> None:
     asyncio.run(scenario())
 
 
+def test_worker_consumes_short_listener_backchannel_without_interrupting() -> None:
+    class BackchannelTranscription(FakeAsyncResource):
+        def __init__(self) -> None:
+            super().__init__()
+            self.completed = asyncio.Event()
+
+        async def transcribe(self, audio):
+            yield TranscriptionText("MHM.")
+            self.completed.set()
+
+    async def scenario() -> None:
+        bus = EventBus()
+        capture = FakeCapture()
+        playback = FakePlayback()
+        transcription = BackchannelTranscription()
+        worker = Worker(
+            bus,
+            capture,
+            FakeSegmentation(),
+            transcription,
+            FakeSynthesis(),
+            playback,
+            WorkerOptions(sustained_barge_in_frames=3),
+        )
+        with bus.subscribe(CancelReply) as cancellations:
+            task = asyncio.create_task(worker.run())
+            await asyncio.wait_for(_wait_until(lambda: capture.wakeword_enabled), 1)
+            capture.queue.put_nowait(speech_chunk(wakeword=True))
+            await asyncio.wait_for(_wait_until(lambda: not capture.wakeword_enabled), 1)
+            bus.publish(ReplyGenerationStarted(1), ReplyPhrase(1, 1, "Welcome"))
+            await asyncio.wait_for(playback.played.wait(), 1)
+            await asyncio.wait_for(
+                _wait_until(lambda: worker._delivered_phrases == ["Welcome"]), 1
+            )
+
+            capture.queue.put_nowait(speech_chunk())
+            await asyncio.wait_for(transcription.completed.wait(), 1)
+            await asyncio.wait_for(
+                _wait_until(lambda: worker._barge_in_reply_id is None), 1
+            )
+            assert cancellations._queue.empty()
+            assert playback.duck_count == 1
+            assert playback.restore_count == 1
+            assert playback.interrupt_count == 0
+
+            bus.publish(ShutdownEvent())
+            await asyncio.wait_for(task, 1)
+
+    asyncio.run(scenario())
+
+
+def test_worker_interrupts_on_short_substantive_transcription() -> None:
+    async def scenario() -> None:
+        bus = EventBus()
+        capture = FakeCapture()
+        playback = FakePlayback()
+        worker = Worker(
+            bus,
+            capture,
+            FakeSegmentation(),
+            FakeTranscription(),
+            FakeSynthesis(),
+            playback,
+            WorkerOptions(sustained_barge_in_frames=3),
+        )
+        with (
+            bus.subscribe(CancelReply) as cancellations,
+            bus.subscribe(GenerateReply) as requests,
+        ):
+            task = asyncio.create_task(worker.run())
+            await asyncio.wait_for(_wait_until(lambda: capture.wakeword_enabled), 1)
+            capture.queue.put_nowait(speech_chunk(wakeword=True))
+            assert await asyncio.wait_for(requests.__anext__(), 1) == GenerateReply(
+                ConversationActivated()
+            )
+            requests.task_done()
+            bus.publish(ReplyGenerationStarted(1), ReplyPhrase(1, 1, "Welcome"))
+            await asyncio.wait_for(playback.played.wait(), 1)
+            await asyncio.wait_for(
+                _wait_until(lambda: worker._delivered_phrases == ["Welcome"]), 1
+            )
+
+            capture.queue.put_nowait(speech_chunk())
+            assert await asyncio.wait_for(cancellations.__anext__(), 1) == CancelReply(
+                "Welcome", 1
+            )
+            cancellations.task_done()
+            assert await asyncio.wait_for(requests.__anext__(), 1) == GenerateReply(
+                UserTurn("Question")
+            )
+            requests.task_done()
+            await asyncio.wait_for(
+                _wait_until(lambda: playback.interrupt_count == 1), 1
+            )
+
+            bus.publish(ShutdownEvent())
+            await asyncio.wait_for(task, 1)
+
+    asyncio.run(scenario())
+
+
 def test_worker_options_reject_invalid_barge_in_threshold() -> None:
     with pytest.raises(ValueError, match="positive"):
-        WorkerOptions(barge_in_speech_frames=0)
+        WorkerOptions(sustained_barge_in_frames=0)
     with pytest.raises(ValueError, match="positive"):
         WorkerOptions(continuation_silence_frames=0)
+
+
+def test_worker_clears_empty_and_stale_barge_in_candidates() -> None:
+    worker = Worker(
+        EventBus(),
+        FakeCapture(),
+        FakeSegmentation(),
+        FakeTranscription(),
+        FakeSynthesis(),
+        FakePlayback(),
+    )
+    worker._barge_in_reply_id = 1
+    worker._duck_requested = True
+    worker._handle_transcription("")
+    assert worker._barge_in_reply_id is None
+    assert worker._playback_control_queue.get_nowait().name == "RESTORE"
+    worker._playback_control_queue.task_done()
+
+    worker._reply_active = True
+    worker._active_reply_id = 2
+    worker._barge_in_reply_id = 1
+    worker._duck_requested = True
+    worker._observe_barge_in(speech_chunk(speech=False))
+    assert worker._barge_in_reply_id is None
 
 
 def test_worker_combines_semantically_incomplete_transcription() -> None:

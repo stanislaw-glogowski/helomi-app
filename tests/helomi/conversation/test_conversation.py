@@ -27,9 +27,9 @@ from helomi.conversation.graph import (
     ConversationContext,
     ConversationGraph,
     ConversationNodes,
-    ResponseMode,
-    ResponseRouter,
+    ResponseDepth,
     TurnIntent,
+    TurnPlanner,
 )
 from helomi.conversation.model import (
     ConversationMessage,
@@ -139,21 +139,18 @@ def test_configuration_domain_events_and_routing() -> None:
     assert ReplyGenerationStarted(1) == ReplyGenerationStarted(1)
     assert ReplyGenerationCompleted(1) == ReplyGenerationCompleted(1)
 
-    router = ResponseRouter()
-    assert router.plan("").intent is TurnIntent.NO_RESPONSE
-    assert router.plan("short question").mode is ResponseMode.FAST
-    detailed = router.plan(" ".join(f"word{index}" for index in range(24)))
-    assert detailed.mode is ResponseMode.DETAILED
+    planner = TurnPlanner()
+    assert planner.deterministic_plan("").intent is TurnIntent.NO_RESPONSE
+    assert planner.deterministic_plan("anuluj").intent is TurnIntent.CANCEL
+    assert planner.deterministic_plan("Jak masz na imię?").depth is ResponseDepth.BRIEF
+    detailed = planner.deterministic_plan("Wyjaśnij dokładnie echo akustyczne")
+    assert detailed is not None
+    assert detailed.depth is ResponseDepth.DETAILED
     assert detailed.acknowledge
-    assert router.plan("one two three four five six seven eight? nine ten? ").mode is (
-        ResponseMode.DETAILED
-    )
-    assert router.plan(" ".join("word" for _ in range(18))).mode is ResponseMode.FAST
-    assert router.is_ambiguous(" ".join("word" for _ in range(18)))
-    assert router.is_ambiguous("tell me a longer story")
-    assert not router.is_ambiguous("what time is it?")
-    assert router.classified_plan(" detailed ").mode is ResponseMode.DETAILED
-    assert router.classified_plan("unexpected").mode is ResponseMode.FAST
+    assert planner.deterministic_plan("Powiedz mi więcej") is None
+    assert planner.classified_plan(" detailed ").depth is ResponseDepth.DETAILED
+    assert planner.classified_plan("CLARIFY").intent is TurnIntent.CLARIFY
+    assert planner.classified_plan("unexpected").depth is ResponseDepth.STANDARD
 
 
 def test_reply_segmenter_emits_natural_phrases_and_validates_limits() -> None:
@@ -282,7 +279,7 @@ def test_graph_routes_streams_and_preserves_thread_history() -> None:
             visible: list[ConversationTextChunk] = []
             async for event in graph.astream(
                 {
-                    "messages": [HumanMessage("Question")],
+                    "messages": [HumanMessage("Question?")],
                     "input_kind": "user_turn",
                 },
                 config=config,
@@ -292,6 +289,13 @@ def test_graph_routes_streams_and_preserves_thread_history() -> None:
                 visible.append(event)
             assert "".join(event.content for event in visible) == "Answer"
 
+            state = await graph.aget_state(config)
+            assert not state.values.get("summary")
+            await graph.ainvoke(
+                {"messages": [], "input_kind": "maintenance"},
+                config=config,
+                context=context(),
+            )
             state = await graph.aget_state(config)
             assert state.values["summary"] == "Remembered"
             reopened = await graph.ainvoke(
@@ -324,7 +328,9 @@ def test_graph_emits_prepared_acknowledgement_for_slow_detailed_reply() -> None:
             return "Reaction."
 
     async def scenario() -> None:
-        long_question = " ".join(f"word{index}" for index in range(24))
+        long_question = "Wyjaśnij dokładnie " + " ".join(
+            f"word{index}" for index in range(24)
+        )
         adapter = FakeLanguageModel("Detailed", "Summary")
         async with LanguageModelService(adapter) as service:
             graph = ConversationGraph(
@@ -351,11 +357,8 @@ def test_graph_emits_prepared_acknowledgement_for_slow_detailed_reply() -> None:
 def test_graph_uses_optional_classifier_for_ambiguous_turn() -> None:
     async def scenario() -> None:
         question = " ".join(f"word{index}" for index in range(18))
-        adapter = FakeLanguageModel("DETAILED", "Answer", "Summary")
-        settings = ConversationSettings(
-            classify_ambiguous=True,
-            acknowledgement_delay=10,
-        )
+        adapter = FakeLanguageModel("DETAILED", "Answer")
+        settings = ConversationSettings(acknowledgement_delay=10)
         async with LanguageModelService(adapter) as service:
             graph = ConversationGraph(ConversationNodes(service)).compiled
             events = [
@@ -373,8 +376,78 @@ def test_graph_uses_optional_classifier_for_ambiguous_turn() -> None:
         assert [request.role for request in adapter.requests] == [
             LanguageModelRole.CLASSIFIER,
             LanguageModelRole.DETAILED,
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_graph_handles_silent_cancel_and_invalid_classifier_plans() -> None:
+    async def scenario() -> None:
+        adapter = FakeLanguageModel("invalid classifier output", "Standard answer")
+        async with LanguageModelService(adapter) as service:
+            graph = ConversationGraph(
+                ConversationNodes(service), InMemorySaver()
+            ).compiled
+            config = {"configurable": {"thread_id": "helomi"}}
+            canceled = [
+                event
+                async for event in graph.astream(
+                    {"messages": [HumanMessage("anuluj")], "input_kind": "user_turn"},
+                    config=config,
+                    context=context(),
+                    stream_mode="custom",
+                )
+            ]
+            assert canceled == []
+            state = await graph.aget_state(config)
+            assert state.values["messages"][-1].text == "anuluj"
+
+            events = [
+                event
+                async for event in graph.astream(
+                    {
+                        "messages": [HumanMessage("Powiedz mi więcej")],
+                        "input_kind": "user_turn",
+                    },
+                    config=config,
+                    context=context(),
+                    stream_mode="custom",
+                )
+            ]
+        assert "".join(event.content for event in events) == "Standard answer"
+        assert [request.role for request in adapter.requests] == [
+            LanguageModelRole.CLASSIFIER,
             LanguageModelRole.FAST,
         ]
+        assert "two to four" in adapter.requests[-1].messages[0].content
+
+    asyncio.run(scenario())
+
+
+def test_graph_falls_back_when_classifier_fails() -> None:
+    class FailingClassifier(FakeLanguageModel):
+        def generate(self, request: LanguageModelRequest):
+            if request.role is LanguageModelRole.CLASSIFIER:
+                raise RuntimeError("classifier unavailable")
+            return super().generate(request)
+
+    async def scenario() -> None:
+        adapter = FailingClassifier("Standard answer")
+        async with LanguageModelService(adapter) as service:
+            graph = ConversationGraph(ConversationNodes(service)).compiled
+            events = [
+                event
+                async for event in graph.astream(
+                    {
+                        "messages": [HumanMessage("Powiedz mi więcej")],
+                        "input_kind": "user_turn",
+                    },
+                    context=context(),
+                    stream_mode="custom",
+                )
+            ]
+        assert "".join(event.content for event in events) == "Standard answer"
+        assert adapter.requests[-1].role is LanguageModelRole.FAST
 
     asyncio.run(scenario())
 
@@ -420,6 +493,10 @@ class FakeCompiled:
         yield ConversationTextChunk("")
         yield ConversationTextChunk("Hello\n")
         yield ConversationTextChunk("world")
+
+    async def ainvoke(self, **kwargs: Any) -> dict[str, object]:
+        self.calls.append(kwargs)
+        return {}
 
 
 class FakeGraph:
@@ -511,13 +588,19 @@ def test_worker_cancels_active_and_queued_replies() -> None:
 
         queued = Worker(EventBus(), FakeGraph(FakeCompiled()), context())
         queued._graph_queue.put_nowait(UserTurn("Obsolete"))
-        await queued._cancel_reply("")
+        await queued._cancel_reply("", None)
         await queued._graph_queue.join()
         await queued._stream(1, UserTurn("Next"))
         assert (
             "before any part was delivered"
             in (queued._graph.compiled.calls[0]["input"]["delivery_context"])
         )
+
+        stale = Worker(EventBus(), FakeGraph(FakeCompiled()), context())
+        stale._active_reply_id = 2
+        stale._last_reply_id = 1
+        await stale._cancel_reply("old reply", 1)
+        assert stale._delivery_context == ""
 
     asyncio.run(scenario())
 
@@ -854,7 +937,7 @@ def test_studio_uses_default_profile_and_settings(
     import helomi.conversation.studio as studio_module
 
     conversation_profile = profile()
-    conversation_settings = ConversationSettings(classify_ambiguous=True)
+    conversation_settings = ConversationSettings()
     fake_model = FakeLanguageModel()
     calls: list[tuple[str, object, object, bool]] = []
 

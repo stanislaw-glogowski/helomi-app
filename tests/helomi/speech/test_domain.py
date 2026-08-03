@@ -18,7 +18,10 @@ from helomi.speech.events import (
 )
 from helomi.speech.segmentation import SegmentationSettings, UtteranceSegmenter
 from helomi.speech.synthesis.config import MLXChatterboxSettings
-from helomi.speech.transcription import TurnEndpointDetector
+from helomi.speech.transcription import (
+    ListenerBackchannelDetector,
+    TurnEndpointDetector,
+)
 from helomi.speech.transcription.config import MLXWhisperSettings
 
 FORMAT = AudioFormat(sample_rate=16_000, channels=1)
@@ -149,6 +152,7 @@ def test_speech_configuration_defaults_and_validation() -> None:
     assert profile.stt_mlx_parakeet_tdt.model_id is None
     assert SpeechSettings().audio.driver == "avfaudio"
     assert SpeechSettings().segmentation.min_start_speech_frames == 10
+    assert SpeechSettings().turn_taking.sustained_barge_in_frames == 20
 
     alternate = SpeechSettings.model_validate(
         {
@@ -181,6 +185,17 @@ def test_turn_endpoint_detector_recognizes_continuations() -> None:
     assert not detector.is_complete("Jeszcze jedna rzecz...")
     assert not detector.is_complete("")
     assert detector.is_complete("123")
+
+
+def test_listener_backchannel_detector_normalizes_safe_polish_forms() -> None:
+    detector = ListenerBackchannelDetector()
+
+    assert detector.is_backchannel(" MHM. ")
+    assert detector.is_backchannel("mm-hm")
+    assert detector.is_backchannel("uhum")
+    assert detector.is_backchannel("Aha!")
+    assert not detector.is_backchannel("tak")
+    assert not detector.is_backchannel("aha, ale mam pytanie")
 
 
 def test_segmentation_configuration_rejects_inconsistent_limits() -> None:

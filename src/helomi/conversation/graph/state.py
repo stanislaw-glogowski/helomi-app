@@ -2,7 +2,7 @@ from typing import Literal
 
 from langgraph.graph import MessagesState
 
-type ConversationInputKind = Literal["activation", "user_turn"]
+type ConversationInputKind = Literal["activation", "user_turn", "maintenance"]
 
 
 class ConversationState(MessagesState):

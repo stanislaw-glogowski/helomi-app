@@ -59,7 +59,6 @@ conversation:
   language_model:
     adapter: mlx
   acknowledgement_delay: 0.5
-  classify_ambiguous: false
 
 speech:
   audio:
@@ -69,6 +68,9 @@ speech:
     threshold: 0.5
   wakeword:
     adapter: openwakeword
+  turn_taking:
+    sustained_barge_in_frames: 20
+    continuation_silence_frames: 38
   tts:
     adapter: piper
     repo_id: rhasspy/piper-voices
@@ -84,11 +86,12 @@ speech:
 | `default_profile` | Optional profile directory id. |
 | `conversation.language_model` | `mlx`, or `langchain` with `base_url`. |
 | `conversation.acknowledgement_delay` | Non-negative seconds before a prepared wait reaction may play. |
-| `conversation.classify_ambiguous` | Requires a configured `classifier` model role. |
+| `conversation` classifier | Alexa requires the configured local `classifier` model role for ambiguous turns. |
 | `speech.audio.driver` | `avfaudio` or `pyaudio`. |
 | `speech.vad.adapter` | `mlx:silero_vad` or `openwakeword`; `threshold` controls speech detection. |
 | `speech.wakeword.adapter` | Currently `openwakeword`. |
 | `speech.segmentation` | Positive frame-based endpointing limits; see below. |
+| `speech.turn_taking` | Positive frame limits for sustained barge-in and incomplete-turn continuation. |
 | `speech.stt` | `mlx:parakeet-tdt`, `mlx:qwen3-asr`, or `mlx:whisper`. |
 | `speech.tts` | `piper` or `mlx:chatterbox`. |
 
@@ -114,11 +117,10 @@ from one adapter into another adapter's configuration.
 | TTS | `piper` | `repo_id`, `normalize_audio`, `volume` | `model_path`, optional repository and voice tuning |
 | TTS | `mlx:chatterbox` | `model_id`, `lang_code` | optional `model_id`, `lang_code` |
 
-For an MLX profile, define `fast` and `detailed` conversation roles; add
-`classifier` when ambiguous-turn classification is enabled. Roles using the
-same model identifier can share the underlying loaded runtime. A LangChain
-adapter can point at an Ollama-compatible endpoint, but doing so may no longer
-be private or offline.
+For an MLX profile, define `fast`, `detailed`, and `classifier` conversation
+roles. Roles using the same model identifier can share the underlying loaded
+runtime. A LangChain adapter can point at an Ollama-compatible endpoint, but
+doing so may no longer be private or offline.
 
 ## Model installation
 

@@ -18,7 +18,7 @@ class Settings(ConfigModel):
     @staticmethod
     def load_from_file(path: Path) -> Settings:
         data = _load_mapping(path)
-        settings = Settings.model_validate(data)
+        settings = Settings.model_validate(_normalize_legacy_settings(data))
         return settings
 
     @staticmethod
@@ -29,7 +29,7 @@ class Settings(ConfigModel):
         data = _load_mapping(default_path)
         if override_path is not None and override_path.is_file():
             data = _merge_mappings(data, _load_mapping(override_path))
-        return Settings.model_validate(data)
+        return Settings.model_validate(_normalize_legacy_settings(data))
 
 
 def _load_mapping(path: Path) -> dict[str, Any]:
@@ -51,6 +51,19 @@ def _merge_mappings(
         else:
             merged[key] = value
     return merged
+
+
+def _normalize_legacy_settings(data: dict[str, Any]) -> dict[str, Any]:
+    """Ignore the removed classifier toggle in existing local overrides."""
+    normalized = dict(data)
+    conversation = normalized.get("conversation")
+    if isinstance(conversation, dict) and "classify_ambiguous" in conversation:
+        normalized["conversation"] = {
+            key: value
+            for key, value in conversation.items()
+            if key != "classify_ambiguous"
+        }
+    return normalized
 
 
 class SettingsStore(ABC):

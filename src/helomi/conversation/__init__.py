@@ -17,7 +17,7 @@ from .events import (
     ReplyPhrase,
     UserTurn,
 )
-from .graph import ResponseMode, ResponsePlan, TurnIntent
+from .graph import ResponseDepth, TurnIntent, TurnPlan, TurnPlanner
 from .model import (
     ConversationMessage,
     ConversationRole,
@@ -49,9 +49,10 @@ __all__ = [
     "ReplyGenerationStarted",
     "ReplyId",
     "ReplyPhrase",
-    "ResponseMode",
-    "ResponsePlan",
+    "ResponseDepth",
     "TurnIntent",
+    "TurnPlan",
+    "TurnPlanner",
     "UserTurn",
     "run_conversation_worker",
 ]
@@ -73,7 +74,7 @@ async def run_conversation_worker(
     language_model = get_language_model(
         profile,
         settings.language_model,
-        require_classifier=settings.classify_ambiguous,
+        require_classifier=True,
     )
     context = ConversationContext.from_profile(profile, settings)
     async with LanguageModelService(language_model) as service:

@@ -51,9 +51,11 @@ missing weights through its underlying library.
 - Persona suites (`pl-alexa.yml`, `pl-gizmo.yml`, `pl-henry.yml`, `pl-lucy.yml`,
   and `pl-viki.yml`) support focused persona review.
 
-For each case, `results.json` records expected and selected response mode, cold
-or warm state, first-chunk and total generation time, output length, and text.
-`report.md` aggregates routing accuracy for human review.
+For each case, `results.json` records expected and selected turn intent and
+response depth, cold or warm state, first-chunk and total generation time,
+output length, and text. `report.md` aggregates planning accuracy for human
+review. Older suites using `expected_mode` remain readable as brief or detailed
+response cases; new suites should declare `expected_intent` and `expected_depth`.
 
 First model chunk is not the first speakable phrase. These benchmarks do not
 measure transcription, phrase segmentation, TTS, playback, interruption, or

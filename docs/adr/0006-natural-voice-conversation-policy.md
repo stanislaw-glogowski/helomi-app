@@ -1,6 +1,6 @@
 # ADR-0006: Natural voice conversation policy
 
-- Status: Draft
+- Status: Accepted
 - Date: 2026-08-03
 - Supersedes: None
 - Superseded by: None

@@ -1,66 +1,76 @@
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 
 
-class ResponseMode(StrEnum):
-    FAST = "fast"
+class ResponseDepth(StrEnum):
+    BRIEF = "brief"
+    STANDARD = "standard"
     DETAILED = "detailed"
 
 
 class TurnIntent(StrEnum):
-    DIRECT_RESPONSE = "direct_response"
-    ACKNOWLEDGE_THEN_RESPONSE = "acknowledge_then_response"
+    RESPOND = "respond"
     CLARIFY = "clarify"
-    COMMAND = "command"
     CANCEL = "cancel"
     NO_RESPONSE = "no_response"
 
 
 @dataclass(frozen=True, slots=True)
-class ResponsePlan:
+class TurnPlan:
     intent: TurnIntent
-    mode: ResponseMode
+    depth: ResponseDepth
     acknowledge: bool = False
 
 
-class ResponseRouter:
-    """Select response depth without adding another model call to obvious turns."""
+class TurnPlanner:
+    """Plan a turn locally before consulting the classifier when needed."""
 
     CLASSIFICATION_PROMPT = (
-        "Classify the requested response depth. Return FAST for a short direct "
-        "answer or DETAILED for a multi-step, explanatory, creative, or "
-        "comprehensive answer. Return only FAST or DETAILED."
+        "Classify the user's conversational turn using the supplied context. Return "
+        "exactly one label: NO_RESPONSE for a listener acknowledgement that needs no "
+        "answer, CLARIFY when one concise clarification question is needed, BRIEF for "
+        "a 1-2 sentence answer, STANDARD for a 2-4 sentence answer, or DETAILED for "
+        "a comprehensive answer. Never return CANCEL."
     )
-    _FAST_WORD_LIMIT = 14
-    _DETAILED_WORD_LIMIT = 24
+    _CANCEL_PHRASES = frozenset({"stop", "przestań", "anuluj", "nieważne"})
+    _DETAIL_MARKERS = ("dokładnie", "szczegółowo", "krok po kroku", "pełny plan")
+    _QUESTION_WORDS = frozenset(
+        {"co", "czy", "dlaczego", "gdzie", "jak", "kiedy", "kto", "który", "ile"}
+    )
+    _WHITESPACE = re.compile(r"\s+")
 
-    def is_ambiguous(self, text: str) -> bool:
-        word_count = len(text.split())
-        if self._FAST_WORD_LIMIT < word_count < self._DETAILED_WORD_LIMIT:
-            return True
-        return 3 < word_count <= self._FAST_WORD_LIMIT and not text.rstrip().endswith(
-            "?"
-        )
+    @classmethod
+    def normalize(cls, text: str) -> str:
+        return cls._WHITESPACE.sub(" ", text.strip().casefold().strip(".?!,;: "))
 
-    def classified_plan(self, classification: str) -> ResponsePlan:
-        if classification.strip().upper().startswith("DETAILED"):
-            return ResponsePlan(
-                TurnIntent.ACKNOWLEDGE_THEN_RESPONSE,
-                ResponseMode.DETAILED,
-                acknowledge=True,
+    def deterministic_plan(self, text: str) -> TurnPlan | None:
+        normalized = self.normalize(text)
+        if not normalized:
+            return TurnPlan(TurnIntent.NO_RESPONSE, ResponseDepth.BRIEF)
+        if normalized in self._CANCEL_PHRASES:
+            return TurnPlan(TurnIntent.CANCEL, ResponseDepth.BRIEF)
+        if text.count("?") > 1 or any(
+            marker in normalized for marker in self._DETAIL_MARKERS
+        ):
+            return TurnPlan(
+                TurnIntent.RESPOND, ResponseDepth.DETAILED, acknowledge=True
             )
-        return ResponsePlan(TurnIntent.DIRECT_RESPONSE, ResponseMode.FAST)
+        words = normalized.split()
+        if text.rstrip().endswith("?") or (words and words[0] in self._QUESTION_WORDS):
+            return TurnPlan(TurnIntent.RESPOND, ResponseDepth.BRIEF)
+        return None
 
-    def plan(self, text: str) -> ResponsePlan:
-        words = text.split()
-        if not words:
-            return ResponsePlan(TurnIntent.NO_RESPONSE, ResponseMode.FAST)
-        if len(words) >= self._DETAILED_WORD_LIMIT or text.count("?") > 1:
-            return ResponsePlan(
-                TurnIntent.ACKNOWLEDGE_THEN_RESPONSE,
-                ResponseMode.DETAILED,
-                acknowledge=True,
-            )
-        if len(words) <= self._FAST_WORD_LIMIT:
-            return ResponsePlan(TurnIntent.DIRECT_RESPONSE, ResponseMode.FAST)
-        return ResponsePlan(TurnIntent.DIRECT_RESPONSE, ResponseMode.FAST)
+    def classified_plan(self, classification: str) -> TurnPlan:
+        normalized = classification.strip().upper()
+        label = normalized.split(maxsplit=1)[0] if normalized else ""
+        plans = {
+            "NO_RESPONSE": TurnPlan(TurnIntent.NO_RESPONSE, ResponseDepth.BRIEF),
+            "CLARIFY": TurnPlan(TurnIntent.CLARIFY, ResponseDepth.BRIEF),
+            "BRIEF": TurnPlan(TurnIntent.RESPOND, ResponseDepth.BRIEF),
+            "STANDARD": TurnPlan(TurnIntent.RESPOND, ResponseDepth.STANDARD),
+            "DETAILED": TurnPlan(
+                TurnIntent.RESPOND, ResponseDepth.DETAILED, acknowledge=True
+            ),
+        }
+        return plans.get(label, TurnPlan(TurnIntent.RESPOND, ResponseDepth.STANDARD))

@@ -37,3 +37,11 @@ prompts:
     category: enumerating
     text: Potrzebuję mleka, chleba, kawy i czegoś słodkiego.
     instruction: Make short, natural pauses between list items.
+  - id: turn-backchannel-001
+    category: listener-backchannel
+    text: Mhm.
+    instruction: Say this briefly while the assistant is speaking; its reply should continue.
+  - id: turn-interrupt-001
+    category: substantive-interruption
+    text: Poczekaj, mam inne pytanie.
+    instruction: Say this while the assistant is speaking; its reply should stop before the new turn.

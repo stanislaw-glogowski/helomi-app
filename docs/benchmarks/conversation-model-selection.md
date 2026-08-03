@@ -95,11 +95,9 @@ can be evaluated fairly in Henry.
 | Gemma 4 26B A4B | 6.279 s | 0.421 s | 2.298 s | 321 |
 | Bielik 11B | 7.610 s | 0.402 s | 6.198 s | 473 |
 
-All candidates recorded 60% routing accuracy because routing is owned by Henry's
-`ResponseRouter`, not by the selected response model. With
-`classify_ambiguous: false`, `detailed-001` and `planning-001` were sent to the
-fast role even though the suite expects detailed responses. This is a confirmed
-router or suite-contract issue and must not be used to rank models.
+All candidates recorded 60% routing accuracy under the historical length-based
+router, not the natural-conversation planner. That evidence predates ADR-0006;
+it must not be used to rank current planning behavior or models.
 
 The qualitative failures were more decisive than small latency differences:
 

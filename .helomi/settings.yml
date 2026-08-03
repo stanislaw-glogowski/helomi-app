@@ -5,7 +5,6 @@ conversation:
   language_model:
     adapter: "mlx" # options: mlx, langchain
   acknowledgement_delay: 0.5 # seconds before a prepared waiting reaction may play
-  classify_ambiguous: false # use the optional classifier model for ambiguous turns
 
 speech:
   audio:
@@ -26,6 +25,10 @@ speech:
     short_utterance_end_silence_frames: 28 # trailing silence required for a short utterance
     max_utterance_frames: 1875 # hard limit for all frames in one utterance
     pre_roll_frames: 15 # frames retained from immediately before detected speech
+
+  turn_taking:
+    sustained_barge_in_frames: 20 # 640 ms at 16 kHz / 512-sample frames
+    continuation_silence_frames: 38 # wait for a semantically incomplete turn
 
   tts:
     adapter: "piper" # options: piper, mlx:chatterbox

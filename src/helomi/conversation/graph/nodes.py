@@ -15,7 +15,7 @@ from ..model import (
 from ..profile import ProfilePreparation
 from ..reply import ConversationTextChunk
 from .context import ConversationContext, ConversationRuntime
-from .routing import ResponseMode, ResponsePlan, ResponseRouter
+from .routing import ResponseDepth, TurnIntent, TurnPlan, TurnPlanner
 from .state import ConversationState
 
 
@@ -27,11 +27,11 @@ class ConversationNodes:
     def __init__(
         self,
         language_model: LanguageModelService,
-        response_router: ResponseRouter | None = None,
+        turn_planner: TurnPlanner | None = None,
         profile_preparation: ProfilePreparation | None = None,
     ) -> None:
         self._language_model = language_model
-        self._response_router = response_router or ResponseRouter()
+        self._turn_planner = turn_planner or TurnPlanner()
         self._profile_preparation = profile_preparation
 
     async def opening(
@@ -80,17 +80,25 @@ class ConversationNodes:
             ),
             "",
         )
-        plan = self._response_router.plan(user_text)
-        if context.classify_ambiguous and self._response_router.is_ambiguous(user_text):
-            plan = await self._classify(user_text)
+        plan = self._turn_planner.deterministic_plan(user_text)
+        if plan is None:
+            plan = await self._classify(state, context, summary, messages)
+        if plan.intent in {TurnIntent.NO_RESPONSE, TurnIntent.CANCEL}:
+            return {"messages": []}
         role = (
             LanguageModelRole.DETAILED
-            if plan.mode is ResponseMode.DETAILED
+            if plan.depth is ResponseDepth.DETAILED
             else LanguageModelRole.FAST
         )
+        instruction = self._response_instruction(plan)
         request = LanguageModelRequest(
             role,
-            self._request_messages(state, context, summary, messages),
+            self._request_messages(
+                state,
+                context,
+                summary,
+                [SystemMessage(content=instruction), *messages],
+            ),
         )
         response = await self._stream_visible(
             request,
@@ -100,22 +108,48 @@ class ConversationNodes:
         )
         return {"messages": [AIMessage(response)]}
 
-    async def _classify(self, text: str) -> ResponsePlan:
+    async def _classify(
+        self,
+        state: ConversationState,
+        context: ConversationContext,
+        summary: str,
+        messages: list[AnyMessage],
+    ) -> TurnPlan:
         classification = ""
-        async for chunk in self._language_model.generate(
-            LanguageModelRequest(
-                LanguageModelRole.CLASSIFIER,
-                (
-                    ConversationMessage(
-                        ConversationRole.SYSTEM,
-                        self._response_router.CLASSIFICATION_PROMPT,
+        try:
+            async for chunk in self._language_model.generate(
+                LanguageModelRequest(
+                    LanguageModelRole.CLASSIFIER,
+                    self._request_messages(
+                        state,
+                        context,
+                        summary,
+                        [
+                            SystemMessage(
+                                content=self._turn_planner.CLASSIFICATION_PROMPT
+                            ),
+                            *messages,
+                        ],
                     ),
-                    ConversationMessage(ConversationRole.USER, text),
-                ),
-            )
-        ):
-            classification += chunk.content
-        return self._response_router.classified_plan(classification)
+                )
+            ):
+                classification += chunk.content
+        except Exception:
+            return TurnPlan(TurnIntent.RESPOND, ResponseDepth.STANDARD)
+        return self._turn_planner.classified_plan(classification)
+
+    @staticmethod
+    def _response_instruction(plan: TurnPlan) -> str:
+        if plan.intent is TurnIntent.CLARIFY:
+            return "Ask exactly one concise clarification question. Do not answer yet."
+        instructions = {
+            ResponseDepth.BRIEF: "Answer in one or two concise sentences.",
+            ResponseDepth.STANDARD: "Answer in two to four concise sentences.",
+            ResponseDepth.DETAILED: (
+                "Give a comprehensive answer at an appropriate length."
+            ),
+        }
+        return instructions[plan.depth]
 
     async def summarize(
         self,

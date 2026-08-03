@@ -6,7 +6,7 @@ from time import perf_counter
 import yaml
 
 from helomi.conversation.config import ConversationSettings
-from helomi.conversation.graph import ResponseRouter
+from helomi.conversation.graph import ResponseDepth, TurnPlanner
 from helomi.conversation.model import (
     ConversationMessage,
     ConversationRole,
@@ -23,7 +23,8 @@ class BenchmarkCase:
     id: str
     category: str
     text: str
-    expected_mode: str
+    expected_intent: str
+    expected_depth: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,8 +32,10 @@ class BenchmarkResult:
     id: str
     category: str
     run_kind: str
-    expected_mode: str
-    selected_mode: str
+    expected_intent: str
+    selected_intent: str
+    expected_depth: str
+    selected_depth: str
     first_chunk_seconds: float
     total_seconds: float
     output_characters: int
@@ -41,7 +44,20 @@ class BenchmarkResult:
 
 def load_cases(path: Path) -> tuple[BenchmarkCase, ...]:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return tuple(BenchmarkCase(**item) for item in data["cases"])
+    return tuple(
+        BenchmarkCase(
+            id=item["id"],
+            category=item["category"],
+            text=item["text"],
+            expected_intent=item.get("expected_intent", "respond"),
+            expected_depth=(
+                item["expected_depth"]
+                if "expected_depth" in item
+                else {"fast": "brief", "detailed": "detailed"}[item["expected_mode"]]
+            ),
+        )
+        for item in data["cases"]
+    )
 
 
 async def run_benchmark(
@@ -49,18 +65,18 @@ async def run_benchmark(
     settings: ConversationSettings,
     cases: tuple[BenchmarkCase, ...],
 ) -> tuple[BenchmarkResult, ...]:
-    router = ResponseRouter()
+    planner = TurnPlanner()
     results: list[BenchmarkResult] = []
     adapter = get_language_model(
         profile,
         settings.language_model,
-        require_classifier=settings.classify_ambiguous,
+        require_classifier=True,
     )
     async with LanguageModelService(adapter) as service:
         for index, case in enumerate(cases):
-            plan = router.plan(case.text)
+            plan = planner.deterministic_plan(case.text)
             started = perf_counter()
-            if settings.classify_ambiguous and router.is_ambiguous(case.text):
+            if plan is None:
                 classification = ""
                 async for chunk in service.generate(
                     LanguageModelRequest(
@@ -68,15 +84,19 @@ async def run_benchmark(
                         (
                             ConversationMessage(
                                 ConversationRole.SYSTEM,
-                                router.CLASSIFICATION_PROMPT,
+                                planner.CLASSIFICATION_PROMPT,
                             ),
                             ConversationMessage(ConversationRole.USER, case.text),
                         ),
                     )
                 ):
                     classification += chunk.content
-                plan = router.classified_plan(classification)
-            role = LanguageModelRole(plan.mode.value)
+                plan = planner.classified_plan(classification)
+            role = (
+                LanguageModelRole.DETAILED
+                if plan.depth is ResponseDepth.DETAILED
+                else LanguageModelRole.FAST
+            )
             request = LanguageModelRequest(
                 role,
                 (
@@ -101,8 +121,10 @@ async def run_benchmark(
                     id=case.id,
                     category=case.category,
                     run_kind="cold" if index == 0 else "warm",
-                    expected_mode=case.expected_mode,
-                    selected_mode=plan.mode.value,
+                    expected_intent=case.expected_intent,
+                    selected_intent=plan.intent.value,
+                    expected_depth=case.expected_depth,
+                    selected_depth=plan.depth.value,
                     first_chunk_seconds=first_chunk_seconds or total_seconds,
                     total_seconds=total_seconds,
                     output_characters=len(response),
@@ -125,8 +147,12 @@ def write_report(
         ),
         encoding="utf-8",
     )
-    routing_accuracy = (
-        sum(result.expected_mode == result.selected_mode for result in results)
+    planning_accuracy = (
+        sum(
+            result.expected_intent == result.selected_intent
+            and result.expected_depth == result.selected_depth
+            for result in results
+        )
         / len(results)
         if results
         else 0.0
@@ -135,14 +161,18 @@ def write_report(
         "# Conversation benchmark report",
         "",
         f"- Cases: {len(results)}",
-        f"- Routing accuracy: {routing_accuracy:.1%}",
+        f"- Planning accuracy: {planning_accuracy:.1%}",
         "",
-        "| Case | Run | Expected | Selected | First chunk | Total | Characters |",
-        "| --- | --- | --- | --- | ---: | ---: | ---: |",
+        (
+            "| Case | Run | Expected intent | Selected intent | Expected depth | "
+            "Selected depth | First chunk | Total | Characters |"
+        ),
+        "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |",
     ]
     lines.extend(
-        f"| {result.id} | {result.run_kind} | {result.expected_mode} | "
-        f"{result.selected_mode} | "
+        f"| {result.id} | {result.run_kind} | {result.expected_intent} | "
+        f"{result.selected_intent} | {result.expected_depth} | "
+        f"{result.selected_depth} | "
         f"{result.first_chunk_seconds:.3f} s | {result.total_seconds:.3f} s | "
         f"{result.output_characters} |"
         for result in results

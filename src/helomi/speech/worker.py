@@ -38,6 +38,7 @@ from .playback import PlaybackService
 from .segmentation import SpeechSegment, UtteranceSegmenter
 from .synthesis import SynthesisService
 from .transcription import (
+    ListenerBackchannelDetector,
     TranscriptionChunk,
     TranscriptionService,
     TranscriptionText,
@@ -50,14 +51,14 @@ class WorkerOptions:
     """Frame-based voice-session thresholds for the 16 kHz capture stream."""
 
     wakeword_disabled: bool = False
-    barge_in_speech_frames: int = 6
+    sustained_barge_in_frames: int = 20
     continuation_silence_frames: int = 38
 
     def __post_init__(self) -> None:
-        if self.barge_in_speech_frames <= 0:
+        if self.sustained_barge_in_frames <= 0:
             raise ValueError(
-                "barge_in_speech_frames must be positive; "
-                f"got {self.barge_in_speech_frames}"
+                "sustained_barge_in_frames must be positive; "
+                f"got {self.sustained_barge_in_frames}"
             )
         if self.continuation_silence_frames <= 0:
             raise ValueError(
@@ -123,6 +124,7 @@ class Worker(Component):
 
         self._transcription_service = transcription_service
         self._turn_endpoint_detector = TurnEndpointDetector()
+        self._backchannel_detector = ListenerBackchannelDetector()
         self._pending_turn_text = ""
         self._pending_turn_silence_frames = 0
         self._pending_turn_continuation = False
@@ -148,6 +150,7 @@ class Worker(Component):
         self._playback_active = False
         self._interrupting = False
         self._barge_in_speech_frames = 0
+        self._barge_in_reply_id: ReplyId | None = None
         self._duck_requested = False
         self._playback_control_queue: asyncio.Queue[_PlaybackControl] = asyncio.Queue()
         self._interaction_started_ns: int | None = None
@@ -421,6 +424,7 @@ class Worker(Component):
         self._accept_reply_phrases = True
         self._interrupting = False
         self._barge_in_speech_frames = 0
+        self._barge_in_reply_id = None
         self._duck_requested = False
         self._delivered_phrases.clear()
         self._playback_started_phrases.clear()
@@ -428,7 +432,15 @@ class Worker(Component):
     def _observe_barge_in(self, chunk: SpeechChunk) -> None:
         if not self._assistant_active or self._interrupting:
             self._barge_in_speech_frames = 0
+            if self._barge_in_reply_id is not None:
+                self._clear_barge_in_candidate(restore=True)
             return
+
+        if (
+            self._barge_in_reply_id is not None
+            and self._barge_in_reply_id != self._active_reply_id
+        ):
+            self._clear_barge_in_candidate(restore=True)
 
         if not chunk.is_speech:
             self._barge_in_speech_frames = 0
@@ -440,8 +452,16 @@ class Worker(Component):
         if not self._duck_requested:
             self._duck_requested = True
             self._playback_control_queue.put_nowait(_PlaybackControl.DUCK)
+        if self._barge_in_reply_id is None:
+            self._barge_in_reply_id = self._active_reply_id
         self._barge_in_speech_frames += 1
-        if self._barge_in_speech_frames < self._options.barge_in_speech_frames:
+        if self._barge_in_speech_frames < self._options.sustained_barge_in_frames:
+            return
+
+        self._interrupt_reply()
+
+    def _interrupt_reply(self) -> None:
+        if self._interrupting:
             return
 
         self._interrupting = True
@@ -458,8 +478,16 @@ class Worker(Component):
             )
         )
         self._duck_requested = False
+        self._barge_in_reply_id = None
         self._playback_control_queue.put_nowait(_PlaybackControl.INTERRUPT)
         self._logger.debug("Reply INTERRUPTED")
+
+    def _clear_barge_in_candidate(self, *, restore: bool) -> None:
+        self._barge_in_reply_id = None
+        self._barge_in_speech_frames = 0
+        if restore and self._duck_requested:
+            self._duck_requested = False
+            self._playback_control_queue.put_nowait(_PlaybackControl.RESTORE)
 
     def _observe_pending_turn(self, chunk: SpeechChunk) -> None:
         if not self._pending_turn_text:
@@ -481,9 +509,18 @@ class Worker(Component):
         combined = self._combine_turn_text(text)
         self._pending_turn_continuation = False
         self._pending_turn_silence_frames = 0
+        candidate_reply_id = self._barge_in_reply_id
         if not combined:
+            if candidate_reply_id is not None:
+                self._clear_barge_in_candidate(restore=True)
             self._turn_id = None
             return
+        if candidate_reply_id is not None and not self._interrupting:
+            if self._backchannel_detector.is_backchannel(combined):
+                self._clear_barge_in_candidate(restore=True)
+                self._turn_id = None
+                return
+            self._interrupt_reply()
         if not self._turn_endpoint_detector.is_complete(combined):
             self._pending_turn_text = combined
             return

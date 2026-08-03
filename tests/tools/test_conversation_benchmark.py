@@ -29,17 +29,21 @@ cases:
   - id: fast-001
     category: factual
     text: Krótkie pytanie?
-    expected_mode: fast
+    expected_intent: respond
+    expected_depth: brief
 """.strip(),
         encoding="utf-8",
     )
     cases = load_cases(suite)
-    assert cases == (BenchmarkCase("fast-001", "factual", "Krótkie pytanie?", "fast"),)
+    assert cases == (
+        BenchmarkCase("fast-001", "factual", "Krótkie pytanie?", "respond", "brief"),
+    )
 
     profile = ConversationProfile(
         models={
             "fast": {"model_id": "test:fast"},
             "detailed": {"model_id": "test:detailed"},
+            "classifier": {"model_id": "test:classifier"},
         },
         prompts=ConversationPrompts(
             system="System {conversation_summary}",
@@ -57,19 +61,20 @@ cases:
         model_module.get_language_model,
     )
     results = asyncio.run(run_benchmark(profile, ConversationSettings(), cases))
-    assert results[0].selected_mode == "fast"
+    assert results[0].selected_intent == "respond"
+    assert results[0].selected_depth == "brief"
     assert results[0].response == "Answer."
 
     json_path, markdown_path = write_report(tmp_path / "result", results)
     assert json.loads(json_path.read_text(encoding="utf-8"))[0]["id"] == "fast-001"
     report = markdown_path.read_text(encoding="utf-8")
-    assert "Routing accuracy: 100.0%" in report
+    assert "Planning accuracy: 100.0%" in report
     assert "fast-001" in report
 
 
 def test_conversation_benchmark_writes_empty_report(tmp_path: Path) -> None:
     _, markdown_path = write_report(tmp_path, ())
-    assert "Routing accuracy: 0.0%" in markdown_path.read_text(encoding="utf-8")
+    assert "Planning accuracy: 0.0%" in markdown_path.read_text(encoding="utf-8")
 
 
 def test_conversation_benchmark_overrides_every_model_role() -> None:

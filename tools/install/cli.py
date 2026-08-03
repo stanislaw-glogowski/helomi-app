@@ -109,19 +109,14 @@ def _conversation_models(profile: Profile, settings: Settings) -> tuple[str, ...
         case MLXSettings():
             models = profile.conversation.models_mlx
             selected = [models.fast.model_id, models.detailed.model_id]
-            if settings.conversation.classify_ambiguous:
-                if models.classifier is None:
-                    raise ValueError(
-                        "Ambiguous-turn classification requires a classifier model"
-                    )
-                selected.append(models.classifier.model_id)
+            if models.classifier is None:
+                raise ValueError("Natural conversation requires a classifier model")
+            selected.append(models.classifier.model_id)
             return tuple(selected)
         case LangChainSettings():
             models = profile.conversation.models_langchain
-            if settings.conversation.classify_ambiguous and models.classifier is None:
-                raise ValueError(
-                    "Ambiguous-turn classification requires a classifier model"
-                )
+            if models.classifier is None:
+                raise ValueError("Natural conversation requires a classifier model")
             return ()
 
 

@@ -25,3 +25,11 @@ Replies flow back as short text phrases. Synthesized frames and phrase boundarie
 are queued for playback, allowing the first spoken phrase to start before the
 whole reply completes. See [native audio](native-audio.md) for the default
 full-duplex driver.
+
+While a reply is active, speech ducks playback at the first VAD-positive frame.
+It keeps a reply-correlated candidate while the utterance is short: exact Polish
+listener backchannels (`mhm`, `mm hm`, `uhum`, and `aha`) are consumed and
+playback is restored. Substantive final transcription interrupts before its user
+turn is committed. Sustained speech interrupts immediately after the configured
+frame threshold, drains obsolete synthesis and playback work, and records the
+actually delivered reply prefix.

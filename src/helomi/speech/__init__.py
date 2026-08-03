@@ -26,7 +26,7 @@ async def run_speech_worker(
     from .segmentation import UtteranceSegmenter
     from .synthesis import SynthesisService, get_tts_model
     from .transcription import TranscriptionService, get_stt_model
-    from .worker import Worker
+    from .worker import Worker, WorkerOptions
 
     with get_audio_driver(settings.audio) as audio_driver:
         event_bus.publish(
@@ -72,6 +72,10 @@ async def run_speech_worker(
             ),
             transcription_service=TranscriptionService(
                 stt_model=stt_model,
+            ),
+            options=WorkerOptions(
+                sustained_barge_in_frames=settings.turn_taking.sustained_barge_in_frames,
+                continuation_silence_frames=settings.turn_taking.continuation_silence_frames,
             ),
             start_event=start_event,
         ).run()

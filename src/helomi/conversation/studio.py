@@ -25,7 +25,7 @@ async def conversation_graph() -> AsyncGenerator[
     adapter = get_language_model(
         profile,
         settings.language_model,
-        require_classifier=settings.classify_ambiguous,
+        require_classifier=True,
     )
     async with LanguageModelService(adapter) as service:
         yield ConversationGraph(nodes=ConversationNodes(service)).compiled

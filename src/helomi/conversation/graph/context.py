@@ -15,7 +15,6 @@ class ConversationContext:
     opening_prompt: str
     summary_prompt: str
     acknowledgement_delay: float
-    classify_ambiguous: bool
 
     @staticmethod
     def from_profile(
@@ -29,5 +28,4 @@ class ConversationContext:
             opening_prompt=profile.prompts.opening,
             summary_prompt=profile.prompts.summary,
             acknowledgement_delay=settings.acknowledgement_delay,
-            classify_ambiguous=settings.classify_ambiguous,
         )

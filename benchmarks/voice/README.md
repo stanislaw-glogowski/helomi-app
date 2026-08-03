@@ -93,6 +93,18 @@ real-time factor. Pronunciation, prosody, and naturalness need a listening
 review. Complete `ratings.csv` without opening `mapping.json`; reveal the
 mapping only after review.
 
+## Natural conversation acceptance
+
+Use `pl-turn-taking` with the Alexa profile to compare a baseline and candidate
+on the same Mac, AVFAudio device path, model, voice, and scripted Polish turns.
+Keep recordings and generated reviews outside the checkout. Blind the run label,
+then require no critical endpointing, backchannel, interruption, continuity,
+cancellation, or brevity failure; higher aggregate naturalness and
+appropriateness; no lower reviewed category; and direct-path warm median
+playback-start latency within 10% of baseline. Report classifier-path latency
+separately. PyAudio and real model or hardware validation remain separate from
+fake-driven tests.
+
 ## Consent
 
 Use anonymous identifiers such as `speaker-02`. Obtain informed consent, agree
