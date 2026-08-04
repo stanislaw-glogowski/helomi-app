@@ -13,10 +13,14 @@ shows startup progress and failures, offers retry after a failed start, and
 shuts down through **Quit Helomi** or an explicit spoken request to close the
 application.
 
-**Conversation History…** shows the current run's live in-memory transcript.
-**System Info…** shows live signals, runtime configuration, and interaction
-timings. **Open Profile Data Folder** opens the active profile's `data/`
-directory when it exists.
+**Conversation History…** shows the current run's live in-memory transcript
+with listening, thinking, speaking, delivered, and interrupted reply markers.
+**System Info…** groups live signals, runtime configuration, startup/download
+progress, and interaction timings. Both native windows open centered the first
+time and keep their user-chosen position until Helomi exits. The menu bar and
+window headers use emoji to distinguish application lifecycle and agent activity
+without adding decoration to technical telemetry. **Open Profile Data Folder**
+opens the active profile's `data/` directory when it exists.
 
 Each profile supplies the assistant identity, prompts, wake-word label and ONNX
 model path, conversation model roles, and speech-model overrides. See

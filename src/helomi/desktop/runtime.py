@@ -23,13 +23,15 @@ from helomi.speech.events import (
     ReplyPhraseDelivered,
     ReplyPhrasePlaybackStarted,
     SpeechChunkCaptured,
+    TranscriptionProgressObserved,
     UserTurnCommitted,
     VADObserved,
+    VoiceSessionMode,
     VoiceSessionModeChanged,
     WakeWordObserved,
 )
 
-from .state import DesktopMode, DesktopSnapshot, PhraseState, SystemInfo
+from .state import AgentActivity, DesktopMode, DesktopSnapshot, PhraseState, SystemInfo
 
 
 class DesktopRuntime:
@@ -126,6 +128,11 @@ class DesktopRuntime:
                     profile.id,
                     data_path=profile.data_path,
                     system_info=SystemInfo.from_runtime(profile, runtime.settings),
+                    agent_activity=(
+                        AgentActivity.WAITING
+                        if getattr(profile, "wakeword", None) is not None
+                        else AgentActivity.LISTENING
+                    ),
                 )
                 self._publish(self._snapshot)
                 self._runtime = runtime
@@ -204,6 +211,7 @@ class DesktopRuntime:
             ReplyPhrasePlaybackStarted,
             ShutdownEvent,
             SpeechChunkCaptured,
+            TranscriptionProgressObserved,
             UserTurnCommitted,
             VADObserved,
             VoiceSessionModeChanged,
@@ -225,6 +233,7 @@ class DesktopRuntime:
         info = snapshot.system_info
         conversation = snapshot.conversation
         session_mode = snapshot.session_mode
+        agent_activity = snapshot.agent_activity
         match event:
             case AudioDevicesSelected(driver, devices):
                 info = replace(
@@ -247,31 +256,68 @@ class DesktopRuntime:
                 info = replace(info, timings=tuple(timings.items()))
             case VoiceSessionModeChanged(mode):
                 session_mode = mode
+                agent_activity = (
+                    AgentActivity.WAITING
+                    if mode is VoiceSessionMode.WAITING_FOR_WAKE_WORD
+                    else AgentActivity.LISTENING
+                )
+            case TranscriptionProgressObserved(turn_id, content, likely_complete):
+                conversation = conversation.update_transcription(turn_id, content)
+                agent_activity = (
+                    AgentActivity.THINKING
+                    if likely_complete
+                    else AgentActivity.LISTENING
+                )
             case UserTurnCommitted(turn_id, text):
                 conversation = conversation.commit_user(turn_id, text)
+                agent_activity = AgentActivity.THINKING
             case ReplyGenerationStarted(reply_id):
                 conversation = conversation.start_reply(reply_id)
+                agent_activity = AgentActivity.THINKING
             case ReplyDraftUpdated(reply_id, text):
                 conversation = conversation.update_reply_draft(reply_id, text)
+                agent_activity = AgentActivity.THINKING
             case ReplyPhrase(reply_id, phrase_id, text):
                 conversation = conversation.queue_phrase(reply_id, phrase_id, text)
+                agent_activity = AgentActivity.THINKING
             case ReplyPhrasePlaybackStarted(reply_id, phrase_id):
                 conversation = conversation.transition_phrase(
                     reply_id, phrase_id, PhraseState.SPEAKING
                 )
+                agent_activity = AgentActivity.SPEAKING
             case ReplyPhraseDelivered(reply_id, phrase_id):
                 conversation = conversation.transition_phrase(
                     reply_id, phrase_id, PhraseState.DELIVERED
+                )
+                agent_activity = (
+                    AgentActivity.COMPLETED
+                    if self._reply_is_delivered(conversation, reply_id)
+                    else AgentActivity.SPEAKING
                 )
             case ReplyGenerationCompleted(reply_id):
                 conversation = conversation.complete_reply(reply_id)
             case CancelReply(_, reply_id):
                 conversation = conversation.interrupt_reply(reply_id)
+                agent_activity = AgentActivity.INTERRUPTED
             case _:
                 return
         self._set_snapshot(
-            system_info=info, conversation=conversation, session_mode=session_mode
+            system_info=info,
+            conversation=conversation,
+            session_mode=session_mode,
+            agent_activity=agent_activity,
         )
+
+    @staticmethod
+    def _reply_is_delivered(conversation: object, reply_id: int) -> bool:
+        messages = getattr(conversation, "messages", ())
+        for message in reversed(messages):
+            if getattr(message, "reply_id", None) == reply_id:
+                phrases = getattr(message, "phrases", ())
+                return bool(phrases) and all(
+                    phrase.state is PhraseState.DELIVERED for phrase in phrases
+                )
+        return False
 
     def _publish(self, snapshot: DesktopSnapshot) -> None:
         with self._queue_lock:
@@ -282,6 +328,9 @@ class DesktopRuntime:
                 self._updates.put_nowait(snapshot)
 
     def _set_snapshot(self, **changes: object) -> None:
+        mode = changes.get("mode")
+        if mode is not None and mode is not DesktopMode.RUNNING:
+            changes.setdefault("agent_activity", AgentActivity.OFFLINE)
         self._snapshot = replace(self._snapshot, **cast(Any, changes))
         self._publish(self._snapshot)
 

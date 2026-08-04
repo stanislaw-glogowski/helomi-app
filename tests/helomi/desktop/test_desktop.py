@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import helomi.desktop.runtime as runtime_module
-from helomi.app import ProgressSnapshot
+from helomi.app import ProgressItem, ProgressSnapshot, ProgressStatus
 from helomi.conversation.events import (
     CancelReply,
     ReplyDraftUpdated,
@@ -18,10 +18,11 @@ from helomi.conversation.events import (
 )
 from helomi.desktop.runtime import DesktopRuntime
 from helomi.desktop.state import (
+    AgentActivity,
     DesktopMode,
     DesktopSnapshot,
 )
-from helomi.desktop.windows import DesktopWindows
+from helomi.desktop.windows import DesktopWindows, _WindowContent
 from helomi.speech.events import (
     InteractionTimingObserved,
     ReplyPhraseDelivered,
@@ -103,9 +104,24 @@ def test_snapshot_projects_tray_titles_and_safe_actions() -> None:
     assert starting.tray_title == "⏳ Agent"
     assert failed.tray_title == "❌ Agent"
     assert failed.retry_enabled
-    assert running.tray_title == "Agent"
+    assert running.tray_title == "⚪ Agent"
     assert not running.retry_enabled
     assert not running.data_folder_enabled
+
+
+def test_desktop_presentation_states_have_stable_emoji_and_labels() -> None:
+    assert DesktopMode.READY.presentation == "🟡 Ready"
+    assert DesktopMode.STARTING.presentation == "⏳ Starting"
+    assert DesktopMode.RETRYING.presentation == "🔄 Retrying"
+    assert DesktopMode.RUNNING.presentation == "🟢 Running"
+    assert DesktopMode.FAILED.presentation == "❌ Failed"
+    assert DesktopMode.SHUTTING_DOWN.presentation == "👋 Shutting down"
+    assert AgentActivity.WAITING.presentation == "👂 Waiting for wake word"
+    assert AgentActivity.LISTENING.presentation == "🎙️ Listening"
+    assert AgentActivity.THINKING.presentation == "🤔 Thinking"
+    assert AgentActivity.SPEAKING.presentation == "🔊 Speaking"
+    assert AgentActivity.COMPLETED.presentation == "✅ Response complete"
+    assert AgentActivity.INTERRUPTED.presentation == "🛑 Response interrupted"
 
 
 def test_snapshot_enables_only_existing_data_folders(tmp_path: Path) -> None:
@@ -140,13 +156,17 @@ def test_runtime_reduces_live_history_and_system_events() -> None:
     assert not snapshot.waiting_for_wakeword
     transcript = DesktopWindows._conversation_text_value(snapshot)
     system_info = DesktopWindows._system_text_value(snapshot)
-    assert "[delivered] Done." in transcript
-    assert "REPLY STARTED" in system_info
+    assert "✅ Delivered · Done." in transcript
+    assert "Reply Started: 120 ms" in system_info
+    assert snapshot.agent_activity is AgentActivity.LISTENING
 
     desktop._reduce_event(CancelReply(reply_id=2))
     interrupted = desktop.drain()
     assert interrupted.conversation.messages[1].interrupted
-    assert "REPLY INTERRUPTED" in DesktopWindows._conversation_text_value(interrupted)
+    assert "🛑 Reply interrupted" in DesktopWindows._conversation_text_value(
+        interrupted
+    )
+    assert interrupted.agent_activity is AgentActivity.INTERRUPTED
 
 
 def test_runtime_bounds_conversation_history() -> None:
@@ -162,7 +182,49 @@ def test_runtime_bounds_conversation_history() -> None:
 def test_native_window_text_projects_live_snapshot() -> None:
     snapshot = DesktopSnapshot(DesktopMode.RUNNING)
     assert "Waiting for" in DesktopWindows._conversation_text_value(snapshot)
-    assert "SIGNALS" in DesktopWindows._system_text_value(snapshot)
+    assert "Signals" in DesktopWindows._system_text_value(snapshot)
+
+
+def test_windows_are_lazy_center_once_and_project_active_progress() -> None:
+    class Window:
+        def __init__(self) -> None:
+            self.centered = 0
+            self.opened = 0
+
+        def center(self) -> None:
+            self.centered += 1
+
+        def makeKeyAndOrderFront_(self, _sender) -> None:
+            self.opened += 1
+
+    activated: list[bool] = []
+    windows = DesktopWindows()
+    snapshot = DesktopSnapshot(
+        DesktopMode.STARTING,
+        progress=ProgressSnapshot(
+            (
+                ProgressItem(
+                    1, "Downloading model", 50, 100, "MB", ProgressStatus.ACTIVE
+                ),
+            )
+        ),
+    )
+    windows.update(snapshot)
+    assert windows._appkit is None
+    assert "Downloading model · 50 MB · 50%" in windows._system_text_value(snapshot)
+
+    window = Window()
+    windows._appkit = SimpleNamespace(
+        NSApp=SimpleNamespace(
+            activateIgnoringOtherApps_=lambda _value: activated.append(True)
+        )
+    )
+    content = _WindowContent(window, None, None, None)
+    windows._show(content)
+    windows._show(content)
+    assert window.centered == 1
+    assert window.opened == 2
+    assert activated == [True, True]
 
 
 def test_runtime_coalesces_updates_and_waits_for_shutdown(
@@ -443,8 +505,9 @@ def test_menu_renders_status_retry_and_quit(
     assert app._app.title == "❌ Agent"
     assert not any(getattr(item, "title", None) == "Profiles" for item in items)
     assert any(getattr(item, "title", None) == "Retry" for item in items)
-    assert [getattr(item, "title", None) for item in items[-3:]] == [
-        "Status: Failed",
+    assert [getattr(item, "title", None) for item in items[-4:]] == [
+        "App: ❌ Failed",
+        "Agent: ⚪ Offline",
         None,
         "Quit Helomi",
     ]

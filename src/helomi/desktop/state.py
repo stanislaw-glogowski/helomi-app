@@ -16,6 +16,47 @@ class DesktopMode(Enum):
     FAILED = "Failed"
     SHUTTING_DOWN = "Shutting down"
 
+    @property
+    def emoji(self) -> str:
+        return {
+            DesktopMode.READY: "🟡",
+            DesktopMode.STARTING: "⏳",
+            DesktopMode.RETRYING: "🔄",
+            DesktopMode.RUNNING: "🟢",
+            DesktopMode.FAILED: "❌",
+            DesktopMode.SHUTTING_DOWN: "👋",
+        }[self]
+
+    @property
+    def presentation(self) -> str:
+        return f"{self.emoji} {self.value}"
+
+
+class AgentActivity(Enum):
+    OFFLINE = "Offline"
+    WAITING = "Waiting for wake word"
+    LISTENING = "Listening"
+    THINKING = "Thinking"
+    SPEAKING = "Speaking"
+    COMPLETED = "Response complete"
+    INTERRUPTED = "Response interrupted"
+
+    @property
+    def emoji(self) -> str:
+        return {
+            AgentActivity.OFFLINE: "⚪",
+            AgentActivity.WAITING: "👂",
+            AgentActivity.LISTENING: "🎙️",
+            AgentActivity.THINKING: "🤔",
+            AgentActivity.SPEAKING: "🔊",
+            AgentActivity.COMPLETED: "✅",
+            AgentActivity.INTERRUPTED: "🛑",
+        }[self]
+
+    @property
+    def presentation(self) -> str:
+        return f"{self.emoji} {self.value}"
+
 
 class PhraseState(Enum):
     QUEUED = auto()
@@ -283,6 +324,7 @@ class DesktopSnapshot:
     system_info: SystemInfo = field(default_factory=SystemInfo)
     conversation: ConversationState = field(default_factory=ConversationState)
     session_mode: VoiceSessionMode | None = None
+    agent_activity: AgentActivity = AgentActivity.OFFLINE
 
     @property
     def retry_enabled(self) -> bool:
@@ -298,10 +340,9 @@ class DesktopSnapshot:
 
     @property
     def tray_title(self) -> str:
-        match self.mode:
-            case DesktopMode.RUNNING:
-                return self.profile_name
-            case DesktopMode.FAILED:
-                return f"❌ {self.profile_name}"
-            case _:
-                return f"⏳ {self.profile_name}"
+        indicator = (
+            self.agent_activity.emoji
+            if self.mode is DesktopMode.RUNNING
+            else self.mode.emoji
+        )
+        return f"{indicator} {self.profile_name}"
