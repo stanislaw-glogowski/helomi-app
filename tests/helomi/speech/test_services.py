@@ -197,6 +197,26 @@ def test_capture_service_lifecycle_detection_and_errors() -> None:
     asyncio.run(scenario())
 
 
+def test_capture_service_without_wakeword_model_keeps_detection_empty() -> None:
+    async def scenario() -> None:
+        source = FakeAudioInput([audio()])
+        vad = FakeVAD(DetectionResult(score=0.8, detected=True))
+        service = CaptureService(source, vad, None)
+
+        async with service:
+            service.enable_wakeword()
+            stream = service.capture()
+            captured = await asyncio.wait_for(stream.__anext__(), 1)
+            assert captured.vad.detected
+            assert captured.wakeword is None
+            await stream.aclose()
+
+        assert source.calls == ["open", "close"]
+        assert vad.calls == ["open", "close"]
+
+    asyncio.run(scenario())
+
+
 def test_transcription_service_outputs_text_empty_and_errors() -> None:
     async def collect(service: TranscriptionService):
         async with service:

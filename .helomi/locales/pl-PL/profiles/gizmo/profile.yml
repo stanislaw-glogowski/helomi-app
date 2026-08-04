@@ -1,0 +1,29 @@
+name: Gizmo
+
+conversation:
+  models:
+    fast:
+      model_id: "mlx-community/Qwen3.6-35B-A3B-4bit"
+      max_tokens: 384
+      temperature: 0.0
+    detailed:
+      model_id: "mlx-community/Qwen3.6-35B-A3B-4bit"
+      max_tokens: 768
+      temperature: 0.0
+    classifier:
+      model_id: "mlx-community/Qwen3.6-35B-A3B-4bit"
+      max_tokens: 8
+      temperature: 0.0
+  recent_messages: 10
+
+# Wake word is optional; without it Gizmo starts always listening.
+# Download the ONNX model from https://openwakeword.com/api/models/1669/download?format=onnx
+# and save it as .helomi/models/Hey_Gizmo_20260521_062457.onnx. Then add:
+# wakeword:
+#   label: "Hey Gizmo"
+#   model_path: "Hey_Gizmo_20260521_062457.onnx"
+# to profile.override.yml.
+
+tts:
+  model_path: "pl_PL-jarvis_wg_glos-medium.onnx"
+  repo_id: "WitoldG/polish_piper_models"

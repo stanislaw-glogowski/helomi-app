@@ -101,6 +101,11 @@ def test_runtime_info_maps_all_runtime_adapter_variants() -> None:
     assert chatterbox_info.tts_model == "profile/chatterbox"
     assert chatterbox_info.llm_adapter == "mlx"
 
+    always_listening = RuntimeInfo.from_runtime(profile(wakeword=None), settings)
+    assert always_listening.wakeword_label == "Always listening"
+    assert always_listening.wakeword_model == "Disabled"
+    assert always_listening.wakeword_threshold == 0.0
+
 
 def test_conversation_state_tracks_drafts_phrases_and_interruption() -> None:
     state = ConversationState()

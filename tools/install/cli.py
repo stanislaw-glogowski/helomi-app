@@ -75,7 +75,7 @@ def _copy_directory(source: Path, destination: Path) -> None:
         relative = path.relative_to(source)
         if path.is_dir():
             (destination / relative).mkdir(parents=True, exist_ok=True)
-        elif path.is_file():
+        elif path.is_file() and not path.name.endswith(".override.yml"):
             _copy_file(path, destination / relative)
 
 
@@ -89,9 +89,28 @@ def _download_openwakeword_file(url: str, destination: Path) -> None:
 def _install_local_data(repository_root: Path, data_root: Path) -> None:
     source = repository_root / ".helomi"
     _copy_file(source / "settings.yml", data_root / "settings.yml")
-    _copy_directory(
-        source / "profiles" / "alexa",
-        data_root / "profiles" / "alexa",
+    locales = source / "locales"
+    locale_directories = sorted(
+        directory for directory in locales.iterdir() if directory.is_dir()
+    )
+    for locale in locale_directories:
+        destination = data_root / "locales" / locale.name
+        _copy_file(locale / "settings.yml", destination / "settings.yml")
+        source_profiles = locale / "profiles"
+        destination_profiles = destination / "profiles"
+        _copy_file(source_profiles / ".gitignore", destination_profiles / ".gitignore")
+        for profile_id in _profile_allowlist(source_profiles / ".gitignore"):
+            _copy_directory(
+                source_profiles / profile_id,
+                destination_profiles / profile_id,
+            )
+
+
+def _profile_allowlist(path: Path) -> tuple[str, ...]:
+    return tuple(
+        line[1:].rstrip("/")
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("!") and line not in {"!.gitignore", "!"}
     )
 
 

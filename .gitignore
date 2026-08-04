@@ -31,9 +31,7 @@ benchmarks/*/reports/
 
 # Resources
 .helomi/models/*
-.helomi/profiles/*
-.helomi/settings.override.yml
-!.helomi/profiles/alexa
+.helomi/**/*.override.yml
 
 # Ignore
 !.gitkeep

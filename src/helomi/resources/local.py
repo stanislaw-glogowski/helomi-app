@@ -4,6 +4,7 @@ from pathlib import Path
 import yaml
 from platformdirs import user_data_dir
 
+from .configuration import load_mapping, merge_mappings
 from .models import ModelCatalog
 from .profiles import Profile, ProfileCatalog, ProfileEntry
 from .settings import Settings, SettingsStore
@@ -13,11 +14,20 @@ class LocalStore(ModelCatalog, ProfileCatalog, SettingsStore):
     _HOME_ENV_VAR = "HELOMI_HOME"
     _LOCAL_DIR = ".helomi"
     _USER_DIR = "Helomi"
+    _LOCALES_PATH = "locales"
 
-    def __init__(self, root_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        root_path: Path | None = None,
+        *,
+        language: str | None = None,
+        selected_profile: str | None = None,
+    ) -> None:
         self._root_path = (
             root_path if root_path is not None else self._locate_root_path()
         )
+        self._language_override = language
+        self._selected_profile_override = selected_profile
 
     def ensure_model_path(self, *paths: Path | str) -> Path:
         path = (self._root_path / self._MODELS_DIR).joinpath(*paths)
@@ -75,10 +85,45 @@ class LocalStore(ModelCatalog, ProfileCatalog, SettingsStore):
         path = self._root_path / self._SETTINGS_FILE
         if not path.is_file():
             raise FileNotFoundError(f"Settings file does not exist: {path}")
-        return Settings.load_from_files(
-            path,
-            self._root_path / self._SETTINGS_OVERRIDE_FILE,
+        root = load_mapping(path, label="Settings configuration")
+        root_override = self._root_path / self._SETTINGS_OVERRIDE_FILE
+        if root_override.is_file():
+            root = merge_mappings(
+                root,
+                load_mapping(root_override, label="Settings override configuration"),
+            )
+
+        language = self._locale_name(
+            self._language_override or root.get("language", "en-US")
         )
+        locale_path = self._root_path / self._LOCALES_PATH / language
+        locale_settings = locale_path / self._SETTINGS_FILE
+        if not locale_settings.is_file():
+            raise FileNotFoundError(
+                f"Locale settings file does not exist: {locale_settings}"
+            )
+        locale = load_mapping(locale_settings, label="Locale settings configuration")
+        self._reject_locale_language(locale_settings, locale)
+        locale = self._without_empty_locale_sections(locale)
+        settings = merge_mappings(root, locale)
+
+        locale_override = locale_path / self._SETTINGS_OVERRIDE_FILE
+        if locale_override.is_file():
+            override = load_mapping(
+                locale_override,
+                label="Locale settings override configuration",
+            )
+            self._reject_locale_language(locale_override, override)
+            override = self._without_empty_locale_sections(override)
+            settings = merge_mappings(settings, override)
+
+        settings["language"] = language
+        if self._selected_profile_override is not None:
+            settings = merge_mappings(
+                settings,
+                {"profiles": {"selected": self._selected_profile_override}},
+            )
+        return Settings.from_mapping(settings)
 
     def load_default_profile(self) -> Profile:
         profiles = tuple(
@@ -86,7 +131,7 @@ class LocalStore(ModelCatalog, ProfileCatalog, SettingsStore):
         )
         if not profiles:
             raise FileNotFoundError("No valid profiles are available")
-        default_profile = self.load_settings().default_profile
+        default_profile = self.load_settings().profiles.default
         if default_profile is not None:
             for profile in profiles:
                 if profile.id == default_profile:
@@ -95,7 +140,29 @@ class LocalStore(ModelCatalog, ProfileCatalog, SettingsStore):
 
     @property
     def _profiles_path(self) -> Path:
-        return self._root_path / self._PROFILES_PATH
+        language = self.load_settings().language
+        return self._root_path / self._LOCALES_PATH / language / self._PROFILES_PATH
+
+    @staticmethod
+    def _locale_name(value: object) -> str:
+        if not isinstance(value, str) or not value or value in {".", ".."}:
+            raise ValueError(f"Language must be a locale directory name; got {value!r}")
+        if Path(value).name != value:
+            raise ValueError(f"Language must be a locale directory name; got {value!r}")
+        return value
+
+    @staticmethod
+    def _reject_locale_language(path: Path, data: dict) -> None:
+        if "language" in data:
+            raise ValueError(f"Locale settings must not define language: {path}")
+
+    @staticmethod
+    def _without_empty_locale_sections(data: dict) -> dict:
+        return {
+            key: value
+            for key, value in data.items()
+            if not (key in {"conversation", "speech"} and value is None)
+        }
 
     def _locate_root_path(self) -> Path:
         if value := os.getenv(self._HOME_ENV_VAR):

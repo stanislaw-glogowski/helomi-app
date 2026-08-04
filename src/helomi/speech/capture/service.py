@@ -15,7 +15,7 @@ class CaptureService(AbstractAsyncService):
         self,
         audio_input: AudioInput,
         vad_model: VADModel,
-        wakeword_model: WakeWordModel,
+        wakeword_model: WakeWordModel | None,
     ):
         super().__init__()
         self._audio_input = audio_input
@@ -29,7 +29,7 @@ class CaptureService(AbstractAsyncService):
 
     def enable_wakeword(self) -> None:
         """Arm wake-word detection."""
-        if self._wakeword_enabled.is_set():
+        if self._wakeword_model is None or self._wakeword_enabled.is_set():
             return
 
         self._wakeword_reset.set()
@@ -76,14 +76,20 @@ class CaptureService(AbstractAsyncService):
             while not self._capture_cancel.is_set():
                 audio = self._audio_input.read()
 
-                if self._wakeword_reset.is_set():
+                if (
+                    self._wakeword_model is not None
+                    and self._wakeword_reset.is_set()
+                ):
                     self._wakeword_model.reset()
                     self._wakeword_reset.clear()
 
                 vad = self._vad_model.detect(audio)
                 wakeword: DetectionResult | None = None
 
-                if self._wakeword_enabled.is_set():
+                if (
+                    self._wakeword_model is not None
+                    and self._wakeword_enabled.is_set()
+                ):
                     wakeword = self._wakeword_model.detect(audio)
 
                 loop.call_soon_threadsafe(
@@ -129,8 +135,9 @@ class CaptureService(AbstractAsyncService):
 
             self._wakeword_enabled.clear()
             self._wakeword_reset.clear()
-            self._wakeword_model.open()
-            stack.callback(self._wakeword_model.close)
+            if self._wakeword_model is not None:
+                self._wakeword_model.open()
+                stack.callback(self._wakeword_model.close)
         except BaseException:
             stack.close()
             raise

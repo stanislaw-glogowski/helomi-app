@@ -56,9 +56,10 @@ HELOMI_HOME=/path/to/helomi-data make init
 HELOMI_HOME=/path/to/helomi-data make run-cli
 ```
 
-The CLI asks you to select a valid profile unless `selected_profile` is set in
+The CLI asks you to select a valid profile unless `profiles.selected` is set in
 settings. The desktop frontend starts that explicit profile, or the configured
-default profile when it is empty. Say the active profile's configured wake-word
+locale default profile when it is empty. Use `--language` and `--profile` with
+either app for non-persistent overrides. Say the active profile's configured wake-word
 label, speak after activation, and interrupt an answer by speaking while it is
 playing.
 

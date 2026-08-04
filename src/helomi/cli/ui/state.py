@@ -101,9 +101,19 @@ class RuntimeInfo:
             audio_driver=speech.audio.driver,
             vad_adapter=speech.vad.adapter,
             vad_threshold=speech.vad.threshold,
-            wakeword_label=profile.wakeword.label,
-            wakeword_model=profile.wakeword.model_path,
-            wakeword_threshold=profile.wakeword.threshold,
+            wakeword_label=(
+                profile.wakeword.label
+                if profile.wakeword is not None
+                else "Always listening"
+            ),
+            wakeword_model=(
+                profile.wakeword.model_path
+                if profile.wakeword is not None
+                else "Disabled"
+            ),
+            wakeword_threshold=(
+                profile.wakeword.threshold if profile.wakeword is not None else 0.0
+            ),
             stt_adapter=stt_adapter,
             stt_model=stt_model,
             llm_adapter=conversation_adapter,

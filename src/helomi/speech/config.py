@@ -25,4 +25,4 @@ class SpeechSettings(ConfigModel):
 
 
 class SpeechProfile(TTSProfile, STTProfile):
-    wakeword: WakeWordProfile
+    wakeword: WakeWordProfile | None = None

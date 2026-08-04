@@ -1,6 +1,8 @@
+import argparse
 import asyncio
 import os
 import signal
+from collections.abc import Sequence
 
 from loguru import logger
 
@@ -20,12 +22,26 @@ def configure_shutdown(event_bus: EventBus) -> None:
     loop.add_signal_handler(signal.SIGTERM, event_bus.publish, ShutdownEvent())
 
 
-async def run() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run Helomi in the terminal.")
+    parser.add_argument("--language")
+    parser.add_argument("--profile")
+    return parser
+
+
+async def run(
+    *,
+    language: str | None = None,
+    selected_profile: str | None = None,
+) -> None:
     logs = LogBuffer()
     configure_ui_logger(logs)
     bridge = UiEventBridge()
 
-    async with ApplicationRuntime() as runtime:
+    async with ApplicationRuntime(
+        language=language,
+        selected_profile=selected_profile,
+    ) as runtime:
         configure_shutdown(runtime.event_bus)
         app = TerminalApp(
             runtime.profiles,
@@ -33,7 +49,7 @@ async def run() -> None:
             logs,
             runtime.progress,
             runtime.default_profile_id,
-            runtime.settings.selected_profile,
+            runtime.settings.profiles.selected,
         )
         app_task = asyncio.create_task(app.run_async(), name="helomi-ui")
         bridge_task = asyncio.create_task(
@@ -46,7 +62,7 @@ async def run() -> None:
 
         try:
             await asyncio.gather(app.wait_mounted(), bridge.wait_ready())
-            if runtime.settings.selected_profile:
+            if runtime.settings.profiles.selected:
                 profile = runtime.selected_profile
             else:
                 profile = await app.select_profile()
@@ -89,5 +105,11 @@ async def run() -> None:
             )
 
 
-def main() -> None:
-    asyncio.run(run())
+def main(argv: Sequence[str] | None = None) -> None:
+    arguments = build_parser().parse_args(argv)
+    asyncio.run(
+        run(
+            language=arguments.language,
+            selected_profile=arguments.profile,
+        )
+    )

@@ -35,7 +35,15 @@ def test_install_prepares_default_data_and_models(
     assert (data_root / "settings.yml").read_text() == (
         REPOSITORY_ROOT / ".helomi" / "settings.yml"
     ).read_text()
-    assert (data_root / "profiles" / "alexa" / "prompts" / "system.md").is_file()
+    assert (
+        data_root
+        / "locales"
+        / "en-US"
+        / "profiles"
+        / "alexa"
+        / "prompts"
+        / "system.md"
+    ).is_file()
     assert {path.name for path in (data_root / "models").iterdir()} == {
         "alexa_v0.1.onnx",
         "embedding_model.onnx",
@@ -50,11 +58,11 @@ def test_install_prepares_default_data_and_models(
     assert files == [
         (
             "rhasspy/piper-voices",
-            "pl/pl_PL/gosia/medium/pl_PL-gosia-medium.onnx",
+            "en/en_US/amy/medium/en_US-amy-medium.onnx",
         ),
         (
             "rhasspy/piper-voices",
-            "pl/pl_PL/gosia/medium/pl_PL-gosia-medium.onnx.json",
+            "en/en_US/amy/medium/en_US-amy-medium.onnx.json",
         ),
     ]
 
@@ -76,7 +84,15 @@ def test_install_preserves_existing_local_files(
     monkeypatch.setattr(install_module, "hf_hub_download", lambda **_: None)
 
     data_root = install_module.install(REPOSITORY_ROOT, tmp_path / ".helomi")
-    system_prompt = data_root / "profiles" / "alexa" / "prompts" / "system.md"
+    system_prompt = (
+        data_root
+        / "locales"
+        / "en-US"
+        / "profiles"
+        / "alexa"
+        / "prompts"
+        / "system.md"
+    )
     wakeword = data_root / "models" / "alexa_v0.1.onnx"
     system_prompt.write_text("Local prompt", encoding="utf-8")
     wakeword.write_bytes(b"local model")

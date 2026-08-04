@@ -7,11 +7,19 @@ from .state import DesktopMode, DesktopSnapshot
 
 
 class MenuBarApp:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        language: str | None = None,
+        selected_profile: str | None = None,
+    ) -> None:
         import rumps
 
         self._rumps = rumps
-        self._runtime = DesktopRuntime()
+        self._runtime = DesktopRuntime(
+            language=language,
+            selected_profile=selected_profile,
+        )
         self._snapshot = DesktopSnapshot(DesktopMode.READY, detail="Loading profiles…")
         self._quit_requested = False
         self._app = rumps.App("⏳ Helomi", quit_button=None)

@@ -6,8 +6,9 @@ It does not choose global technical adapters; those belong in `settings.yml`.
 ## Required layout
 
 ```text
-profiles/<profile-id>/
+locales/<language>/profiles/<profile-id>/
 ├── profile.yml
+├── profile.override.yml          # optional local override
 ├── prompts/
 │   ├── system.md
 │   ├── opening.md
@@ -20,6 +21,10 @@ profiles/<profile-id>/
 All six content files are required. Prompt paths are fixed and reaction files
 contain one non-empty phrase per line. Profile id is the directory name; `name`
 is the displayed name.
+
+`profile.override.yml` is optional and deep-merged over `profile.yml` before
+validation. It can locally replace model parameters or set `wakeword: null` for
+always-listening mode; prompt and reaction files remain fixed.
 
 ## Example
 
@@ -50,16 +55,19 @@ tts:
   model_path: pl/pl_PL/gosia/medium/pl_PL-gosia-medium.onnx
 ```
 
-The wake-word model must be an `.onnx` filename that exists under
+The optional wake-word model must be an `.onnx` filename that exists under
 `<data-root>/models`. `wakeword.label` is human-facing; it is not inferred from
-the model filename.
+the model filename. Omit the entire `wakeword` section to start in
+always-listening mode; Helomi then processes speech immediately and does not
+load an OpenWakeWord model.
 
 ## Create a profile
 
-1. Copy an existing profile directory under `<data-root>/profiles`.
+1. Copy an existing profile directory under `<data-root>/locales/<language>/profiles`.
 2. Rename the directory to the new stable profile id and set its display `name`.
 3. Replace all prompts and reactions, retaining the required filenames.
-4. Set a wake-word label and place the matching ONNX model in `<data-root>/models`.
+4. Optionally set a wake-word label and place the matching ONNX model in
+   `<data-root>/models`; omit the section for always-listening mode.
 5. Set model fields accepted by the adapters selected in `settings.yml`.
 6. Start Helomi and inspect the profile picker for validation errors.
 

@@ -1,0 +1,15 @@
+Update the conversation summary using the previous summary and recent conversation.
+
+Keep only durable information useful in future conversations: recent subjects,
+unfinished topics, decisions, corrections, preferences, and facts worth remembering.
+Prefer new information when old and new details conflict. Ignore delivery-only
+reactions, Henry's stylistic jokes, and text that the user did not hear.
+
+Return only the concise updated summary without commentary or Markdown headings.
+Keep it compact, normally no more than eight short sentences.
+
+Previous summary:
+{conversation_summary}
+
+Recent conversation:
+{recent_conversation}

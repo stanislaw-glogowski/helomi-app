@@ -40,6 +40,8 @@ from helomi.speech.events import (
     TranscriptionProgressObserved,
     UserTurnCommitted,
     VADObserved,
+    VoiceSessionMode,
+    VoiceSessionModeChanged,
     WakeWordObserved,
 )
 from helomi.speech.segmentation import SpeechSegment
@@ -301,12 +303,20 @@ def test_worker_can_start_with_wakeword_disabled() -> None:
             FakePlayback(),
             WorkerOptions(wakeword_disabled=True),
         )
-        task = asyncio.create_task(worker.run())
-        await asyncio.wait_for(_wait_until(lambda: capture.entered), 1)
-        await asyncio.wait_for(_wait_until(lambda: len(bus._subscriptions) == 1), 1)
-        assert not capture.wakeword_enabled
-        bus.publish(ShutdownEvent())
-        await asyncio.wait_for(task, 1)
+        with bus.subscribe(VoiceSessionModeChanged, UserTurnCommitted) as events:
+            task = asyncio.create_task(worker.run())
+            activated = await asyncio.wait_for(events.__anext__(), 1)
+            events.task_done()
+            assert activated == VoiceSessionModeChanged(VoiceSessionMode.ACTIVE)
+            assert not capture.wakeword_enabled
+
+            capture.queue.put_nowait(speech_chunk(wakeword=False))
+            committed = await asyncio.wait_for(events.__anext__(), 1)
+            events.task_done()
+            assert committed == UserTurnCommitted(1, "Question")
+
+            bus.publish(ShutdownEvent())
+            await asyncio.wait_for(task, 1)
 
     asyncio.run(scenario())
 
@@ -734,6 +744,42 @@ def test_public_speech_runner_composes_services(
         assert captured["_capture_service"]._wakeword_model is wakeword
         assert captured["_synthesis_service"]._tts_model is tts
         assert captured["_transcription_service"]._stt_model is stt
+
+    asyncio.run(scenario())
+
+
+def test_public_speech_runner_skips_wakeword_for_always_listening_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        driver = FakeDriver()
+        captured: dict = {}
+
+        monkeypatch.setattr(audio_package, "get_audio_driver", lambda _: driver)
+        monkeypatch.setattr(capture_package, "get_vad_model", lambda *_: object())
+        monkeypatch.setattr(
+            capture_package,
+            "get_wakeword_model",
+            lambda *_: pytest.fail("wakeword model must not be created"),
+        )
+        monkeypatch.setattr(synthesis_package, "get_tts_model", lambda *_: object())
+        monkeypatch.setattr(
+            transcription_package, "get_stt_model", lambda *_: object()
+        )
+
+        async def fake_run(self: Worker) -> None:
+            captured.update(self.__dict__)
+
+        monkeypatch.setattr(Worker, "run", fake_run)
+        await speech.run_speech_worker(
+            SpeechProfile(tts={"model_path": "voice.onnx"}),
+            SpeechSettings(),
+            object(),
+            EventBus(),
+        )
+
+        assert captured["_capture_service"]._wakeword_model is None
+        assert captured["_options"].wakeword_disabled
 
     asyncio.run(scenario())
 

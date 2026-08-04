@@ -16,7 +16,7 @@ and adjacent `.onnx.json` configuration.
 
 ## No valid profile appears
 
-Check `<data-root>/profiles/<id>/profile.yml` and all required prompt/reaction
+Check `<data-root>/locales/<language>/profiles/<id>/profile.yml` and all required prompt/reaction
 files. Confirm that model fields match the active adapter in `settings.yml`, the
 wake-word path is an ONNX filename, and referenced local wake-word assets exist
 under `<data-root>/models`.

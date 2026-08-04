@@ -3,14 +3,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
 
-import yaml
 from pydantic import ConfigDict, Field
 
 from helomi.conversation.profile import ConversationProfile
 from helomi.speech.config import SpeechProfile
 
+from .configuration import load_mapping, merge_mappings
+
 
 class Profile(SpeechProfile):
+    _PROFILE_FILE: ClassVar[str] = "profile.yml"
+    _PROFILE_OVERRIDE_FILE: ClassVar[str] = "profile.override.yml"
     _PROMPTS_DIR: ClassVar[str] = "prompts"
     _REACTIONS_DIR: ClassVar[str] = "reactions"
 
@@ -26,10 +29,14 @@ class Profile(SpeechProfile):
 
     @staticmethod
     def load_from_directory(path: Path) -> Profile:
-        profile_path = path / "profile.yml"
-        data = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            raise ValueError(f"Profile configuration must be a mapping: {profile_path}")
+        profile_path = path / Profile._PROFILE_FILE
+        data = load_mapping(profile_path, label="Profile configuration")
+        override_path = path / Profile._PROFILE_OVERRIDE_FILE
+        if override_path.is_file():
+            data = merge_mappings(
+                data,
+                load_mapping(override_path, label="Profile override configuration"),
+            )
 
         conversation = data.get("conversation", {})
         if not isinstance(conversation, dict):

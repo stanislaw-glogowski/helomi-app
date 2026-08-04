@@ -44,7 +44,7 @@ class TerminalApp(App[None]):
         logs: LogBuffer,
         progress: ProgressStore,
         default_profile_id: str | None = None,
-        selected_profile_id: str = "",
+        selected_profile_id: str | None = None,
     ) -> None:
         super().__init__()
         self._profiles = profiles

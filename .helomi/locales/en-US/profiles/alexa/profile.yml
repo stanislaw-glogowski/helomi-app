@@ -1,5 +1,6 @@
 name: Alexa
 
+# Conversation roles use the same local model with task-specific limits.
 conversation:
   models:
     fast:
@@ -16,9 +17,11 @@ conversation:
       temperature: 0.0
   recent_messages: 8
 
+# This profile waits for the Alexa wake word before accepting a turn.
 wakeword:
   label: "Alexa"
   model_path: "alexa_v0.1.onnx"
 
+# Amy is the English Piper voice installed from the shared repository.
 tts:
-  model_path: "pl/pl_PL/gosia/medium/pl_PL-gosia-medium.onnx"
+  model_path: "en/en_US/amy/medium/en_US-amy-medium.onnx"

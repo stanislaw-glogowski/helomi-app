@@ -18,8 +18,17 @@ from .progress import HuggingFaceProgress, ProgressStore
 class ApplicationRuntime(AbstractAsyncContextManager):
     """One retryable Helomi worker runtime, owned by a single asyncio loop."""
 
-    def __init__(self, store: LocalStore | None = None) -> None:
-        self._store = store or LocalStore()
+    def __init__(
+        self,
+        store: LocalStore | None = None,
+        *,
+        language: str | None = None,
+        selected_profile: str | None = None,
+    ) -> None:
+        self._store = store or LocalStore(
+            language=language,
+            selected_profile=selected_profile,
+        )
         self._events = EventBus()
         self._progress = ProgressStore()
         self._progress_adapter = HuggingFaceProgress(self._progress)
@@ -67,12 +76,12 @@ class ApplicationRuntime(AbstractAsyncContextManager):
 
     @property
     def default_profile_id(self) -> str | None:
-        return self.settings.default_profile
+        return self.settings.profiles.default
 
     @property
     def selected_profile(self) -> Profile | None:
         """Return the explicit configured startup profile, if any."""
-        profile_id = self.settings.selected_profile
+        profile_id = self.settings.profiles.selected
         if not profile_id:
             return None
         return self._profile(profile_id, label="Selected")

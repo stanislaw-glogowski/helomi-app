@@ -19,20 +19,26 @@ Its copied defaults never replace existing destination files.
 <data-root>/
 ├── settings.yml
 ├── settings.override.yml        # optional local override
+├── locales/
+│   └── <language>/
+│       ├── settings.yml
+│       ├── settings.override.yml # optional local override
+│       └── profiles/<profile-id>/
+│           ├── profile.yml
+│           ├── prompts/{system,opening,summary}.md
+│           └── reactions/{wake,wait}.txt
 ├── models/
 │   ├── embedding_model.onnx
 │   ├── melspectrogram.onnx
 │   ├── silero_vad.onnx
 │   └── <wake-word-model>.onnx
-└── profiles/
-    └── <profile-id>/
-        ├── profile.yml
-        ├── prompts/{system,opening,summary}.md
-        └── reactions/{wake,wait}.txt
 ```
 
-`settings.override.yml` is deep-merged over `settings.yml`. Keep it local when
-it contains machine-specific model choices or endpoints.
+Settings are deep-merged in this order: root `settings.yml`, optional root
+`settings.override.yml`, locale `settings.yml`, then optional locale
+`settings.override.yml`. Locale settings must not define `language`; select it
+in root settings or with `--language`. Keep override files local when they
+contain machine-specific model choices or endpoints.
 
 ```mermaid
 flowchart TD
@@ -41,7 +47,7 @@ flowchart TD
   Platform["macOS user-data directory"] --> Root
   Root --> Settings["settings.yml"]
   Override["settings.override.yml"] --> Settings
-  Root --> Profiles["profiles/<id>"]
+  Root --> Profiles["locales/<language>/profiles/<id>"]
   Root --> Models["models/"]
   Settings --> Runtime["Validated runtime settings"]
   Profiles --> Runtime
@@ -53,8 +59,10 @@ flowchart TD
 The supplied settings are in `.helomi/settings.yml`:
 
 ```yaml
-default_profile: alexa
-selected_profile: ""
+language: en-US
+profiles:
+  default: alexa
+  selected: null
 
 conversation:
   language_model:
@@ -84,8 +92,9 @@ speech:
 
 | Area | Settings contract |
 | --- | --- |
-| `default_profile` | Optional profile directory id. |
-| `selected_profile` | Explicit profile directory id to start without the CLI picker. Leave empty to retain CLI selection; the desktop then uses `default_profile` or the first valid profile. An explicit unavailable profile fails startup rather than falling back. |
+| `language` | Locale directory id, defaulting to `en-US`. |
+| `profiles.default` | Optional locale-local profile directory id. |
+| `profiles.selected` | Explicit locale-local startup profile. CLI `--profile` overrides it for one run; an unavailable explicit profile fails startup rather than falling back. |
 | `conversation.language_model` | `mlx`, or `langchain` with `base_url`. |
 | `conversation.acknowledgement_delay` | Non-negative seconds from reply planning before one prepared wait reaction may play. |
 | `conversation` classifier | Alexa requires the configured local `classifier` model role for ambiguous turns. |

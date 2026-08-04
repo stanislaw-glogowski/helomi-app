@@ -41,10 +41,14 @@ async def run_speech_worker(
             model_catalog,
             settings.vad,
         )
-        wakeword_model = get_wakeword_model(
-            model_catalog,
-            profile.wakeword,
-            settings.wakeword,
+        wakeword_model = (
+            get_wakeword_model(
+                model_catalog,
+                profile.wakeword,
+                settings.wakeword,
+            )
+            if profile.wakeword is not None
+            else None
         )
         tts_model = get_tts_model(
             profile,
@@ -74,6 +78,7 @@ async def run_speech_worker(
                 stt_model=stt_model,
             ),
             options=WorkerOptions(
+                wakeword_disabled=profile.wakeword is None,
                 sustained_barge_in_frames=settings.turn_taking.sustained_barge_in_frames,
                 continuation_silence_frames=settings.turn_taking.continuation_silence_frames,
             ),

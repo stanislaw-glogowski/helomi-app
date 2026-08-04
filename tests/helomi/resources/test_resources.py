@@ -9,7 +9,11 @@ from helomi.resources.profiles import Profile
 
 
 def write_profile(root: Path, name: str = "helomi") -> Path:
-    profile = root / "profiles" / name
+    (root / "settings.yml").write_text("language: en-US\n", encoding="utf-8")
+    locale = root / "locales" / "en-US"
+    (locale / "settings.yml").parent.mkdir(parents=True, exist_ok=True)
+    (locale / "settings.yml").write_text("{}\n", encoding="utf-8")
+    profile = locale / "profiles" / name
     prompts = profile / "prompts"
     reactions = profile / "reactions"
     prompts.mkdir(parents=True)
@@ -54,7 +58,11 @@ stt:
 
 def write_settings(root: Path) -> None:
     (root / "settings.yml").write_text(
-        "default_profile: second\n",
+        "language: en-US\n",
+        encoding="utf-8",
+    )
+    (root / "locales" / "en-US" / "settings.yml").write_text(
+        "profiles:\n  default: second\n",
         encoding="utf-8",
     )
     (root / "settings.override.yml").write_text(
@@ -99,12 +107,113 @@ def test_local_store_loads_profile_settings_and_models(tmp_path: Path) -> None:
     assert settings.conversation.language_model.adapter == "langchain"
     assert settings.conversation.language_model.base_url == "http://models.local:11434"
     assert settings.speech.audio.driver == "pyaudio"
-    assert settings.selected_profile == ""
+    assert settings.profiles.selected is None
     assert store.load_default_profile().id == "second"
     assert store.ensure_model_path("nested", "model.onnx") == model_path
 
 
+def test_profile_can_omit_wakeword_for_always_listening_mode(tmp_path: Path) -> None:
+    profile_path = write_profile(tmp_path)
+    profile_file = profile_path / "profile.yml"
+    profile_file.write_text(
+        profile_file.read_text(encoding="utf-8").replace(
+            "wakeword:\n  label: Wakeword\n  model_path: wakeword.onnx\n", ""
+        ),
+        encoding="utf-8",
+    )
+
+    profile = LocalStore(tmp_path).load_profile("helomi")
+
+    assert profile.wakeword is None
+    entry = LocalStore(tmp_path).inspect_profiles()[0]
+    assert entry.is_valid
+
+
+def test_local_store_merges_locale_and_profile_overrides(tmp_path: Path) -> None:
+    profile_path = write_profile(tmp_path)
+    (tmp_path / "settings.override.yml").write_text(
+        "conversation:\n  acknowledgement_delay: 0.4\n",
+        encoding="utf-8",
+    )
+    locale_settings = tmp_path / "locales" / "en-US" / "settings.yml"
+    locale_settings.write_text(
+        "conversation:\n  acknowledgement_delay: 0.6\n",
+        encoding="utf-8",
+    )
+    (locale_settings.with_name("settings.override.yml")).write_text(
+        "conversation:\n  acknowledgement_delay: 1.0\n",
+        encoding="utf-8",
+    )
+    (profile_path / "profile.override.yml").write_text(
+        """
+conversation:
+  models:
+    fast:
+      max_tokens: 99
+wakeword: null
+""".strip(),
+        encoding="utf-8",
+    )
+
+    store = LocalStore(tmp_path, selected_profile="helomi")
+    settings = store.load_settings()
+    profile = store.load_profile("helomi")
+
+    assert settings.conversation.acknowledgement_delay == 1.0
+    assert settings.profiles.selected == "helomi"
+    assert profile.conversation.models_mlx.fast.max_tokens == 99
+    assert profile.wakeword is None
+
+
+def test_local_store_rejects_language_in_locale_settings(tmp_path: Path) -> None:
+    write_profile(tmp_path)
+    (tmp_path / "locales" / "en-US" / "settings.yml").write_text(
+        "language: pl-PL\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="must not define language"):
+        LocalStore(tmp_path).load_settings()
+
+
+def test_profile_override_rejects_non_mapping_conversation(tmp_path: Path) -> None:
+    profile_path = write_profile(tmp_path)
+    (profile_path / "profile.override.yml").write_text(
+        "conversation: invalid\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="conversation configuration"):
+        Profile.load_from_directory(profile_path)
+
+
+def test_local_store_reports_missing_or_unsafe_locale_configuration(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(FileNotFoundError, match="Settings file does not exist"):
+        LocalStore(tmp_path).load_settings()
+
+    (tmp_path / "settings.yml").write_text("language: en-US\n", encoding="utf-8")
+    with pytest.raises(FileNotFoundError, match="Locale settings file does not exist"):
+        LocalStore(tmp_path).load_settings()
+
+    (tmp_path / "settings.yml").write_text("language: ../private\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="locale directory name"):
+        LocalStore(tmp_path).load_settings()
+
+    (tmp_path / "settings.yml").write_text("language: .\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="locale directory name"):
+        LocalStore(tmp_path).load_settings()
+
+
 def test_local_store_reports_missing_resources(tmp_path: Path) -> None:
+    (tmp_path / "settings.yml").write_text("language: en-US\n", encoding="utf-8")
+    (tmp_path / "locales" / "en-US" / "settings.yml").parent.mkdir(
+        parents=True
+    )
+    (tmp_path / "locales" / "en-US" / "settings.yml").write_text(
+        "{}\n", encoding="utf-8"
+    )
     store = LocalStore(tmp_path)
     with pytest.raises(FileNotFoundError, match="Model file does not exist"):
         store.ensure_model_path("missing")
@@ -113,8 +222,7 @@ def test_local_store_reports_missing_resources(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="Profiles directory does not exist"):
         store.list_profiles()
     assert store.inspect_profiles() == []
-    with pytest.raises(FileNotFoundError, match="Settings file does not exist"):
-        store.load_settings()
+    assert store.load_settings().language == "en-US"
 
 
 def test_profile_requires_fixed_prompt_files_and_valid_configuration(
@@ -160,15 +268,15 @@ def test_profile_inspection_keeps_invalid_profiles_visible(tmp_path: Path) -> No
     valid = write_profile(tmp_path)
     invalid = write_profile(tmp_path, "invalid")
     (invalid / "prompts" / "system.md").unlink()
-    missing = tmp_path / "profiles" / "missing"
+    missing = tmp_path / "locales" / "en-US" / "profiles" / "missing"
     missing.mkdir()
-    malformed = tmp_path / "profiles" / "malformed"
+    malformed = tmp_path / "locales" / "en-US" / "profiles" / "malformed"
     malformed.mkdir()
     (malformed / "profile.yml").write_text("name: [", encoding="utf-8")
-    blank = tmp_path / "profiles" / "blank"
+    blank = tmp_path / "locales" / "en-US" / "profiles" / "blank"
     blank.mkdir()
     (blank / "profile.yml").write_text("name: '   '", encoding="utf-8")
-    scalar = tmp_path / "profiles" / "scalar"
+    scalar = tmp_path / "locales" / "en-US" / "profiles" / "scalar"
     scalar.mkdir()
     (scalar / "profile.yml").write_text("profile", encoding="utf-8")
 
@@ -218,7 +326,11 @@ def test_default_profile_falls_back_to_first_valid_profile(tmp_path: Path) -> No
     write_profile(tmp_path, "zeta")
     write_profile(tmp_path, "alpha")
     (tmp_path / "settings.yml").write_text(
-        "default_profile: missing\n",
+        "language: en-US\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "locales" / "en-US" / "settings.yml").write_text(
+        "profiles:\n  default: missing\n",
         encoding="utf-8",
     )
 
@@ -226,7 +338,13 @@ def test_default_profile_falls_back_to_first_valid_profile(tmp_path: Path) -> No
 
 
 def test_default_profile_requires_a_valid_profile(tmp_path: Path) -> None:
-    (tmp_path / "settings.yml").write_text("{}\n", encoding="utf-8")
+    (tmp_path / "settings.yml").write_text("language: en-US\n", encoding="utf-8")
+    (tmp_path / "locales" / "en-US" / "settings.yml").parent.mkdir(
+        parents=True
+    )
+    (tmp_path / "locales" / "en-US" / "settings.yml").write_text(
+        "{}\n", encoding="utf-8"
+    )
 
     with pytest.raises(FileNotFoundError, match="No valid profiles"):
         LocalStore(tmp_path).load_default_profile()
@@ -236,7 +354,10 @@ def test_default_profile_uses_first_valid_profile_without_configuration(
     tmp_path: Path,
 ) -> None:
     write_profile(tmp_path, "alpha")
-    (tmp_path / "settings.yml").write_text("{}\n", encoding="utf-8")
+    (tmp_path / "settings.yml").write_text("language: en-US\n", encoding="utf-8")
+    (tmp_path / "locales" / "en-US" / "settings.yml").write_text(
+        "{}\n", encoding="utf-8"
+    )
 
     assert LocalStore(tmp_path).load_default_profile().id == "alpha"
 
@@ -254,12 +375,12 @@ def test_settings_override_can_add_a_scalar_value(tmp_path: Path) -> None:
     override = tmp_path / "settings.override.yml"
     default.write_text("{}\n", encoding="utf-8")
     override.write_text(
-        "default_profile: alexa\nselected_profile: henry\n", encoding="utf-8"
+        "profiles:\n  default: alexa\n  selected: henry\n", encoding="utf-8"
     )
 
     settings = Settings.load_from_files(default, override)
-    assert settings.default_profile == "alexa"
-    assert settings.selected_profile == "henry"
+    assert settings.profiles.default == "alexa"
+    assert settings.profiles.selected == "henry"
 
 
 def test_settings_override_merges_nested_sections(tmp_path: Path) -> None:
@@ -278,12 +399,27 @@ def test_settings_override_merges_nested_sections(tmp_path: Path) -> None:
     assert settings.conversation.acknowledgement_delay == 1.0
 
 
+def test_settings_normalizes_legacy_classifier_and_supports_no_override(
+    tmp_path: Path,
+) -> None:
+    default = tmp_path / "settings.yml"
+    default.write_text(
+        "conversation:\n  classify_ambiguous: true\n",
+        encoding="utf-8",
+    )
+
+    settings = Settings.load_from_files(default)
+
+    assert settings.conversation.acknowledgement_delay == 0.8
+
+
 def test_versioned_default_profile_is_valid() -> None:
     root = Path(__file__).parents[3] / ".helomi"
-    alexa = Profile.load_from_directory(root / "profiles" / "alexa")
+    alexa_path = root / "locales" / "en-US" / "profiles" / "alexa"
+    alexa = Profile.load_from_directory(alexa_path)
 
     assert alexa.name == "Alexa"
-    assert LocalStore(root).load_default_profile().id == "alexa"
+    assert LocalStore(root, language="en-US").load_default_profile().id == "alexa"
     assert alexa.conversation.prompts.system
     assert alexa.conversation.models_mlx.fast.model_id
     assert alexa.conversation.models_mlx.detailed.model_id
@@ -294,5 +430,21 @@ def test_versioned_default_profile_is_valid() -> None:
 def test_versioned_settings_list_all_defaults() -> None:
     path = Path(__file__).parents[3] / ".helomi" / "settings.yml"
 
-    assert Settings.load_from_file(path).default_profile == "alexa"
-    assert Settings.load_from_file(path).selected_profile == ""
+    settings = Settings.load_from_file(path)
+    assert settings.language == "en-US"
+    assert settings.profiles.default is None
+    assert settings.profiles.selected is None
+
+
+def test_versioned_reactions_are_short_and_complete() -> None:
+    root = Path(__file__).parents[3] / ".helomi" / "locales"
+    for reaction_path in root.glob("*/profiles/*/reactions/*.txt"):
+        lines = tuple(
+            line.strip()
+            for line in reaction_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+        assert len(lines) >= 20, reaction_path
+        assert len(set(lines)) == len(lines), reaction_path
+        if reaction_path.name == "wait.txt":
+            assert all(len(line.replace(",", "").split()) <= 4 for line in lines)

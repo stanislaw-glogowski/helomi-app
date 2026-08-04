@@ -21,6 +21,16 @@ def test_desktop_imports_are_lazy() -> None:
     assert "rumps" not in sys.modules
 
 
+def test_desktop_parser_accepts_runtime_locale_and_profile_overrides() -> None:
+    import helomi.desktop.main as main_module
+
+    parsed = main_module.build_parser().parse_args(
+        ["--language", "pl-PL", "--profile=henry"]
+    )
+    assert parsed.language == "pl-PL"
+    assert parsed.profile == "henry"
+
+
 def test_desktop_entrypoints_call_the_lazy_menu_factory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -29,13 +39,16 @@ def test_desktop_entrypoints_call_the_lazy_menu_factory(
     calls: list[bool] = []
 
     class App:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
         def run(self) -> None:
             calls.append(True)
 
     import helomi.desktop.menu as menu_module
 
     monkeypatch.setattr(menu_module, "MenuBarApp", App)
-    main_module.main()
+    main_module.main([])
     assert calls == [True]
 
     monkeypatch.setattr(main_module, "main", lambda: calls.append(True))
@@ -65,7 +78,7 @@ def test_runtime_coalesces_updates_and_waits_for_shutdown(
             return lambda: None
 
     class FakeRuntime:
-        def __init__(self) -> None:
+        def __init__(self, **_kwargs) -> None:
             import asyncio
 
             self.startup_profile = profile
@@ -117,7 +130,7 @@ def test_runtime_reports_startup_failure_and_bootstrap_failure(
             return lambda: None
 
     class Runtime:
-        def __init__(self) -> None:
+        def __init__(self, **_kwargs) -> None:
             self.startup_profile = SimpleNamespace(id="agent", name="Agent")
             self.progress = Progress()
 
@@ -146,6 +159,9 @@ def test_runtime_reports_startup_failure_and_bootstrap_failure(
     desktop.join()
 
     class BrokenRuntime:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
         async def __aenter__(self):
             raise RuntimeError("settings missing")
 
@@ -259,7 +275,7 @@ def test_menu_renders_status_retry_and_quit(
     import helomi.desktop.menu as menu_module
 
     class Bridge:
-        def __init__(self) -> None:
+        def __init__(self, **_kwargs) -> None:
             self.shutdowns = 0
 
         def retry(self) -> None:
@@ -338,7 +354,7 @@ def test_menu_run_drains_updates_and_quits_after_runtime_termination(
     class Bridge:
         terminated = True
 
-        def __init__(self) -> None:
+        def __init__(self, **_kwargs) -> None:
             self.started = False
             self.joined = False
 

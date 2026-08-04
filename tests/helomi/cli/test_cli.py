@@ -30,6 +30,14 @@ def test_cli_suppresses_unused_pytorch_advisory(
     assert os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] == "1"
 
 
+def test_cli_parser_accepts_runtime_locale_and_profile_overrides() -> None:
+    parsed = main_module.build_parser().parse_args(
+        ["--language=en-US", "--profile", "alexa"]
+    )
+    assert parsed.language == "en-US"
+    assert parsed.profile == "alexa"
+
+
 def test_configure_shutdown_registers_signals(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple] = []
     loop = SimpleNamespace(add_signal_handler=lambda *args: calls.append(args))
@@ -84,6 +92,9 @@ def test_run_uses_the_application_runtime(
             settings = Settings()
             progress = object()
             default_profile_id = None
+
+            def __init__(self, **_kwargs) -> None:
+                pass
 
             async def __aenter__(self):
                 return self
@@ -167,10 +178,13 @@ def test_run_uses_selected_profile_without_opening_picker(
 
         class Runtime:
             profiles = (ProfileEntry("agent", "Agent", profile),)
-            settings = Settings.model_validate({"selected_profile": "agent"})
+            settings = Settings.model_validate({"profiles": {"selected": "agent"}})
             progress = object()
             default_profile_id = None
             selected_profile = profile
+
+            def __init__(self, **_kwargs) -> None:
+                pass
 
             async def __aenter__(self):
                 return self
@@ -250,7 +264,7 @@ def test_main_runs_async_entrypoint(monkeypatch: pytest.MonkeyPatch) -> None:
         coroutine.close()
 
     monkeypatch.setattr(main_module.asyncio, "run", fake_run)
-    main_module.main()
+    main_module.main([])
     assert len(captured) == 1
 
 

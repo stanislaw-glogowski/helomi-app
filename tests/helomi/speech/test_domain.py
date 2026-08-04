@@ -154,6 +154,12 @@ def test_speech_configuration_defaults_and_validation() -> None:
     assert SpeechSettings().segmentation.min_start_speech_frames == 10
     assert SpeechSettings().turn_taking.sustained_barge_in_frames == 20
 
+    always_listening = SpeechProfile(
+        tts={"model_path": "voice.onnx"},
+        stt={},
+    )
+    assert always_listening.wakeword is None
+
     alternate = SpeechSettings.model_validate(
         {
             "tts": {"adapter": "mlx:chatterbox"},

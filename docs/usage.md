@@ -2,9 +2,9 @@
 
 ## Profiles
 
-Helomi discovers profiles below `<data-root>/profiles`. The terminal UI lists
+Helomi discovers profiles below `<data-root>/locales/<language>/profiles`. The terminal UI lists
 invalid profiles too, together with the validation error, so a broken local
-profile does not hide the rest. The configured `default_profile` is selected by
+profile does not hide the rest. The configured `profiles.default` is selected by
 default when it is valid.
 
 The menu-bar frontend lists the same profiles under **Profiles**. Choosing a

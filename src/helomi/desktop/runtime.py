@@ -13,7 +13,12 @@ from .state import DesktopMode, DesktopSnapshot
 class DesktopRuntime:
     """Owns the asyncio loop behind the AppKit main thread."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        language: str | None = None,
+        selected_profile: str | None = None,
+    ) -> None:
         self._updates: Queue[DesktopSnapshot] = Queue(maxsize=1)
         self._queue_lock = Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -27,6 +32,8 @@ class DesktopRuntime:
         self._shutdown_signal: asyncio.Event | None = None
         self._shutting_down = False
         self._watch_task: asyncio.Task[None] | None = None
+        self._language = language
+        self._startup_profile = selected_profile
 
     @property
     def terminated(self) -> bool:
@@ -98,7 +105,10 @@ class DesktopRuntime:
         shutdown = asyncio.Event()
         self._shutdown_signal = shutdown
         try:
-            async with ApplicationRuntime() as runtime:
+            async with ApplicationRuntime(
+                language=self._language,
+                selected_profile=self._startup_profile,
+            ) as runtime:
                 unsubscribe = runtime.progress.subscribe(
                     lambda progress: self._progress_changed(progress)
                 )

@@ -13,9 +13,10 @@ Mixing them exposes unused provider fields and makes local customization unsafe.
 
 ## Decision or proposal
 
-Store technical adapter settings in `settings.yml` with an optional deep-merged
-`settings.override.yml`. Store persona content and adapter-compatible model
-overrides in fixed-layout profile directories below the local data root.
+Store shared technical settings in root `settings.yml`, then deep-merge optional
+root overrides and locale-specific settings under `locales/<language>`. Store
+persona content in fixed-layout locale profile directories, with an optional
+deep-merged `profile.override.yml` per profile.
 
 ## Consequences
 

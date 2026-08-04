@@ -1,42 +1,47 @@
-# Technical runtime settings. Profile-specific model parameters live in profile.yml.
-default_profile: "alexa"
-selected_profile: ""
+# Shared technical defaults for every locale. Locale settings may override these
+# values, but must not define language. Use settings.override.yml for local-only
+# machine settings; command-line --language and --profile win for one run.
+language: "en-US"
+
+profiles:
+  default: null # Locale fallback when no profile is explicitly selected.
+  selected: null # Skip the CLI picker or choose the desktop startup profile.
 
 conversation:
   language_model:
-    adapter: "mlx" # options: mlx, langchain
-  acknowledgement_delay: 0.8 # seconds before a prepared waiting reaction may play
+    adapter: "mlx" # Local MLX models, or LangChain for an OpenAI-compatible endpoint.
+  acknowledgement_delay: 0.8 # Delay before a prepared wait reaction may play.
 
 speech:
   audio:
-    driver: "avfaudio" # options: avfaudio, pyaudio
+    driver: "avfaudio" # Native macOS voice processing; pyaudio is a fallback.
 
   vad:
-    adapter: "mlx:silero_vad" # options: mlx:silero_vad, openwakeword
-    threshold: 0.5 # scores at or above this value count as speech
+    adapter: "mlx:silero_vad" # Speech detector: mlx:silero_vad or openwakeword.
+    threshold: 0.5 # Scores at or above this value count as speech.
 
   wakeword:
     adapter: "openwakeword"
 
   segmentation:
-    min_start_speech_frames: 10 # consecutive speech frames required to start an utterance
-    max_start_silence_frames: 150 # silence frames allowed while waiting for speech
-    max_end_silence_frames: 18 # trailing silence frames that end a regular utterance
-    short_utterance_speech_frames: 31 # speech frames below which an utterance is short
-    short_utterance_end_silence_frames: 28 # trailing silence required for a short utterance
-    max_utterance_frames: 1875 # hard limit for all frames in one utterance
-    pre_roll_frames: 15 # frames retained from immediately before detected speech
+    min_start_speech_frames: 10 # Consecutive frames required to start an utterance.
+    max_start_silence_frames: 150 # Silence frames allowed before speech starts.
+    max_end_silence_frames: 18 # Trailing silence ending a regular utterance.
+    short_utterance_speech_frames: 31 # Speech frames below which an utterance is short.
+    short_utterance_end_silence_frames: 28 # Trailing silence ending a short utterance.
+    max_utterance_frames: 1875 # Hard frame limit for one utterance.
+    pre_roll_frames: 15 # Frames retained immediately before detected speech.
 
   turn_taking:
-    sustained_barge_in_frames: 20 # 640 ms at 16 kHz / 512-sample frames
-    continuation_silence_frames: 38 # wait for a semantically incomplete turn
+    sustained_barge_in_frames: 20 # 640 ms at 16 kHz with 512-sample frames.
+    continuation_silence_frames: 38 # Silence while waiting for an incomplete turn.
 
   tts:
-    adapter: "piper" # options: piper, mlx:chatterbox
-    repo_id: "rhasspy/piper-voices" # Hugging Face repository containing Piper voices
-    normalize_audio: true # normalize generated samples before playback
-    volume: 1.0 # output gain multiplier
+    adapter: "piper" # Speech synthesis: piper or mlx:chatterbox.
+    repo_id: "rhasspy/piper-voices" # Piper voice repository.
+    normalize_audio: true # Normalize generated samples before playback.
+    volume: 1.0 # Output gain multiplier.
 
   stt:
-    adapter: "mlx:parakeet-tdt" # options: mlx:parakeet-tdt, mlx:qwen3-asr, mlx:whisper
-    model_id: "mlx-community/parakeet-tdt-0.6b-v3" # Hugging Face model identifier
+    adapter: "mlx:parakeet-tdt" # mlx:parakeet-tdt, mlx:qwen3-asr, or mlx:whisper.
+    model_id: "mlx-community/parakeet-tdt-0.6b-v3" # Default speech-to-text model.

@@ -1,0 +1,28 @@
+name: Henry
+
+conversation:
+  models:
+    fast:
+      model_id: "mlx-community/gemma-4-26b-a4b-it-4bit"
+      max_tokens: 384
+      temperature: 0.0
+    detailed:
+      model_id: "mlx-community/gemma-4-26b-a4b-it-4bit"
+      max_tokens: 768
+      temperature: 0.0
+    classifier:
+      model_id: "mlx-community/gemma-4-26b-a4b-it-4bit"
+      max_tokens: 8
+      temperature: 0.0
+  recent_messages: 12
+
+# Wake word is optional; without it Henry starts always listening.
+# Download the ONNX model from https://openwakeword.com/api/models/783/download?format=onnx
+# and save it as .helomi/models/Hey_Henree_20260406_162745.onnx. Then add:
+# wakeword:
+#   label: "Hey Henry"
+#   model_path: "Hey_Henree_20260406_162745.onnx"
+# to profile.override.yml.
+
+tts:
+  model_path: "pl/pl_PL/bass/high/pl_PL-bass-high.onnx"

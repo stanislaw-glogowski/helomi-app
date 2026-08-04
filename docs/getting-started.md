@@ -38,7 +38,9 @@ make run-desktop
 ```
 
 Select a valid profile in the terminal UI. The default profile is configured in
-`settings.yml`; if it is unavailable, the first valid profile is used. Say the
+locale settings; if it is unavailable, the first valid profile is used. Use
+`uv run helomi-cli --language pl-PL --profile henry` (or the same flags with
+`helomi-desktop`) for a one-run selection. Say the
 profile's configured wake-word label, speak your turn, then wait for the spoken
 reply. Speaking while playback is active requests an interruption.
 

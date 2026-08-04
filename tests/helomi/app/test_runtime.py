@@ -92,6 +92,8 @@ def test_runtime_exposes_only_open_lifecycle_contracts() -> None:
         await runtime.__aenter__()
         with pytest.raises(RuntimeError, match="already open"):
             await runtime.__aenter__()
+        with pytest.raises(FileNotFoundError, match="No valid profiles"):
+            _ = runtime.startup_profile
         with runtime.subscribe(ShutdownEvent) as events:
             runtime.event_bus.publish(ShutdownEvent())
             event = await events.__anext__()
@@ -138,7 +140,7 @@ def test_worker_composition_and_shutdown_readiness(
 
 def test_runtime_profiles_progress_and_adapter_validation() -> None:
     async def scenario() -> None:
-        settings = Settings.model_validate({"default_profile": "agent"})
+        settings = Settings.model_validate({"profiles": {"default": "agent"}})
         runtime = ApplicationRuntime(
             SimpleNamespace(
                 load_settings=lambda: settings,
@@ -166,7 +168,7 @@ def test_runtime_resolves_explicit_selected_profile_without_fallback() -> None:
         runtime = ApplicationRuntime(
             SimpleNamespace(
                 load_settings=lambda: Settings.model_validate(
-                    {"default_profile": "agent", "selected_profile": "other"}
+                    {"profiles": {"default": "agent", "selected": "other"}}
                 ),
                 inspect_profiles=lambda: [
                     ProfileEntry("agent", "Agent", agent),
@@ -182,7 +184,7 @@ def test_runtime_resolves_explicit_selected_profile_without_fallback() -> None:
         missing = ApplicationRuntime(
             SimpleNamespace(
                 load_settings=lambda: Settings.model_validate(
-                    {"selected_profile": "missing"}
+                    {"profiles": {"selected": "missing"}}
                 ),
                 inspect_profiles=lambda: [ProfileEntry("agent", "Agent", agent)],
             )
@@ -196,7 +198,7 @@ def test_runtime_resolves_explicit_selected_profile_without_fallback() -> None:
         fallback = ApplicationRuntime(
             SimpleNamespace(
                 load_settings=lambda: Settings.model_validate(
-                    {"default_profile": "missing"}
+                    {"profiles": {"default": "missing"}}
                 ),
                 inspect_profiles=lambda: [ProfileEntry("agent", "Agent", agent)],
             )
