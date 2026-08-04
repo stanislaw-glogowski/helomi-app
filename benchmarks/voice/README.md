@@ -65,6 +65,16 @@ uv run python -m tools.benchmark --type voice endpoint \
   --output /path/to/helomi-voice-benchmark/results/endpoint
 ```
 
+Compare a candidate endpoint threshold without changing local settings:
+
+```bash
+uv run python -m tools.benchmark --type voice endpoint \
+  --session /path/to/helomi-voice-benchmark/recordings/pl-turn-taking/speaker-01/SESSION \
+  --max-end-silence-frames 14 \
+  --short-utterance-end-silence-frames 22 \
+  --output /path/to/helomi-voice-benchmark/results/endpoint-14-22
+```
+
 STT supports `mlx:parakeet-tdt`, `mlx:qwen3-asr`, and `mlx:whisper`; use
 `--model` to override its model and `--language pl` for a Whisper language hint.
 The result contains WER, CER, inference time, and real-time factor. Endpointing
@@ -102,8 +112,9 @@ then require no critical endpointing, backchannel, interruption, continuity,
 cancellation, or brevity failure; higher aggregate naturalness and
 appropriateness; no lower reviewed category; and direct-path warm median
 playback-start latency within 10% of baseline. Report classifier-path latency
-separately. PyAudio and real model or hardware validation remain separate from
-fake-driven tests.
+separately. Compare `18/28`, `14/22`, and `12/18` endpoint frame thresholds and
+adopt only the fastest one with no premature endpoint. PyAudio and real model or
+hardware validation remain separate from fake-driven tests.
 
 ## Consent
 

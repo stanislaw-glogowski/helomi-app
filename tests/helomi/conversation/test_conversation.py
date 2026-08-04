@@ -143,6 +143,18 @@ def test_configuration_domain_events_and_routing() -> None:
     assert planner.deterministic_plan("").intent is TurnIntent.NO_RESPONSE
     assert planner.deterministic_plan("anuluj").intent is TurnIntent.CANCEL
     assert planner.deterministic_plan("Jak masz na imię?").depth is ResponseDepth.BRIEF
+    punctuation_free = planner.deterministic_plan("Jaka jest stolica Kanady")
+    assert punctuation_free is not None
+    assert punctuation_free.depth is ResponseDepth.BRIEF
+    embedded_question = planner.deterministic_plan("Opowiedz mi skąd bierze się tęcza")
+    assert embedded_question is not None
+    assert embedded_question.depth is ResponseDepth.BRIEF
+    explicit_question = planner.deterministic_plan("Powiedz co to jest")
+    assert explicit_question is not None
+    assert explicit_question.depth is ResponseDepth.BRIEF
+    explicit_request = planner.deterministic_plan("Przygotuj plan rodzinnej wycieczki")
+    assert explicit_request is not None
+    assert explicit_request.depth is ResponseDepth.STANDARD
     detailed = planner.deterministic_plan("Wyjaśnij dokładnie echo akustyczne")
     assert detailed is not None
     assert detailed.depth is ResponseDepth.DETAILED
@@ -354,6 +366,40 @@ def test_graph_emits_prepared_acknowledgement_for_slow_detailed_reply() -> None:
     asyncio.run(scenario())
 
 
+def test_graph_emits_wait_reaction_for_slow_brief_reply() -> None:
+    class Prepared:
+        def next_wake_reaction(self) -> None:
+            return None
+
+        def next_reaction(self) -> str:
+            return "Moment."
+
+    async def scenario() -> None:
+        adapter = FakeLanguageModel("Answer")
+        async with LanguageModelService(adapter) as service:
+            graph = ConversationGraph(
+                ConversationNodes(service, profile_preparation=Prepared())
+            ).compiled
+            events = [
+                event
+                async for event in graph.astream(
+                    {
+                        "messages": [HumanMessage("Jak masz na imię?")],
+                        "input_kind": "user_turn",
+                    },
+                    context=context(delay=0),
+                    stream_mode="custom",
+                )
+            ]
+        assert events[0] == ConversationTextChunk("Moment.\n", True)
+        assert "".join(event.content for event in events[1:]) == "Answer"
+        assert [request.role for request in adapter.requests] == [
+            LanguageModelRole.FAST
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_graph_uses_optional_classifier_for_ambiguous_turn() -> None:
     async def scenario() -> None:
         question = " ".join(f"word{index}" for index in range(18))
@@ -376,6 +422,32 @@ def test_graph_uses_optional_classifier_for_ambiguous_turn() -> None:
         assert [request.role for request in adapter.requests] == [
             LanguageModelRole.CLASSIFIER,
             LanguageModelRole.DETAILED,
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_graph_skips_classifier_for_explicit_response_request() -> None:
+    async def scenario() -> None:
+        adapter = FakeLanguageModel("Answer")
+        async with LanguageModelService(adapter) as service:
+            graph = ConversationGraph(ConversationNodes(service)).compiled
+            events = [
+                event
+                async for event in graph.astream(
+                    {
+                        "messages": [
+                            HumanMessage("Powiedz w dwóch zdaniach jak ugotować jajko")
+                        ],
+                        "input_kind": "user_turn",
+                    },
+                    context=context(),
+                    stream_mode="custom",
+                )
+            ]
+        assert "".join(event.content for event in events) == "Answer"
+        assert [request.role for request in adapter.requests] == [
+            LanguageModelRole.FAST
         ]
 
     asyncio.run(scenario())
@@ -723,7 +795,11 @@ def test_mlx_adapter_loads_lazily_and_streams(monkeypatch: pytest.MonkeyPatch) -
     class Tokenizer:
         def apply_chat_template(self, messages, **kwargs):
             calls["templates"].append((messages, kwargs))
-            return "system-prompt" if len(messages) > 1 else "system"
+            return (
+                f"{messages[0]['content']}-prompt"
+                if len(messages) > 1
+                else messages[0]["content"]
+            )
 
         def encode(self, text):
             return [ord(character) for character in text]
@@ -781,6 +857,7 @@ def test_mlx_adapter_loads_lazily_and_streams(monkeypatch: pytest.MonkeyPatch) -
                         ConversationMessage(ConversationRole.SYSTEM, "system"),
                         ConversationMessage(ConversationRole.USER, "question"),
                     ),
+                    cache_prefix="system",
                 )
             )
         )
@@ -789,9 +866,12 @@ def test_mlx_adapter_loads_lazily_and_streams(monkeypatch: pytest.MonkeyPatch) -
                 LanguageModelRequest(
                     LanguageModelRole.DETAILED,
                     (
-                        ConversationMessage(ConversationRole.SYSTEM, "system"),
+                        ConversationMessage(
+                            ConversationRole.SYSTEM, "system\nsummary changed"
+                        ),
                         ConversationMessage(ConversationRole.USER, "question"),
                     ),
+                    cache_prefix="system",
                 )
             )
         )
@@ -816,6 +896,9 @@ def test_mlx_adapter_loads_lazily_and_streams(monkeypatch: pytest.MonkeyPatch) -
         ord(character) for character in "-prompt"
     ]
     assert calls["generations"][0]["prompt_cache"] == {"model": loaded_model}
+    assert calls["generations"][1]["prompt"] == [
+        ord(character) for character in "\nsummary changed-prompt"
+    ]
 
 
 def test_mlx_adapter_generates_without_unsupported_system_prefix_cache(

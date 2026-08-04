@@ -63,12 +63,15 @@ cases:
     results = asyncio.run(run_benchmark(profile, ConversationSettings(), cases))
     assert results[0].selected_intent == "respond"
     assert results[0].selected_depth == "brief"
+    assert results[0].planning_path == "direct"
+    assert results[0].first_phrase_seconds >= results[0].first_chunk_seconds
     assert results[0].response == "Answer."
 
     json_path, markdown_path = write_report(tmp_path / "result", results)
     assert json.loads(json_path.read_text(encoding="utf-8"))[0]["id"] == "fast-001"
     report = markdown_path.read_text(encoding="utf-8")
     assert "Planning accuracy: 100.0%" in report
+    assert "First phrase" in report
     assert "fast-001" in report
 
 

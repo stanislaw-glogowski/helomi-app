@@ -35,9 +35,53 @@ class TurnPlanner:
     )
     _CANCEL_PHRASES = frozenset({"stop", "przestań", "anuluj", "nieważne"})
     _DETAIL_MARKERS = ("dokładnie", "szczegółowo", "krok po kroku", "pełny plan")
-    _QUESTION_WORDS = frozenset(
-        {"co", "czy", "dlaczego", "gdzie", "jak", "kiedy", "kto", "który", "ile"}
+    _BRIEF_MARKERS = (
+        "jednym zdaniu",
+        "jednym słowem",
+        "krótko",
+        "w dwóch zdaniach",
+        "zwięźle",
     )
+    _QUESTION_WORDS = frozenset(
+        {
+            "co",
+            "czego",
+            "czemu",
+            "czy",
+            "dlaczego",
+            "dokąd",
+            "gdzie",
+            "ile",
+            "jak",
+            "jaka",
+            "jaki",
+            "jakie",
+            "jakiego",
+            "jakiej",
+            "kiedy",
+            "kto",
+            "która",
+            "które",
+            "którego",
+            "której",
+            "który",
+            "skąd",
+        }
+    )
+    _RESPONSE_REQUEST_WORDS = frozenset(
+        {
+            "napisz",
+            "opowiedz",
+            "podaj",
+            "porównaj",
+            "powiedz",
+            "przygotuj",
+            "streść",
+            "wymień",
+            "wyjaśnij",
+        }
+    )
+    _CONTEXT_DEPENDENT_WORDS = frozenset({"dalej", "jeszcze", "tamto", "to", "więcej"})
     _WHITESPACE = re.compile(r"\s+")
 
     @classmethod
@@ -59,6 +103,18 @@ class TurnPlanner:
         words = normalized.split()
         if text.rstrip().endswith("?") or (words and words[0] in self._QUESTION_WORDS):
             return TurnPlan(TurnIntent.RESPOND, ResponseDepth.BRIEF)
+        if words and words[0] in self._RESPONSE_REQUEST_WORDS:
+            normalized_words = {word.strip(",") for word in words[1:]}
+            if normalized_words & self._QUESTION_WORDS:
+                return TurnPlan(TurnIntent.RESPOND, ResponseDepth.BRIEF)
+            if normalized_words & self._CONTEXT_DEPENDENT_WORDS:
+                return None
+            depth = (
+                ResponseDepth.BRIEF
+                if any(marker in normalized for marker in self._BRIEF_MARKERS)
+                else ResponseDepth.STANDARD
+            )
+            return TurnPlan(TurnIntent.RESPOND, depth)
         return None
 
     def classified_plan(self, classification: str) -> TurnPlan:

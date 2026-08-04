@@ -58,7 +58,7 @@ default_profile: alexa
 conversation:
   language_model:
     adapter: mlx
-  acknowledgement_delay: 0.5
+  acknowledgement_delay: 0.8
 
 speech:
   audio:
@@ -85,7 +85,7 @@ speech:
 | --- | --- |
 | `default_profile` | Optional profile directory id. |
 | `conversation.language_model` | `mlx`, or `langchain` with `base_url`. |
-| `conversation.acknowledgement_delay` | Non-negative seconds before a prepared wait reaction may play. |
+| `conversation.acknowledgement_delay` | Non-negative seconds from reply planning before one prepared wait reaction may play. |
 | `conversation` classifier | Alexa requires the configured local `classifier` model role for ambiguous turns. |
 | `speech.audio.driver` | `avfaudio` or `pyaudio`. |
 | `speech.vad.adapter` | `mlx:silero_vad` or `openwakeword`; `threshold` controls speech detection. |

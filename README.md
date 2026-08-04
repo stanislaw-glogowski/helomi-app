@@ -39,6 +39,12 @@ make init
 make run-cli
 ```
 
+Or launch the macOS menu-bar frontend:
+
+```bash
+make run-desktop
+```
+
 `make init` synchronizes Python dependencies, builds the native audio helper,
 installs missing local configuration, and downloads the models required by the
 default Alexa profile. It may take time and download several gigabytes.
@@ -74,13 +80,15 @@ flowchart LR
   Speech --> Speaker["Speaker"]
   Resources["helomi.resources"] --> Speech
   Resources --> Conversation
-  CLI["helomi.cli"] --> Speech
-  CLI --> Conversation
+  App["helomi.app"] --> Speech
+  App --> Conversation
+  CLI["helomi.cli"] --> App
+  Desktop["helomi.desktop"] --> App
   Native["Swift AVAudioEngine helper"] <--> Speech
 ```
 
-The terminal application composes the runtime; the speech and conversation
-workers communicate through typed events. See the [architecture overview](docs/architecture/overview.md)
+The reusable application runtime composes the workers; the terminal and
+menu-bar frontends project typed events into their own presentation. See the [architecture overview](docs/architecture/overview.md)
 for the data flow and lifecycle.
 
 ## Documentation

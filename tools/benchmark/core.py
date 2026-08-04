@@ -6,7 +6,7 @@ from time import perf_counter
 import yaml
 
 from helomi.conversation.config import ConversationSettings
-from helomi.conversation.graph import ResponseDepth, TurnPlanner
+from helomi.conversation.graph import ResponseDepth, TurnIntent, TurnPlanner
 from helomi.conversation.model import (
     ConversationMessage,
     ConversationRole,
@@ -16,6 +16,7 @@ from helomi.conversation.model import (
     get_language_model,
 )
 from helomi.conversation.profile import ConversationProfile
+from helomi.conversation.reply import ReplySegmenter
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +37,12 @@ class BenchmarkResult:
     selected_intent: str
     expected_depth: str
     selected_depth: str
+    planning_path: str
+    planning_seconds: float
+    classifier_seconds: float
     first_chunk_seconds: float
+    first_response_chunk_seconds: float
+    first_phrase_seconds: float
     total_seconds: float
     output_characters: int
     response: str
@@ -76,7 +82,11 @@ async def run_benchmark(
         for index, case in enumerate(cases):
             plan = planner.deterministic_plan(case.text)
             started = perf_counter()
+            planning_path = "direct"
+            classifier_seconds = 0.0
             if plan is None:
+                planning_path = "classifier"
+                classifier_started = perf_counter()
                 classification = ""
                 async for chunk in service.generate(
                     LanguageModelRequest(
@@ -92,6 +102,30 @@ async def run_benchmark(
                 ):
                     classification += chunk.content
                 plan = planner.classified_plan(classification)
+                classifier_seconds = perf_counter() - classifier_started
+            planning_seconds = perf_counter() - started
+            if plan.intent in {TurnIntent.NO_RESPONSE, TurnIntent.CANCEL}:
+                results.append(
+                    BenchmarkResult(
+                        id=case.id,
+                        category=case.category,
+                        run_kind="cold" if index == 0 else "warm",
+                        expected_intent=case.expected_intent,
+                        selected_intent=plan.intent.value,
+                        expected_depth=case.expected_depth,
+                        selected_depth=plan.depth.value,
+                        planning_path=planning_path,
+                        planning_seconds=planning_seconds,
+                        classifier_seconds=classifier_seconds,
+                        first_chunk_seconds=planning_seconds,
+                        first_response_chunk_seconds=0.0,
+                        first_phrase_seconds=0.0,
+                        total_seconds=planning_seconds,
+                        output_characters=0,
+                        response="",
+                    )
+                )
+                continue
             role = (
                 LanguageModelRole.DETAILED
                 if plan.depth is ResponseDepth.DETAILED
@@ -108,14 +142,26 @@ async def run_benchmark(
                     ),
                     ConversationMessage(ConversationRole.USER, case.text),
                 ),
+                cache_prefix=profile.prompts.system.format(
+                    conversation_summary="No previous conversation."
+                ),
             )
             first_chunk_seconds: float | None = None
+            first_response_chunk_seconds: float | None = None
+            first_phrase_seconds: float | None = None
             response = ""
+            segmenter = ReplySegmenter()
+            generation_started = perf_counter()
             async for chunk in service.generate(request):
                 if first_chunk_seconds is None:
                     first_chunk_seconds = perf_counter() - started
+                    first_response_chunk_seconds = perf_counter() - generation_started
                 response += chunk.content
+                if first_phrase_seconds is None and segmenter.feed(chunk.content):
+                    first_phrase_seconds = perf_counter() - started
             total_seconds = perf_counter() - started
+            if first_phrase_seconds is None and segmenter.flush():
+                first_phrase_seconds = total_seconds
             results.append(
                 BenchmarkResult(
                     id=case.id,
@@ -125,7 +171,14 @@ async def run_benchmark(
                     selected_intent=plan.intent.value,
                     expected_depth=case.expected_depth,
                     selected_depth=plan.depth.value,
+                    planning_path=planning_path,
+                    planning_seconds=planning_seconds,
+                    classifier_seconds=classifier_seconds,
                     first_chunk_seconds=first_chunk_seconds or total_seconds,
+                    first_response_chunk_seconds=(
+                        first_response_chunk_seconds or total_seconds
+                    ),
+                    first_phrase_seconds=first_phrase_seconds or total_seconds,
                     total_seconds=total_seconds,
                     output_characters=len(response),
                     response=response,
@@ -164,16 +217,21 @@ def write_report(
         f"- Planning accuracy: {planning_accuracy:.1%}",
         "",
         (
-            "| Case | Run | Expected intent | Selected intent | Expected depth | "
-            "Selected depth | First chunk | Total | Characters |"
+            "| Case | Run | Path | Plan | Classifier | Expected intent | "
+            "Selected intent | Expected depth | Selected depth | First chunk | "
+            "Response chunk | First phrase | Total | Characters |"
         ),
-        "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |",
+        "| --- | --- | --- | ---: | ---: | --- | --- | --- | --- | ---: | "
+        "---: | ---: | ---: | ---: |",
     ]
     lines.extend(
-        f"| {result.id} | {result.run_kind} | {result.expected_intent} | "
-        f"{result.selected_intent} | {result.expected_depth} | "
-        f"{result.selected_depth} | "
-        f"{result.first_chunk_seconds:.3f} s | {result.total_seconds:.3f} s | "
+        f"| {result.id} | {result.run_kind} | {result.planning_path} | "
+        f"{result.planning_seconds:.3f} s | {result.classifier_seconds:.3f} s | "
+        f"{result.expected_intent} | {result.selected_intent} | "
+        f"{result.expected_depth} | {result.selected_depth} | "
+        f"{result.first_chunk_seconds:.3f} s | "
+        f"{result.first_response_chunk_seconds:.3f} s | "
+        f"{result.first_phrase_seconds:.3f} s | {result.total_seconds:.3f} s | "
         f"{result.output_characters} |"
         for result in results
     )

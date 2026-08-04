@@ -31,6 +31,12 @@ HELOMI_HOME=/path/to/helomi-data make init
 make run-cli
 ```
 
+For the macOS menu-bar frontend, run:
+
+```bash
+make run-desktop
+```
+
 Select a valid profile in the terminal UI. The default profile is configured in
 `settings.yml`; if it is unavailable, the first valid profile is used. Say the
 profile's configured wake-word label, speak your turn, then wait for the spoken

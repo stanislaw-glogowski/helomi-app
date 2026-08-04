@@ -56,6 +56,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     endpoint = commands.add_parser("endpoint", help="Benchmark VAD endpointing")
     endpoint.add_argument("--session", type=_path, required=True)
+    endpoint.add_argument(
+        "--max-end-silence-frames",
+        type=int,
+        help="Override the normal trailing-silence endpoint threshold",
+    )
+    endpoint.add_argument(
+        "--short-utterance-end-silence-frames",
+        type=int,
+        help="Override the short-utterance trailing-silence endpoint threshold",
+    )
     endpoint.add_argument("--output", type=_path)
 
     tts = commands.add_parser("tts", help="Benchmark one TTS adapter")

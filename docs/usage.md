@@ -7,6 +7,11 @@ invalid profiles too, together with the validation error, so a broken local
 profile does not hide the rest. The configured `default_profile` is selected by
 default when it is valid.
 
+The menu-bar frontend lists the same profiles under **Profiles**. Choosing a
+valid profile starts it; invalid entries remain visible but disabled. The menu
+shows startup progress and failures, offers retry after a failed start, and
+shuts down only through **Quit Helomi**.
+
 Each profile supplies the assistant identity, prompts, wake-word label and ONNX
 model path, conversation model roles, and speech-model overrides. See
 [Profiles](profiles.md) before editing one.

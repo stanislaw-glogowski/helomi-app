@@ -1,10 +1,10 @@
 # ADR-0008: Python menu-bar desktop frontend
 
-- Status: Draft
+- Status: Accepted
 - Date: 2026-08-03
 - Supersedes: None
 - Superseded by: None
-- Implementation: None
+- Implementation: `src/helomi/app` and `src/helomi/desktop` (manual acceptance pending)
 
 ## Context
 

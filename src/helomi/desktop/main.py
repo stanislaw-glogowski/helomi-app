@@ -1,2 +1,4 @@
 def main() -> None:
-    print("Hello, world!")
+    from .menu import MenuBarApp
+
+    MenuBarApp().run()

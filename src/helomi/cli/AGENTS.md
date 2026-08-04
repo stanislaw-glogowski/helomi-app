@@ -1,8 +1,8 @@
 # CLI instructions
 
-`helomi.cli` is the composition root for terminal startup, signals, worker
-readiness, shutdown, and Textual integration. It may assemble dependencies but
-must not redefine conversation, speech, or resource policy.
+`helomi.cli` is the terminal presentation frontend. `helomi.app` owns runtime
+composition, worker readiness, retry, and shutdown; the CLI binds terminal
+signals and projects the runtime's events, logs, and progress.
 
 Keep UI state derived from domain events. Start event subscriptions before
 publishing, await readiness explicitly, and propagate shutdown through the

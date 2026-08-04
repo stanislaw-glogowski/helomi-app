@@ -24,6 +24,7 @@ class ConversationMessage:
 class LanguageModelRequest:
     role: LanguageModelRole
     messages: tuple[ConversationMessage, ...]
+    cache_prefix: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

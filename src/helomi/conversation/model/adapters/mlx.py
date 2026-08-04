@@ -1,4 +1,5 @@
 import copy
+from collections import OrderedDict
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
@@ -14,7 +15,7 @@ from ..ports import LanguageModel
 class _LoadedModel:
     model: Any
     tokenizer: Any
-    prompt_caches: dict[str, tuple[tuple[int, ...], Any]]
+    prompt_caches: OrderedDict[str, tuple[tuple[int, ...], Any]]
 
 
 class MLXLanguageModel(LanguageModel):
@@ -104,7 +105,7 @@ class MLXLanguageModel(LanguageModel):
             raise RuntimeError("MLX language model adapter is not open")
         with disable_progress_bars():
             model, tokenizer = self._load(model_id)
-        loaded = _LoadedModel(model, tokenizer, {})
+        loaded = _LoadedModel(model, tokenizer, OrderedDict())
         self._models[model_id] = loaded
         self._logger.debug("Model LOADED: role='{}', model='{}'", role, model_id)
         return loaded
@@ -126,23 +127,19 @@ class MLXLanguageModel(LanguageModel):
             return prompt, None
 
         system_content = request.messages[0].content
-        cache_key = f"{thinking}:{system_content}"
+        cache_prefix = request.cache_prefix or system_content
+        if not system_content.startswith(cache_prefix):
+            return prompt, None
+        cache_key = f"{thinking}:{cache_prefix}"
         if cached := loaded.prompt_caches.get(cache_key):
             prefix_tokens, prompt_cache = cached
+            loaded.prompt_caches.move_to_end(cache_key)
         else:
-            try:
-                prefix = loaded.tokenizer.apply_chat_template(
-                    [{"role": "system", "content": system_content}],
-                    tokenize=False,
-                    add_generation_prompt=False,
-                    enable_thinking=thinking,
-                )
-            except Exception as error:
-                self._logger.debug(
-                    "Prompt prefix cache unavailable: {}", type(error).__name__
-                )
+            prefix_tokens = self._prompt_prefix_tokens(
+                loaded, prompt, cache_prefix, thinking
+            )
+            if prefix_tokens is None:
                 return prompt, None
-            prefix_tokens = tuple(loaded.tokenizer.encode(prefix))
             prompt_cache = self._make_prompt_cache(loaded.model)
             for _ in self._generate_step(
                 self._array(prefix_tokens),
@@ -152,12 +149,47 @@ class MLXLanguageModel(LanguageModel):
             ):
                 pass
             loaded.prompt_caches[cache_key] = (prefix_tokens, prompt_cache)
+            if len(loaded.prompt_caches) > 4:
+                loaded.prompt_caches.popitem(last=False)
 
         prompt_tokens = loaded.tokenizer.encode(prompt)
         prefix_length = len(prefix_tokens)
         if tuple(prompt_tokens[:prefix_length]) != prefix_tokens:
             return prompt, None
         return prompt_tokens[prefix_length:], copy.deepcopy(prompt_cache)
+
+    def _prompt_prefix_tokens(
+        self,
+        loaded: _LoadedModel,
+        prompt: str,
+        cache_prefix: str,
+        thinking: bool,
+    ) -> tuple[int, ...] | None:
+        marker = "__HELOMI_PROMPT_CACHE_BOUNDARY__"
+        try:
+            rendered_prefix = loaded.tokenizer.apply_chat_template(
+                [{"role": "system", "content": f"{cache_prefix}{marker}"}],
+                tokenize=False,
+                add_generation_prompt=False,
+                enable_thinking=thinking,
+            )
+        except Exception as error:
+            self._logger.debug(
+                "Prompt prefix cache unavailable: {}", type(error).__name__
+            )
+            return None
+        prefix_end = rendered_prefix.find(marker)
+        if prefix_end < 0:
+            self._logger.debug("Prompt prefix cache unavailable: marker not rendered")
+            return None
+        prefix_tokens = tuple(loaded.tokenizer.encode(rendered_prefix[:prefix_end]))
+        prompt_tokens = tuple(loaded.tokenizer.encode(prompt))
+        while prefix_tokens and prompt_tokens[: len(prefix_tokens)] != prefix_tokens:
+            prefix_tokens = prefix_tokens[:-1]
+        if not prefix_tokens:
+            self._logger.debug("Prompt prefix cache unavailable: token boundary")
+            return None
+        return prefix_tokens
 
     def _profile(self, role: LanguageModelRole) -> MLXModelProfile:
         profile = getattr(self._profiles, role.value)

@@ -4,10 +4,13 @@ NATIVE_AUDIO_INPUTS := \
 	$(shell find native/macos/audio/Sources -type f -name '*.swift') \
 	$(shell find native/macos/audio/Sources -type d)
 
-.PHONY: init run verify
+.PHONY: init run verify run-cli run-desktop
 
 run-cli: $(NATIVE_AUDIO)
 	uv run helomi-cli
+
+run-desktop: $(NATIVE_AUDIO)
+	uv run helomi-desktop
 
 init: $(NATIVE_AUDIO)
 	uv sync

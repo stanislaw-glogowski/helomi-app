@@ -28,6 +28,21 @@ def run_endpoint(args) -> Path:
     recordings = load_recordings(session_path)
     store = LocalStore()
     settings = store.load_settings().speech
+    segmentation = type(settings.segmentation).model_validate(
+        {
+            **settings.segmentation.model_dump(),
+            **{
+                key: value
+                for key, value in {
+                    "max_end_silence_frames": args.max_end_silence_frames,
+                    "short_utterance_end_silence_frames": (
+                        args.short_utterance_end_silence_frames
+                    ),
+                }.items()
+                if value is not None
+            },
+        }
+    )
     vad = get_vad_model(store, settings.vad)
     output = args.output or session_path.parents[3] / "results" / timestamp_id()
     output.mkdir(parents=True, exist_ok=True)
@@ -46,7 +61,7 @@ def run_endpoint(args) -> Path:
             speech_indexes = [
                 index for index, chunk in enumerate(chunks) if chunk.is_speech
             ]
-            segmenter = UtteranceSegmenter(settings.segmentation)
+            segmenter = UtteranceSegmenter(segmentation)
             detected_indexes: list[int] = []
             for index, chunk in enumerate(chunks):
                 detected, segment = segmenter.feed(chunk)
@@ -59,6 +74,10 @@ def run_endpoint(args) -> Path:
                     "sample_id": recording.sample_id,
                     "speaker_id": recording.speaker_id,
                     "condition": recording.condition,
+                    "max_end_silence_frames": segmentation.max_end_silence_frames,
+                    "short_utterance_end_silence_frames": (
+                        segmentation.short_utterance_end_silence_frames
+                    ),
                     "speech_detected": bool(speech_indexes),
                     "utterances_detected": len(detected_indexes),
                     "endpoint_latency_ms": (

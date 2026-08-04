@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import suppress
+from time import perf_counter
 
 from langchain.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import PromptTemplate
@@ -60,6 +61,7 @@ class ConversationNodes:
                 summary,
                 [*messages, HumanMessage(content=opening_prompt)],
             ),
+            cache_prefix=self._cache_prefix(context),
         )
         response = await self._stream_visible(request)
         return {"messages": [AIMessage(response)], "delivery_context": ""}
@@ -69,6 +71,7 @@ class ConversationNodes:
         state: ConversationState,
         runtime: ConversationRuntime,
     ) -> dict[str, list[AnyMessage]]:
+        reply_started = perf_counter()
         context = runtime.context
         summary = state.get("summary", "")
         messages = state["messages"][-context.recent_messages :]
@@ -99,11 +102,12 @@ class ConversationNodes:
                 summary,
                 [SystemMessage(content=instruction), *messages],
             ),
+            cache_prefix=self._cache_prefix(context),
         )
         response = await self._stream_visible(
             request,
-            acknowledgement_delay=(
-                context.acknowledgement_delay if plan.acknowledge else None
+            acknowledgement_delay=max(
+                0.0, context.acknowledgement_delay - (perf_counter() - reply_started)
             ),
         )
         return {"messages": [AIMessage(response)]}
@@ -131,6 +135,7 @@ class ConversationNodes:
                             *messages,
                         ],
                     ),
+                    cache_prefix=self._cache_prefix(context),
                 )
             ):
                 classification += chunk.content
@@ -239,6 +244,15 @@ class ConversationNodes:
                 *cls._delivery_messages(state),
                 *messages,
             ]
+        )
+
+    @staticmethod
+    def _cache_prefix(context: ConversationContext) -> str:
+        return PromptTemplate.from_template(context.system_prompt).format(
+            conversation_summary=(
+                "The current conversation summary is supplied in the next system "
+                "message."
+            )
         )
 
     @staticmethod

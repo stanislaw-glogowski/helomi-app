@@ -23,11 +23,23 @@ maintenance run. A new activation, user turn, interruption, or shutdown cancels
 maintenance before starting further model work.
 
 `TurnPlanner` first handles empty input, exact cancellation phrases, explicit
-detailed requests, and standalone questions locally. It sends only ambiguous
-acknowledgements, corrections, follow-ups, and underspecified turns to the local
-classifier. The classifier may choose no response, one clarification question,
-or brief, standard, or detailed response depth; invalid output falls back to a
-standard response and cannot cancel a turn.
+response requests, explicit detailed requests, and standalone questions locally,
+including common punctuation-free Polish forms produced by transcription. It sends
+only ambiguous acknowledgements, corrections, follow-ups, and underspecified turns
+to the local classifier. The classifier may choose no response, one clarification
+question, or brief, standard, or detailed response depth; invalid output falls back
+to a standard response and cannot cancel a turn.
+
+MLX caches the stable profile system-prompt prefix. Per-turn summary, delivery
+context, and response-depth instructions remain outside that cache, so changing
+conversation state does not discard the expensive persona prefix. A bounded cache
+falls back to full prompt generation for chat templates that cannot represent a
+safe prefix.
+
+After a confirmed response plan, the graph waits up to the configured
+acknowledgement delay for its first model chunk. It emits one prepared wait
+reaction only when that threshold expires; no reaction is generated for silence or
+cancellation, and reactions are not persisted in conversation history.
 
 When speech detects barge-in, `CancelReply` cancels the active task, drains
 queued inputs, and records the actually delivered prefix as context for the next

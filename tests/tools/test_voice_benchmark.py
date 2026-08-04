@@ -40,6 +40,19 @@ def test_suite_and_cli_contract() -> None:
         ]
     )
     assert stt.language == "pl"
+    endpoint = build_parser().parse_args(
+        [
+            "endpoint",
+            "--session",
+            "session",
+            "--max-end-silence-frames",
+            "14",
+            "--short-utterance-end-silence-frames",
+            "22",
+        ]
+    )
+    assert endpoint.max_end_silence_frames == 14
+    assert endpoint.short_utterance_end_silence_frames == 22
     with pytest.raises(ValueError, match="lowercase"):
         validate_identifier("Speaker One", "speaker")
     with pytest.raises(FileNotFoundError, match="does not exist"):

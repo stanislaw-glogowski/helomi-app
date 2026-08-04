@@ -4,7 +4,7 @@ default_profile: "alexa"
 conversation:
   language_model:
     adapter: "mlx" # options: mlx, langchain
-  acknowledgement_delay: 0.5 # seconds before a prepared waiting reaction may play
+  acknowledgement_delay: 0.8 # seconds before a prepared waiting reaction may play
 
 speech:
   audio:
