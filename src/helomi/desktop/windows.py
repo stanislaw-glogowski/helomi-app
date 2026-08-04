@@ -211,11 +211,13 @@ class DesktopWindows:
 
     @staticmethod
     def _set_header(content: _WindowContent, snapshot: DesktopSnapshot) -> None:
-        content.title.setString_(
+        content.title.setStringValue_(
             f"{snapshot.agent_activity.emoji} {snapshot.profile_name}"
         )
         detail = snapshot.detail or snapshot.agent_activity.presentation
-        content.subtitle.setString_(f"{snapshot.mode.presentation}  ·  {detail}")
+        content.subtitle.setStringValue_(
+            f"{snapshot.mode.presentation}  ·  {detail}"
+        )
 
     @staticmethod
     def _conversation_text_value(snapshot: DesktopSnapshot) -> str:

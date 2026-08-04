@@ -185,6 +185,29 @@ def test_native_window_text_projects_live_snapshot() -> None:
     assert "Signals" in DesktopWindows._system_text_value(snapshot)
 
 
+def test_native_window_header_uses_text_field_string_values() -> None:
+    class TextField:
+        def __init__(self) -> None:
+            self.value = ""
+
+        def setStringValue_(self, value: str) -> None:
+            self.value = value
+
+    title = TextField()
+    subtitle = TextField()
+    content = _WindowContent(None, title, subtitle, None)
+    snapshot = DesktopSnapshot(
+        DesktopMode.RUNNING,
+        profile_name="Agent",
+        detail="Answering",
+    )
+
+    DesktopWindows._set_header(content, snapshot)
+
+    assert title.value == "⚪ Agent"
+    assert subtitle.value == "🟢 Running  ·  Answering"
+
+
 def test_windows_are_lazy_center_once_and_project_active_progress() -> None:
     class Window:
         def __init__(self) -> None:
