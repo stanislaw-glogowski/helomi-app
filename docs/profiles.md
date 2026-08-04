@@ -15,14 +15,16 @@ locales/<language>/profiles/<profile-id>/
 │   └── summary.md
 └── reactions/
     ├── wake.txt
+    ├── acknowledge.txt
     ├── wait.txt
     ├── background.txt
     └── quit.txt
 ```
 
 All eight content files are required. Prompt paths are fixed and reaction files
-contain one non-empty phrase per line. Profile id is the directory name; `name`
-is the displayed name.
+contain one non-empty phrase per line. `acknowledge.txt` and `wait.txt` need at
+least four unique entries. Profile id is the directory name; `name` is the
+displayed name.
 
 `profile.override.yml` is optional and deep-merged over `profile.yml` before
 validation. It can locally replace model parameters or set `wakeword: null` for

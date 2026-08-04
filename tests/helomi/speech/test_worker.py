@@ -24,6 +24,7 @@ from helomi.conversation.events import (
     ReplyPhrase,
     UserTurn,
 )
+from helomi.conversation.reply import PreparedReactionKind
 from helomi.speech.audio import (
     AudioDevice,
     AudioDevices,
@@ -537,6 +538,49 @@ def test_worker_options_reject_invalid_barge_in_threshold() -> None:
         WorkerOptions(sustained_barge_in_frames=0)
     with pytest.raises(ValueError, match="positive"):
         WorkerOptions(continuation_silence_frames=0)
+    with pytest.raises(ValueError, match="non-negative"):
+        WorkerOptions(reaction_pause=-0.1)
+
+
+def test_worker_pauses_after_prepared_reaction_before_next_phrase() -> None:
+    class PausingWorker(Worker):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.pause_started = asyncio.Event()
+            self.release_pause = asyncio.Event()
+
+        async def _wait_for_reaction_pause(self) -> None:
+            self.pause_started.set()
+            await self.release_pause.wait()
+
+    async def scenario() -> None:
+        bus = EventBus()
+        playback = FakePlayback()
+        worker = PausingWorker(
+            bus,
+            FakeCapture(),
+            FakeSegmentation(),
+            FakeTranscription(),
+            FakeSynthesis(),
+            playback,
+            WorkerOptions(wakeword_disabled=True),
+        )
+        task = asyncio.create_task(worker.run())
+        await asyncio.wait_for(_wait_until(lambda: worker._events_ready.is_set()), 1)
+        bus.publish(
+            ReplyGenerationStarted(1),
+            ReplyPhrase(1, 1, "Moment", PreparedReactionKind.WAIT),
+            ReplyPhrase(1, 2, "Answer"),
+        )
+        await asyncio.wait_for(worker.pause_started.wait(), 1)
+        assert len(playback.frames) == 1
+
+        worker.release_pause.set()
+        await asyncio.wait_for(_wait_until(lambda: len(playback.frames) == 2), 1)
+        bus.publish(ShutdownEvent())
+        await asyncio.wait_for(task, 1)
+
+    asyncio.run(scenario())
 
 
 def test_worker_clears_empty_and_stale_barge_in_candidates() -> None:

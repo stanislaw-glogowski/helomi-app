@@ -17,11 +17,17 @@ class TurnIntent(StrEnum):
     NO_RESPONSE = "no_response"
 
 
+class ReactionPolicy(StrEnum):
+    NONE = "none"
+    ACKNOWLEDGE = "acknowledge"
+    WAIT = "wait"
+
+
 @dataclass(frozen=True, slots=True)
 class TurnPlan:
     intent: TurnIntent
     depth: ResponseDepth
-    acknowledge: bool = False
+    reaction: ReactionPolicy = ReactionPolicy.NONE
 
 
 class TurnPlanner:
@@ -110,15 +116,7 @@ class TurnPlanner:
             return TurnPlan(TurnIntent.CANCEL, ResponseDepth.BRIEF)
         if self._QUIT_REQUEST.fullmatch(normalized):
             return TurnPlan(TurnIntent.QUIT, ResponseDepth.BRIEF)
-        if text.count("?") > 1 or any(
-            marker in normalized for marker in self._DETAIL_MARKERS
-        ):
-            return TurnPlan(
-                TurnIntent.RESPOND, ResponseDepth.DETAILED, acknowledge=True
-            )
         words = normalized.split()
-        if text.rstrip().endswith("?") or (words and words[0] in self._QUESTION_WORDS):
-            return TurnPlan(TurnIntent.RESPOND, ResponseDepth.BRIEF)
         if words and words[0] in self._RESPONSE_REQUEST_WORDS:
             normalized_words = {word.strip(",") for word in words[1:]}
             if normalized_words & self._QUESTION_WORDS:
@@ -126,11 +124,32 @@ class TurnPlanner:
             if normalized_words & self._CONTEXT_DEPENDENT_WORDS:
                 return None
             depth = (
-                ResponseDepth.BRIEF
-                if any(marker in normalized for marker in self._BRIEF_MARKERS)
-                else ResponseDepth.STANDARD
+                ResponseDepth.DETAILED
+                if text.count("?") > 1
+                or any(marker in normalized for marker in self._DETAIL_MARKERS)
+                else (
+                    ResponseDepth.BRIEF
+                    if any(marker in normalized for marker in self._BRIEF_MARKERS)
+                    else ResponseDepth.STANDARD
+                )
             )
-            return TurnPlan(TurnIntent.RESPOND, depth)
+            return TurnPlan(
+                TurnIntent.RESPOND,
+                depth,
+                reaction=(
+                    ReactionPolicy.ACKNOWLEDGE
+                    if depth is not ResponseDepth.BRIEF
+                    else ReactionPolicy.NONE
+                ),
+            )
+        if text.count("?") > 1 or any(
+            marker in normalized for marker in self._DETAIL_MARKERS
+        ):
+            return TurnPlan(
+                TurnIntent.RESPOND, ResponseDepth.DETAILED, ReactionPolicy.WAIT
+            )
+        if text.rstrip().endswith("?") or (words and words[0] in self._QUESTION_WORDS):
+            return TurnPlan(TurnIntent.RESPOND, ResponseDepth.BRIEF)
         return None
 
     def classified_plan(self, classification: str) -> TurnPlan:
@@ -140,9 +159,14 @@ class TurnPlanner:
             "NO_RESPONSE": TurnPlan(TurnIntent.NO_RESPONSE, ResponseDepth.BRIEF),
             "CLARIFY": TurnPlan(TurnIntent.CLARIFY, ResponseDepth.BRIEF),
             "BRIEF": TurnPlan(TurnIntent.RESPOND, ResponseDepth.BRIEF),
-            "STANDARD": TurnPlan(TurnIntent.RESPOND, ResponseDepth.STANDARD),
+            "STANDARD": TurnPlan(
+                TurnIntent.RESPOND, ResponseDepth.STANDARD, ReactionPolicy.WAIT
+            ),
             "DETAILED": TurnPlan(
-                TurnIntent.RESPOND, ResponseDepth.DETAILED, acknowledge=True
+                TurnIntent.RESPOND, ResponseDepth.DETAILED, ReactionPolicy.WAIT
             ),
         }
-        return plans.get(label, TurnPlan(TurnIntent.RESPOND, ResponseDepth.STANDARD))
+        return plans.get(
+            label,
+            TurnPlan(TurnIntent.RESPOND, ResponseDepth.STANDARD, ReactionPolicy.WAIT),
+        )

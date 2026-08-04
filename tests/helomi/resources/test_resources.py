@@ -52,8 +52,11 @@ stt:
         encoding="utf-8",
     )
     (reactions / "wake.txt").write_text("Tak, słucham.\nJestem.\n", encoding="utf-8")
+    (reactions / "acknowledge.txt").write_text(
+        "Jasne.\nDobrze.\nRozumiem.\nOczywiście.\n", encoding="utf-8"
+    )
     (reactions / "wait.txt").write_text(
-        "Chwileczkę.\nJuż sprawdzam.\n", encoding="utf-8"
+        "Moment.\nChwileczkę.\nSekundkę.\nZaraz.\n", encoding="utf-8"
     )
     (reactions / "background.txt").write_text("Sprawdzam.\n", encoding="utf-8")
     (reactions / "quit.txt").write_text("Do usłyszenia.\n", encoding="utf-8")
@@ -257,9 +260,35 @@ def test_profile_requires_fixed_prompt_files_and_valid_configuration(
     with pytest.raises(FileNotFoundError, match=r"wait\.txt"):
         Profile.load_from_directory(profile_path)
 
-    (profile_path / "reactions" / "wait.txt").write_text("wait", encoding="utf-8")
+    (profile_path / "reactions" / "wait.txt").write_text(
+        "one\ntwo\nthree\nfour\nfive\n", encoding="utf-8"
+    )
+    (profile_path / "reactions" / "acknowledge.txt").unlink()
+    with pytest.raises(FileNotFoundError, match=r"acknowledge\.txt"):
+        Profile.load_from_directory(profile_path)
+
+    (profile_path / "reactions" / "acknowledge.txt").write_text(
+        "one\ntwo\nthree\nfour\n", encoding="utf-8"
+    )
     (profile_path / "profile.yml").write_text("name: Henry\n", encoding="utf-8")
     with pytest.raises(ValidationError):
+        Profile.load_from_directory(profile_path)
+
+
+def test_profile_requires_four_unique_prepared_reactions(tmp_path: Path) -> None:
+    profile_path = write_profile(tmp_path)
+    (profile_path / "reactions" / "wait.txt").write_text(
+        "Moment.\nMoment.\nSekundkę.\nZaraz.\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="at least four unique"):
+        Profile.load_from_directory(profile_path)
+
+    profile_path = write_profile(tmp_path, "short-acknowledgement")
+    (profile_path / "reactions" / "acknowledge.txt").write_text(
+        "Jasne.\nDobrze.\nRozumiem.\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="at least four unique"):
         Profile.load_from_directory(profile_path)
 
 
@@ -427,7 +456,8 @@ def test_settings_normalizes_legacy_classifier_and_supports_no_override(
 
     settings = Settings.load_from_files(default)
 
-    assert settings.conversation.acknowledgement_delay == 0.8
+    assert settings.conversation.acknowledgement_delay == 0.6
+    assert settings.conversation.wait_reaction_delay == 1.5
 
 
 def test_versioned_default_profile_is_valid() -> None:
@@ -441,6 +471,7 @@ def test_versioned_default_profile_is_valid() -> None:
     assert alexa.conversation.models_mlx.fast.model_id
     assert alexa.conversation.models_mlx.detailed.model_id
     assert alexa.conversation.reactions.wake
+    assert alexa.conversation.reactions.acknowledge
     assert alexa.conversation.reactions.wait
 
 
@@ -461,10 +492,16 @@ def test_versioned_reactions_are_short_and_complete() -> None:
             for line in reaction_path.read_text(encoding="utf-8").splitlines()
             if line.strip()
         )
-        assert len(lines) >= 20, reaction_path
         assert len(set(lines)) == len(lines), reaction_path
-        if reaction_path.name == "wait.txt":
-            assert all(len(line.replace(",", "").split()) <= 4 for line in lines)
+        if reaction_path.name in {"acknowledge.txt", "wait.txt"}:
+            assert len(lines) > 3, reaction_path
+            if reaction_path.parents[3].name == "pl-PL":
+                assert all(len(line.split()) == 1 for line in lines)
+            else:
+                assert all(len(line.split()) <= 2 for line in lines)
+            assert not {"hm.", "hmm.", "mhm."} & {line.casefold() for line in lines}
+        else:
+            assert len(lines) >= 20, reaction_path
 
 
 def test_mcp_profile_configuration_discriminates_transports() -> None:

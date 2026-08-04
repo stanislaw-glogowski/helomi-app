@@ -12,6 +12,7 @@ from .transcription import STTProfile, STTSettings, default_stt_settings
 class TurnTakingSettings(ConfigModel):
     sustained_barge_in_frames: int = Field(default=20, gt=0)
     continuation_silence_frames: int = Field(default=38, gt=0)
+    reaction_pause: float = Field(default=0.2, ge=0.0)
 
 
 class SpeechSettings(ConfigModel):

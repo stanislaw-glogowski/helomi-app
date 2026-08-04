@@ -16,6 +16,7 @@ from helomi.conversation.events import (
     ReplyPhrase,
     UserTurn,
 )
+from helomi.conversation.reply import PreparedReactionKind
 
 from .audio import AudioFrame, AudioPlaybackOutcome
 from .capture import CaptureService, SpeechChunk
@@ -53,6 +54,7 @@ class WorkerOptions:
     wakeword_disabled: bool = False
     sustained_barge_in_frames: int = 20
     continuation_silence_frames: int = 38
+    reaction_pause: float = 0.2
 
     def __post_init__(self) -> None:
         if self.sustained_barge_in_frames <= 0:
@@ -65,6 +67,10 @@ class WorkerOptions:
                 "continuation_silence_frames must be positive; "
                 f"got {self.continuation_silence_frames}"
             )
+        if self.reaction_pause < 0:
+            raise ValueError(
+                f"reaction_pause must be non-negative; got {self.reaction_pause}"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +78,7 @@ class _SynthesisRequest:
     reply_id: ReplyId
     phrase_id: PhraseId
     text: str
+    reaction: PreparedReactionKind | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +93,7 @@ class _ReplyPhraseBoundary:
     reply_id: ReplyId
     phrase_id: PhraseId
     text: str
+    reaction: PreparedReactionKind | None = None
 
 
 type _PlaybackItem = _ReplyAudioFrame | _ReplyPhraseBoundary
@@ -261,14 +269,19 @@ class Worker(Component):
                                 self._prepare_for_reply(reply_id)
                                 self._protected_reply = protected_delivery
                                 self._observe_timing("reply_started")
-                        case ReplyPhrase(reply_id, phrase_id, text):
+                        case ReplyPhrase(reply_id, phrase_id, text, reaction):
                             if (
                                 self._accept_reply_phrases
                                 and reply_id == self._active_reply_id
                             ):
                                 self._observe_timing("first_reply_phrase")
                                 self._synthesis_queue.put_nowait(
-                                    _SynthesisRequest(reply_id, phrase_id, text)
+                                    _SynthesisRequest(
+                                        reply_id,
+                                        phrase_id,
+                                        text,
+                                        reaction,
+                                    )
                                 )
                         case ReplyGenerationCompleted(reply_id):
                             if reply_id == self._active_reply_id:
@@ -355,6 +368,7 @@ class Worker(Component):
                             reply_id=request.reply_id,
                             phrase_id=request.phrase_id,
                             text=request.text,
+                            reaction=request.reaction,
                         )
                     )
             finally:
@@ -383,13 +397,15 @@ class Worker(Component):
                         outcome = await self._playback_service.play(frame)
                         if outcome is AudioPlaybackOutcome.INTERRUPTED:
                             self._accept_reply_phrases = False
-                    case _ReplyPhraseBoundary(reply_id, phrase_id, text):
+                    case _ReplyPhraseBoundary(reply_id, phrase_id, text, reaction):
                         if reply_id != self._active_reply_id:
                             continue
                         self._delivered_phrases.append(text)
                         self._event_bus.publish(
                             ReplyPhraseDelivered(reply_id, phrase_id)
                         )
+                        if reaction is not None:
+                            await self._wait_for_reaction_pause()
                         if (
                             self._protected_reply
                             and not self._reply_active
@@ -401,6 +417,10 @@ class Worker(Component):
             finally:
                 self._playback_active = False
                 self._playback_queue.task_done()
+
+    async def _wait_for_reaction_pause(self) -> None:
+        if self._options.reaction_pause:
+            await asyncio.sleep(self._options.reaction_pause)
 
     async def _playback_control_loop(self) -> None:
         while not self._shutdown_event.is_set():

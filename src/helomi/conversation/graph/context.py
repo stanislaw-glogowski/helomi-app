@@ -19,6 +19,7 @@ class ConversationContext:
     opening_prompt: str
     summary_prompt: str
     acknowledgement_delay: float
+    wait_reaction_delay: float
     tools: ToolService | None = None
 
     @staticmethod
@@ -34,5 +35,6 @@ class ConversationContext:
             opening_prompt=profile.prompts.opening,
             summary_prompt=profile.prompts.summary,
             acknowledgement_delay=settings.acknowledgement_delay,
+            wait_reaction_delay=settings.wait_reaction_delay,
             tools=tools,
         )

@@ -81,6 +81,7 @@ async def run_speech_worker(
                 wakeword_disabled=profile.wakeword is None,
                 sustained_barge_in_frames=settings.turn_taking.sustained_barge_in_frames,
                 continuation_silence_frames=settings.turn_taking.continuation_silence_frames,
+                reaction_pause=settings.turn_taking.reaction_pause,
             ),
             start_event=start_event,
         ).run()

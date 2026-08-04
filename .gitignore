@@ -32,7 +32,8 @@ benchmarks/*/reports/
 # Resources
 .helomi/data/
 .helomi/models/*
-.helomi/**/*.override.yml
+.helomi/**/settings.override.yml
 
 # Ignore
 !.gitkeep
+!.gitignore

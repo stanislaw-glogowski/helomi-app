@@ -56,6 +56,7 @@ class Profile(SpeechProfile):
                         "summary": Profile._read_prompt(path, "summary.md"),
                     },
                     "reactions": {
+                        "acknowledge": Profile._read_reaction(path, "acknowledge.txt"),
                         "wait": Profile._read_reaction(path, "wait.txt"),
                         "wake": Profile._read_reaction(path, "wake.txt"),
                         "background": Profile._read_reaction(path, "background.txt"),
@@ -80,8 +81,16 @@ class Profile(SpeechProfile):
         if not path.is_file():
             raise FileNotFoundError(f"Profile reaction file does not exist: {path}")
         content = path.read_text(encoding="utf-8")
+        reactions = tuple(line.strip() for line in content.splitlines() if line.strip())
+        if name in {"acknowledge.txt", "wait.txt"} and (
+            len(reactions) < 4 or len(reactions) != len(set(reactions))
+        ):
+            raise ValueError(
+                "Profile acknowledgement and wait reactions must contain at least four "
+                f"unique entries: {path}"
+            )
 
-        return tuple(line.strip() for line in content.splitlines() if line.strip())
+        return reactions
 
 
 @dataclass(frozen=True, slots=True)

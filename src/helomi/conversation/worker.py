@@ -256,6 +256,7 @@ class Worker(Component):
                         reply_id=reply_id,
                         phrase_id=phrase_id,
                         text=phrase,
+                        reaction=event.reaction,
                     )
                 )
             self._event_bus.publish(

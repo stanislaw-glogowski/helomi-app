@@ -2,6 +2,8 @@ from dataclasses import dataclass
 
 from helomi.common.events import Event, StateEvent
 
+from .reply import PreparedReactionKind
+
 type ReplyId = int
 type PhraseId = int
 
@@ -87,3 +89,4 @@ class ReplyPhrase(Event):
     reply_id: ReplyId
     phrase_id: PhraseId
     text: str
+    reaction: PreparedReactionKind | None = None

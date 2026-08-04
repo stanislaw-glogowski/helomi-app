@@ -36,10 +36,13 @@ conversation state does not discard the expensive persona prefix. A bounded cach
 falls back to full prompt generation for chat templates that cannot represent a
 safe prefix.
 
-After a confirmed response plan, the graph waits up to the configured
-acknowledgement delay for its first model chunk. It emits one prepared wait
-reaction only when that threshold expires; no reaction is generated for silence or
-cancellation, and reactions are not persisted in conversation history.
+For explicit standard and detailed requests, the graph waits up to the configured
+acknowledgement delay for its first model chunk, then emits one prepared
+acknowledgement when needed. Other standard and detailed turns use the longer
+wait-reaction delay and its neutral wait pool. Brief responses, silence, and
+cancellation remain silent; a turn emits at most one prepared reaction. Reactions
+are not persisted in conversation history, and speech playback adds the configured
+pause before the answer continues.
 
 When a model selects a tool, the conversation graph routes the request through
 the tool service. Immediate results return to the model in the same finite run.

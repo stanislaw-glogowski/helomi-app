@@ -26,7 +26,7 @@ Its copied defaults never replace existing destination files.
 │       └── profiles/<profile-id>/
 │           ├── profile.yml
 │           ├── prompts/{system,opening,summary}.md
-│           └── reactions/{wake,wait,background,quit}.txt
+│           └── reactions/{wake,acknowledge,wait,background,quit}.txt
 ├── models/
 │   ├── embedding_model.onnx
 │   ├── melspectrogram.onnx
@@ -67,7 +67,8 @@ profiles:
 conversation:
   language_model:
     adapter: mlx
-  acknowledgement_delay: 0.8
+  acknowledgement_delay: 0.6
+  wait_reaction_delay: 1.5
 
 speech:
   audio:
@@ -80,6 +81,7 @@ speech:
   turn_taking:
     sustained_barge_in_frames: 20
     continuation_silence_frames: 38
+    reaction_pause: 0.2
   tts:
     adapter: piper
     repo_id: rhasspy/piper-voices
@@ -96,13 +98,14 @@ speech:
 | `profiles.default` | Optional locale-local profile directory id. |
 | `profiles.selected` | Explicit locale-local startup profile. CLI `--profile` overrides it for one run; an unavailable explicit profile fails startup rather than falling back. |
 | `conversation.language_model` | `mlx`, or `langchain` with `base_url`. |
-| `conversation.acknowledgement_delay` | Non-negative seconds from reply planning before one prepared wait reaction may play. |
+| `conversation.acknowledgement_delay` | Non-negative seconds from reply planning before one prepared acknowledgement may play. |
+| `conversation.wait_reaction_delay` | Non-negative seconds from reply planning before one prepared wait reaction may play. |
 | `conversation` classifier | Alexa requires the configured local `classifier` model role for ambiguous turns. |
 | `speech.audio.driver` | `avfaudio` or `pyaudio`. |
 | `speech.vad.adapter` | `mlx:silero_vad` or `openwakeword`; `threshold` controls speech detection. |
 | `speech.wakeword.adapter` | Currently `openwakeword`. |
 | `speech.segmentation` | Positive frame-based endpointing limits; see below. |
-| `speech.turn_taking` | Positive frame limits for sustained barge-in and incomplete-turn continuation. |
+| `speech.turn_taking` | Positive frame limits for sustained barge-in and incomplete-turn continuation, plus a non-negative post-reaction pause in seconds. |
 | `speech.stt` | `mlx:parakeet-tdt`, `mlx:qwen3-asr`, or `mlx:whisper`. |
 | `speech.tts` | `piper` or `mlx:chatterbox`. |
 

@@ -153,6 +153,7 @@ def test_speech_configuration_defaults_and_validation() -> None:
     assert SpeechSettings().audio.driver == "avfaudio"
     assert SpeechSettings().segmentation.min_start_speech_frames == 10
     assert SpeechSettings().turn_taking.sustained_barge_in_frames == 20
+    assert SpeechSettings().turn_taking.reaction_pause == 0.2
 
     always_listening = SpeechProfile(
         tts={"model_path": "voice.onnx"},

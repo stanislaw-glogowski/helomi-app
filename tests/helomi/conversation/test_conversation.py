@@ -27,6 +27,7 @@ from helomi.conversation.graph import (
     ConversationContext,
     ConversationGraph,
     ConversationNodes,
+    ReactionPolicy,
     ResponseDepth,
     TurnIntent,
     TurnPlanner,
@@ -57,6 +58,7 @@ from helomi.conversation.profile import (
 from helomi.conversation.reply import (
     ConversationQuit,
     ConversationTextChunk,
+    PreparedReactionKind,
     ReplySegmenter,
 )
 from helomi.conversation.tools.domain import ToolCall, ToolDefinition
@@ -82,9 +84,13 @@ def profile() -> ConversationProfile:
     )
 
 
-def context(delay: float = 0.5) -> ConversationContext:
+def context(delay: float = 0.5, wait_delay: float | None = None) -> ConversationContext:
     return ConversationContext.from_profile(
-        profile(), ConversationSettings(acknowledgement_delay=delay)
+        profile(),
+        ConversationSettings(
+            acknowledgement_delay=delay,
+            wait_reaction_delay=delay if wait_delay is None else wait_delay,
+        ),
     )
 
 
@@ -157,7 +163,10 @@ def test_configuration_domain_events_and_routing() -> None:
     ):
         assert planner.deterministic_plan(request).intent is TurnIntent.QUIT
     assert planner.deterministic_plan("Nie zamykaj aplikacji") is None
-    assert planner.deterministic_plan("Jak masz na imię?").depth is ResponseDepth.BRIEF
+    brief_question = planner.deterministic_plan("Jak masz na imię?")
+    assert brief_question is not None
+    assert brief_question.depth is ResponseDepth.BRIEF
+    assert brief_question.reaction is ReactionPolicy.NONE
     punctuation_free = planner.deterministic_plan("Jaka jest stolica Kanady")
     assert punctuation_free is not None
     assert punctuation_free.depth is ResponseDepth.BRIEF
@@ -170,10 +179,12 @@ def test_configuration_domain_events_and_routing() -> None:
     explicit_request = planner.deterministic_plan("Przygotuj plan rodzinnej wycieczki")
     assert explicit_request is not None
     assert explicit_request.depth is ResponseDepth.STANDARD
+    assert explicit_request.reaction is ReactionPolicy.ACKNOWLEDGE
     detailed = planner.deterministic_plan("Wyjaśnij dokładnie echo akustyczne")
     assert detailed is not None
     assert detailed.depth is ResponseDepth.DETAILED
-    assert detailed.acknowledge
+    assert detailed.reaction is ReactionPolicy.ACKNOWLEDGE
+    assert planner.classified_plan("STANDARD").reaction is ReactionPolicy.WAIT
     assert planner.deterministic_plan("Powiedz mi więcej") is None
     assert planner.classified_plan(" detailed ").depth is ResponseDepth.DETAILED
     assert planner.classified_plan("CLARIFY").intent is TurnIntent.CLARIFY
@@ -266,11 +277,17 @@ def test_profile_preparation_generates_shuffled_rotating_reactions(
                 service,
                 ConversationReactions(
                     wake=("Wake one.", "Wake two."),
+                    acknowledge=("Acknowledge one.", "Acknowledge two."),
                     wait=("Wait one.", "Wait two."),
                 ),
             )
             await preparation.prepare()
-            assert [preparation.next_reaction() for _ in range(3)] == [
+            assert [preparation.next_acknowledgement_reaction() for _ in range(3)] == [
+                "Acknowledge two.",
+                "Acknowledge one.",
+                "Acknowledge two.",
+            ]
+            assert [preparation.next_wait_reaction() for _ in range(3)] == [
                 "Wait two.",
                 "Wait one.",
                 "Wait two.",
@@ -431,13 +448,16 @@ def test_graph_routes_streams_and_preserves_thread_history() -> None:
     asyncio.run(scenario())
 
 
-def test_graph_emits_prepared_acknowledgement_for_slow_detailed_reply() -> None:
+def test_graph_emits_acknowledgement_for_slow_explicit_detailed_reply() -> None:
     class Prepared:
         def next_wake_reaction(self) -> None:
             return None
 
-        def next_reaction(self) -> str:
-            return "Reaction."
+        def next_acknowledgement_reaction(self) -> str:
+            return "Jasne."
+
+        def next_wait_reaction(self) -> None:
+            return None
 
     async def scenario() -> None:
         long_question = "Wyjaśnij dokładnie " + " ".join(
@@ -459,19 +479,24 @@ def test_graph_emits_prepared_acknowledgement_for_slow_detailed_reply() -> None:
                     stream_mode="custom",
                 )
             ]
-        assert events[0] == ConversationTextChunk("Reaction.\n", True)
+        assert events[0] == ConversationTextChunk(
+            "Jasne.\n", PreparedReactionKind.ACKNOWLEDGEMENT
+        )
         assert "".join(event.content for event in events[1:]) == "Detailed"
         assert adapter.requests[0].role is LanguageModelRole.DETAILED
 
     asyncio.run(scenario())
 
 
-def test_graph_emits_wait_reaction_for_slow_brief_reply() -> None:
+def test_graph_skips_wait_reaction_for_slow_brief_reply() -> None:
     class Prepared:
         def next_wake_reaction(self) -> None:
             return None
 
-        def next_reaction(self) -> str:
+        def next_acknowledgement_reaction(self) -> str:
+            return "Jasne."
+
+        def next_wait_reaction(self) -> str:
             return "Moment."
 
     async def scenario() -> None:
@@ -491,10 +516,50 @@ def test_graph_emits_wait_reaction_for_slow_brief_reply() -> None:
                     stream_mode="custom",
                 )
             ]
-        assert events[0] == ConversationTextChunk("Moment.\n", True)
-        assert "".join(event.content for event in events[1:]) == "Answer"
+        assert "".join(event.content for event in events) == "Answer"
+        assert not any(event.reaction for event in events)
         assert [request.role for request in adapter.requests] == [
             LanguageModelRole.FAST
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_graph_emits_wait_reaction_for_slow_classified_standard_reply() -> None:
+    class Prepared:
+        def next_wake_reaction(self) -> None:
+            return None
+
+        def next_acknowledgement_reaction(self) -> str:
+            return "Jasne."
+
+        def next_wait_reaction(self) -> str:
+            return "Moment."
+
+    async def scenario() -> None:
+        adapter = FakeLanguageModel("STANDARD", "Answer")
+        async with LanguageModelService(adapter) as service:
+            graph = ConversationGraph(
+                ConversationNodes(service, profile_preparation=Prepared())
+            ).compiled
+            events = [
+                event
+                async for event in graph.astream(
+                    {
+                        "messages": [HumanMessage("Powiedz mi więcej")],
+                        "input_kind": "user_turn",
+                    },
+                    context=context(delay=0),
+                    stream_mode="custom",
+                )
+            ]
+        assert events[0] == ConversationTextChunk(
+            "Moment.\n", PreparedReactionKind.WAIT
+        )
+        assert "".join(event.content for event in events[1:]) == "Answer"
+        assert [request.role for request in adapter.requests] == [
+            LanguageModelRole.CLASSIFIER,
+            LanguageModelRole.FAST,
         ]
 
     asyncio.run(scenario())
@@ -528,24 +593,32 @@ def test_graph_uses_optional_classifier_for_ambiguous_turn() -> None:
 
 
 def test_graph_skips_classifier_for_explicit_response_request() -> None:
+    class Prepared:
+        def next_acknowledgement_reaction(self) -> str:
+            return "Jasne."
+
+        def next_wait_reaction(self) -> str:
+            return "Moment."
+
     async def scenario() -> None:
         adapter = FakeLanguageModel("Answer")
         async with LanguageModelService(adapter) as service:
-            graph = ConversationGraph(ConversationNodes(service)).compiled
+            graph = ConversationGraph(
+                ConversationNodes(service, profile_preparation=Prepared())
+            ).compiled
             events = [
                 event
                 async for event in graph.astream(
                     {
-                        "messages": [
-                            HumanMessage("Powiedz w dwóch zdaniach jak ugotować jajko")
-                        ],
+                        "messages": [HumanMessage("Przygotuj listę zakupów")],
                         "input_kind": "user_turn",
                     },
-                    context=context(),
+                    context=context(delay=10),
                     stream_mode="custom",
                 )
             ]
         assert "".join(event.content for event in events) == "Answer"
+        assert not any(event.reaction for event in events)
         assert [request.role for request in adapter.requests] == [
             LanguageModelRole.FAST
         ]
@@ -578,13 +651,22 @@ def test_graph_executes_tool_only_chunk_after_acknowledgement_delay(tmp_path) ->
                 return
             yield LanguageModelChunk("Wiersz został zapisany.")
 
+    class Prepared:
+        def next_acknowledgement_reaction(self) -> str:
+            return "Jasne."
+
+        def next_wait_reaction(self) -> str:
+            return "Moment."
+
     async def scenario() -> None:
         tools = ToolService(TextFileCatalog(tmp_path / "data"))
         await tools.start()
         try:
             adapter = ToolCallingLanguageModel()
             async with LanguageModelService(adapter) as service:
-                graph = ConversationGraph(ConversationNodes(service)).compiled
+                graph = ConversationGraph(
+                    ConversationNodes(service, profile_preparation=Prepared())
+                ).compiled
                 events = [
                     event
                     async for event in graph.astream(
@@ -605,7 +687,10 @@ def test_graph_executes_tool_only_chunk_after_acknowledgement_delay(tmp_path) ->
         finally:
             await tools.stop()
 
-        assert events == [ConversationTextChunk("Wiersz został zapisany.")]
+        assert events == [
+            ConversationTextChunk("Jasne.\n", PreparedReactionKind.ACKNOWLEDGEMENT),
+            ConversationTextChunk("Wiersz został zapisany."),
+        ]
         assert (tmp_path / "data" / "wiersz.txt").read_text(encoding="utf-8") == poem
         assert len(adapter.requests) == 2
 
@@ -656,7 +741,7 @@ def test_graph_quits_deterministically_without_model_generation() -> None:
                 )
             ]
         assert events == [
-            ConversationTextChunk("Do usłyszenia.\n", True),
+            ConversationTextChunk("Do usłyszenia.\n"),
             ConversationQuit(),
         ]
         assert adapter.requests == []
@@ -740,7 +825,10 @@ def test_graph_uses_prepared_wake_reaction_without_model_generation() -> None:
         def next_wake_reaction(self) -> str:
             return "Listening."
 
-        def next_reaction(self) -> None:
+        def next_acknowledgement_reaction(self) -> None:
+            return None
+
+        def next_wait_reaction(self) -> None:
             return None
 
     async def scenario() -> None:
@@ -757,7 +845,7 @@ def test_graph_uses_prepared_wake_reaction_without_model_generation() -> None:
                     stream_mode="custom",
                 )
             ]
-        assert events == [ConversationTextChunk("Listening.\n", True)]
+        assert events == [ConversationTextChunk("Listening.\n")]
         assert adapter.requests == []
 
     asyncio.run(scenario())
@@ -774,7 +862,7 @@ class FakeCompiled:
             raise self.error
         yield SimpleNamespace(content="ignored")
         yield ConversationTextChunk("")
-        yield ConversationTextChunk("Hello\n")
+        yield ConversationTextChunk("Hello\n", PreparedReactionKind.ACKNOWLEDGEMENT)
         yield ConversationTextChunk("world")
 
     async def ainvoke(self, **kwargs: Any) -> dict[str, object]:
@@ -811,7 +899,7 @@ def test_worker_streams_chunks_phrases_and_inputs() -> None:
             assert received == [
                 ReplyGenerationStarted(1),
                 ReplyChunk(1, "Hello\n"),
-                ReplyPhrase(1, 1, "Hello"),
+                ReplyPhrase(1, 1, "Hello", PreparedReactionKind.ACKNOWLEDGEMENT),
                 ReplyChunk(1, "world"),
                 ReplyPhrase(1, 2, "world"),
                 ReplyGenerationCompleted(1),

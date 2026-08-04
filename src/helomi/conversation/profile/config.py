@@ -15,6 +15,7 @@ class ConversationPrompts(ConfigModel):
 
 class ConversationReactions(ConfigModel):
     wake: tuple[Annotated[str, Field(min_length=1)], ...] = ()
+    acknowledge: tuple[Annotated[str, Field(min_length=1)], ...] = ()
     wait: tuple[Annotated[str, Field(min_length=1)], ...] = ()
     background: tuple[Annotated[str, Field(min_length=1)], ...] = ()
     quit: tuple[Annotated[str, Field(min_length=1)], ...] = ()

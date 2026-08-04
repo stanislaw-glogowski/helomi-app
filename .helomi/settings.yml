@@ -10,7 +10,8 @@ profiles:
 conversation:
   language_model:
     adapter: "mlx" # Local MLX models, or LangChain for an OpenAI-compatible endpoint.
-  acknowledgement_delay: 0.8 # Delay before a prepared wait reaction may play.
+  acknowledgement_delay: 0.6 # Delay before a prepared acknowledgement may play.
+  wait_reaction_delay: 1.5 # Delay before a prepared wait reaction may play.
 
 speech:
   audio:
@@ -35,6 +36,7 @@ speech:
   turn_taking:
     sustained_barge_in_frames: 20 # 640 ms at 16 kHz with 512-sample frames.
     continuation_silence_frames: 38 # Silence while waiting for an incomplete turn.
+    reaction_pause: 0.2 # Pause after a prepared acknowledgement or wait reaction.
 
   tts:
     adapter: "piper" # Speech synthesis: piper or mlx:chatterbox.

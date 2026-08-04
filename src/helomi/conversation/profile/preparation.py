@@ -15,14 +15,17 @@ class ProfilePreparation:
     ) -> None:
         self._language_model = language_model
         wake_reactions = list(reactions.wake)
+        acknowledge_reactions = list(reactions.acknowledge)
         wait_reactions = list(reactions.wait)
         background_reactions = list(reactions.background)
         quit_reactions = list(reactions.quit)
         shuffle(wake_reactions)
+        shuffle(acknowledge_reactions)
         shuffle(wait_reactions)
         shuffle(background_reactions)
         shuffle(quit_reactions)
         self._wake_reactions = cycle(wake_reactions)
+        self._acknowledge_reactions = cycle(acknowledge_reactions)
         self._wait_reactions = cycle(wait_reactions)
         self._background_reactions = cycle(background_reactions)
         self._quit_reactions = cycle(quit_reactions)
@@ -33,7 +36,10 @@ class ProfilePreparation:
     def next_wake_reaction(self) -> str | None:
         return next(self._wake_reactions, None)
 
-    def next_reaction(self) -> str | None:
+    def next_acknowledgement_reaction(self) -> str | None:
+        return next(self._acknowledge_reactions, None)
+
+    def next_wait_reaction(self) -> str | None:
         return next(self._wait_reactions, None)
 
     def next_background_reaction(self) -> str | None:

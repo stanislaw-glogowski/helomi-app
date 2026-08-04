@@ -15,10 +15,10 @@ from ..model import (
     LanguageModelService,
 )
 from ..profile import ProfilePreparation
-from ..reply import ConversationQuit, ConversationTextChunk
+from ..reply import ConversationQuit, ConversationTextChunk, PreparedReactionKind
 from ..tools.domain import ToolCall
 from .context import ConversationContext, ConversationRuntime
-from .routing import ResponseDepth, TurnIntent, TurnPlan, TurnPlanner
+from .routing import ReactionPolicy, ResponseDepth, TurnIntent, TurnPlan, TurnPlanner
 from .state import ConversationState
 
 
@@ -47,7 +47,7 @@ class ConversationNodes:
         if self._profile_preparation is not None and (
             reaction := self._profile_preparation.next_wake_reaction()
         ):
-            get_stream_writer()(ConversationTextChunk(f"{reaction}\n", True))
+            get_stream_writer()(ConversationTextChunk(f"{reaction}\n"))
             return {"messages": [], "delivery_context": ""}
 
         summary = state.get("summary", "")
@@ -104,6 +104,7 @@ class ConversationNodes:
         instruction = self._response_instruction(plan)
         tool_context: list[SystemMessage] = []
         tool_history: list[AnyMessage] = []
+        reaction_policy = plan.reaction
         for _ in range(8):
             request = LanguageModelRequest(
                 role,
@@ -116,13 +117,19 @@ class ConversationNodes:
                 cache_prefix=self._cache_prefix(context),
                 tools=(context.tools.definitions if context.tools is not None else ()),
             )
+            reaction_delay = None
+            if reaction_policy is ReactionPolicy.ACKNOWLEDGE:
+                elapsed = perf_counter() - reply_started
+                reaction_delay = max(0.0, context.acknowledgement_delay - elapsed)
+            elif reaction_policy is ReactionPolicy.WAIT:
+                elapsed = perf_counter() - reply_started
+                reaction_delay = max(0.0, context.wait_reaction_delay - elapsed)
             response, calls = await self._stream_visible(
                 request,
-                acknowledgement_delay=max(
-                    0.0,
-                    context.acknowledgement_delay - (perf_counter() - reply_started),
-                ),
+                reaction_policy=reaction_policy,
+                reaction_delay=reaction_delay,
             )
+            reaction_policy = ReactionPolicy.NONE
             if not calls:
                 return {"messages": [*tool_history, AIMessage(response)]}
             if context.tools is None:
@@ -154,9 +161,7 @@ class ConversationNodes:
                     if self._profile_preparation is not None and (
                         reaction := self._profile_preparation.next_background_reaction()
                     ):
-                        get_stream_writer()(
-                            ConversationTextChunk(f"{reaction}\n", True)
-                        )
+                        get_stream_writer()(ConversationTextChunk(f"{reaction}\n"))
                     background = True
                     continue
                 result = await context.tools.execute(call)
@@ -214,7 +219,7 @@ class ConversationNodes:
             if self._profile_preparation is not None and (
                 reaction := self._profile_preparation.next_background_reaction()
             ):
-                get_stream_writer()(ConversationTextChunk(f"{reaction}\n", True))
+                get_stream_writer()(ConversationTextChunk(f"{reaction}\n"))
             return {"messages": [], "pending_tool": None}
         result = await context.tools.execute(call)
         if result.quit_requested:
@@ -230,7 +235,7 @@ class ConversationNodes:
         if self._profile_preparation is not None and (
             reaction := self._profile_preparation.next_quit_reaction()
         ):
-            writer(ConversationTextChunk(f"{reaction}\n", True))
+            writer(ConversationTextChunk(f"{reaction}\n"))
         writer(ConversationQuit())
 
     async def _classify(
@@ -335,23 +340,32 @@ class ConversationNodes:
     async def _stream_visible(
         self,
         request: LanguageModelRequest,
-        acknowledgement_delay: float | None = None,
+        reaction_policy: ReactionPolicy = ReactionPolicy.NONE,
+        reaction_delay: float | None = None,
     ) -> tuple[str, tuple[ToolCall, ...]]:
         writer = get_stream_writer()
         content = ""
         calls: list[ToolCall] = []
         stream = self._language_model.generate(request)
-        if acknowledgement_delay is not None:
+        if reaction_delay is not None:
             first_chunk = asyncio.ensure_future(anext(stream))
             try:
                 chunk = await asyncio.wait_for(
-                    asyncio.shield(first_chunk), acknowledgement_delay
+                    asyncio.shield(first_chunk), reaction_delay
                 )
             except TimeoutError:
-                if self._profile_preparation is not None and (
-                    reaction := self._profile_preparation.next_reaction()
-                ):
-                    writer(ConversationTextChunk(f"{reaction}\n", True))
+                reaction = self._next_reaction(reaction_policy)
+                if reaction is not None:
+                    writer(
+                        ConversationTextChunk(
+                            f"{reaction}\n",
+                            reaction=(
+                                PreparedReactionKind.ACKNOWLEDGEMENT
+                                if reaction_policy is ReactionPolicy.ACKNOWLEDGE
+                                else PreparedReactionKind.WAIT
+                            ),
+                        )
+                    )
                 try:
                     chunk = await first_chunk
                 except StopAsyncIteration:
@@ -375,6 +389,15 @@ class ConversationNodes:
                 writer(ConversationTextChunk(chunk.content))
             calls.extend(chunk.tool_calls)
         return content, tuple(calls)
+
+    def _next_reaction(self, policy: ReactionPolicy) -> str | None:
+        if self._profile_preparation is None:
+            return None
+        if policy is ReactionPolicy.ACKNOWLEDGE:
+            return self._profile_preparation.next_acknowledgement_reaction()
+        if policy is ReactionPolicy.WAIT:
+            return self._profile_preparation.next_wait_reaction()
+        return None
 
     @classmethod
     def _request_messages(

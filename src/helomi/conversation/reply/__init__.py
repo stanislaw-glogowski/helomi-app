@@ -1,4 +1,9 @@
-from .domain import ConversationQuit, ConversationTextChunk
+from .domain import ConversationQuit, ConversationTextChunk, PreparedReactionKind
 from .segmenter import ReplySegmenter
 
-__all__ = ["ConversationQuit", "ConversationTextChunk", "ReplySegmenter"]
+__all__ = [
+    "ConversationQuit",
+    "ConversationTextChunk",
+    "PreparedReactionKind",
+    "ReplySegmenter",
+]
