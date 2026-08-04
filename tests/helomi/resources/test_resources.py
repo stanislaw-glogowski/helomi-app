@@ -99,6 +99,8 @@ def test_local_store_loads_profile_settings_and_models(tmp_path: Path) -> None:
 
     assert profile.id == "helomi"
     assert profile.path == profile_path
+    assert profile.data_path == profile_path / "data"
+    assert not profile.data_path.exists()
     assert profile.name == "Henry"
     assert profile.wakeword.label == "Wakeword"
     assert profile.stt == {"model_id": "profile/stt"}

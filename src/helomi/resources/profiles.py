@@ -28,6 +28,11 @@ class Profile(SpeechProfile):
     conversation: ConversationProfile
     mcp: McpConfiguration = McpConfiguration()
 
+    @property
+    def data_path(self) -> Path:
+        """Return the profile-owned directory for user-provided text data."""
+        return self.path / "data"
+
     @staticmethod
     def load_from_directory(path: Path) -> Profile:
         profile_path = path / Profile._PROFILE_FILE

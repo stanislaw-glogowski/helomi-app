@@ -12,10 +12,10 @@ ADR-0007 introduces `helomi.app` as the reusable application lifecycle boundary,
 allowing a desktop frontend to reuse startup and shutdown without depending on
 Textual or duplicating worker composition.
 
-The first desktop workflow needs a real macOS menu-bar application that displays
-profiles, starts a selected profile, reports startup progress and failure,
-supports retry, and shuts down cleanly. It does not need a conversation view,
-telemetry panels, a persistent main window, or a separate Swift application.
+The desktop workflow needs a real macOS menu-bar application that reports
+startup progress and failure, supports retry, and shuts down cleanly. It also
+needs small native utility windows for live conversation and diagnostics,
+without introducing a persistent main window or separate Swift application.
 
 `rumps` offers a small Python API over AppKit status items, but its latest
 published release is old. Its compatibility with the project's Python version
@@ -30,13 +30,16 @@ is no persistent main window. Closing the application means selecting an
 explicit **Quit Helomi** action, which requests application shutdown and awaits
 completion before terminating the AppKit loop.
 
-The first workflow will:
+The desktop workflow will:
 
 - display every profile supplied by `helomi.app`, with invalid profiles disabled;
 - start models and devices only after the user selects a valid profile;
 - present starting, running, failed, retrying, and shutting-down states;
 - retry the selected profile through the same retryable application instance;
-- provide clean shutdown without conversation, log, or telemetry views.
+- provide clean shutdown;
+- expose the active profile's existing `data/` directory in Finder;
+- show reusable native windows for current-process conversation history and
+  live system information.
 
 `helomi.desktop` owns the status item, menus, presentation state, native user
 interaction, and translation of user actions into application commands.
@@ -50,7 +53,9 @@ runtime on one desktop-owned background thread. Submit application commands
 through thread-safe event-loop handoff and return their completion through
 futures. Consume application and domain events on the runtime loop, translate
 them into desktop presentation updates, and place those updates on a bounded
-thread-safe queue drained by the main thread.
+thread-safe queue drained by the main thread. Construct AppKit windows lazily
+on the main thread, retain them after closing, and refresh them from complete
+snapshots.
 
 Keep this bridge concrete and desktop-owned. Do not add a generic UI framework,
 dependency-injection framework, service locator, or unused port hierarchy.

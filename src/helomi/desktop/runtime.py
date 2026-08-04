@@ -2,12 +2,34 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import Future
+from dataclasses import replace
 from queue import Empty, Full, Queue
 from threading import Event, Lock, Thread
+from typing import Any, cast
 
 from helomi.app import ApplicationRuntime, ProgressSnapshot
+from helomi.common.events import EventSubscription, ShutdownEvent
+from helomi.conversation.events import (
+    CancelReply,
+    ConversationReady,
+    ReplyDraftUpdated,
+    ReplyGenerationCompleted,
+    ReplyGenerationStarted,
+    ReplyPhrase,
+)
+from helomi.speech.events import (
+    AudioDevicesSelected,
+    InteractionTimingObserved,
+    ReplyPhraseDelivered,
+    ReplyPhrasePlaybackStarted,
+    SpeechChunkCaptured,
+    UserTurnCommitted,
+    VADObserved,
+    VoiceSessionModeChanged,
+    WakeWordObserved,
+)
 
-from .state import DesktopMode, DesktopSnapshot
+from .state import DesktopMode, DesktopSnapshot, PhraseState, SystemInfo
 
 
 class DesktopRuntime:
@@ -27,11 +49,12 @@ class DesktopRuntime:
         self._thread: Thread | None = None
         self._command_active = False
         self._selected_profile_id: str | None = None
-        self._profile_name = "Helomi"
         self._runtime: ApplicationRuntime | None = None
         self._shutdown_signal: asyncio.Event | None = None
         self._shutting_down = False
         self._watch_task: asyncio.Task[None] | None = None
+        self._events_task: asyncio.Task[None] | None = None
+        self._snapshot = DesktopSnapshot(DesktopMode.READY, detail="Loading profiles…")
         self._language = language
         self._startup_profile = selected_profile
 
@@ -53,31 +76,17 @@ class DesktopRuntime:
         if profile_id is None:
             return None
         self._command_active = True
-        self._publish(
-            DesktopSnapshot(
-                DesktopMode.RETRYING,
-                self._profile_name,
-                profile_id,
-            )
-        )
+        self._set_snapshot(mode=DesktopMode.RETRYING, detail=None)
         return asyncio.run_coroutine_threadsafe(
             self._start_profile(profile_id), self._loop
         )
 
     def shutdown(self) -> Future[None] | None:
-        if self._loop is None or self._terminated.is_set():
-            return None
-        if self._shutting_down:
+        if self._loop is None or self._terminated.is_set() or self._shutting_down:
             return None
         self._command_active = True
         self._shutting_down = True
-        self._publish(
-            DesktopSnapshot(
-                DesktopMode.SHUTTING_DOWN,
-                self._profile_name,
-                self._selected_profile_id,
-            )
-        )
+        self._set_snapshot(mode=DesktopMode.SHUTTING_DOWN, detail=None)
         return asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
 
     def drain(self) -> DesktopSnapshot | None:
@@ -89,9 +98,8 @@ class DesktopRuntime:
                 return latest
 
     def join(self) -> None:
-        thread = self._thread
-        if thread is not None:
-            thread.join()
+        if self._thread is not None:
+            self._thread.join()
 
     def _run(self) -> None:
         try:
@@ -109,25 +117,31 @@ class DesktopRuntime:
                 language=self._language,
                 selected_profile=self._startup_profile,
             ) as runtime:
-                unsubscribe = runtime.progress.subscribe(
-                    lambda progress: self._progress_changed(progress)
-                )
+                unsubscribe = runtime.progress.subscribe(self._progress_changed)
                 profile = runtime.startup_profile
                 self._selected_profile_id = profile.id
-                self._profile_name = profile.name
-                self._publish(
-                    DesktopSnapshot(
-                        DesktopMode.STARTING,
-                        self._profile_name,
-                        profile.id,
-                    )
+                self._snapshot = DesktopSnapshot(
+                    DesktopMode.STARTING,
+                    profile.name,
+                    profile.id,
+                    data_path=profile.data_path,
+                    system_info=SystemInfo.from_runtime(profile, runtime.settings),
                 )
+                self._publish(self._snapshot)
                 self._runtime = runtime
+                events = self._subscribe_events(runtime)
+                self._events_task = asyncio.create_task(
+                    self._consume_events(events), name="helomi-desktop-events"
+                )
                 await self._start_profile(profile.id)
                 await shutdown.wait()
                 unsubscribe()
+                if self._events_task is not None:
+                    self._events_task.cancel()
+                    await asyncio.gather(self._events_task, return_exceptions=True)
+                    self._events_task = None
         except Exception as error:
-            self._publish(DesktopSnapshot(DesktopMode.FAILED, detail=str(error)))
+            self._set_snapshot(mode=DesktopMode.FAILED, detail=str(error))
             await shutdown.wait()
 
     async def _start_profile(self, profile_id: str) -> None:
@@ -139,25 +153,11 @@ class DesktopRuntime:
             await runtime.start(profile_id)
         except BaseException as error:
             self._command_active = False
-            if self._shutting_down:
-                return
-            self._publish(
-                DesktopSnapshot(
-                    DesktopMode.FAILED,
-                    self._profile_name,
-                    profile_id,
-                    str(error),
-                )
-            )
+            if not self._shutting_down:
+                self._set_snapshot(mode=DesktopMode.FAILED, detail=str(error))
             return
         self._command_active = False
-        self._publish(
-            DesktopSnapshot(
-                DesktopMode.RUNNING,
-                self._profile_name,
-                profile_id,
-            )
-        )
+        self._set_snapshot(mode=DesktopMode.RUNNING, detail=None)
         self._watch_task = asyncio.create_task(
             self._watch_runtime(profile_id), name="helomi-desktop-watch"
         )
@@ -169,20 +169,10 @@ class DesktopRuntime:
                 return
             await runtime.wait()
         except BaseException as error:
-            if self._shutting_down:
-                return
-            self._publish(
-                DesktopSnapshot(
-                    DesktopMode.FAILED,
-                    self._profile_name,
-                    profile_id,
-                    str(error),
-                )
-            )
+            if not self._shutting_down:
+                self._set_snapshot(mode=DesktopMode.FAILED, detail=str(error))
         else:
-            if self._shutting_down:
-                return
-            if self._shutdown_signal is not None:
+            if not self._shutting_down and self._shutdown_signal is not None:
                 self._shutdown_signal.set()
 
     async def _shutdown(self) -> None:
@@ -194,18 +184,93 @@ class DesktopRuntime:
                 self._shutdown_signal.set()
 
     def _progress_changed(self, progress: ProgressSnapshot) -> None:
-        loop = self._loop
-        if loop is not None:
-            loop.call_soon_threadsafe(self._publish_progress, progress)
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._publish_progress, progress)
 
     def _publish_progress(self, progress: ProgressSnapshot) -> None:
-        self._publish(
-            DesktopSnapshot(
-                self._progress_mode(),
-                self._profile_name,
-                self._selected_profile_id,
-                progress=progress,
-            )
+        self._set_snapshot(mode=self._progress_mode(), progress=progress)
+
+    def _subscribe_events(self, runtime: ApplicationRuntime) -> EventSubscription:
+        return runtime.subscribe(
+            AudioDevicesSelected,
+            CancelReply,
+            ConversationReady,
+            InteractionTimingObserved,
+            ReplyDraftUpdated,
+            ReplyGenerationCompleted,
+            ReplyGenerationStarted,
+            ReplyPhrase,
+            ReplyPhraseDelivered,
+            ReplyPhrasePlaybackStarted,
+            ShutdownEvent,
+            SpeechChunkCaptured,
+            UserTurnCommitted,
+            VADObserved,
+            VoiceSessionModeChanged,
+            WakeWordObserved,
+        )
+
+    async def _consume_events(self, events: EventSubscription) -> None:
+        with events:
+            async for event in events:
+                try:
+                    self._reduce_event(event)
+                    if isinstance(event, ShutdownEvent):
+                        return
+                finally:
+                    events.task_done()
+
+    def _reduce_event(self, event: object) -> None:
+        snapshot = self._snapshot
+        info = snapshot.system_info
+        conversation = snapshot.conversation
+        session_mode = snapshot.session_mode
+        match event:
+            case AudioDevicesSelected(driver, devices):
+                info = replace(
+                    info,
+                    audio_driver=driver,
+                    input_device=devices.input.name,
+                    output_device=devices.output.name,
+                )
+            case SpeechChunkCaptured(samples_len):
+                info = replace(
+                    info, captured_sample_count=info.captured_sample_count + samples_len
+                )
+            case VADObserved(score, detected):
+                info = replace(info, vad_score=score, vad_detected=detected)
+            case WakeWordObserved(score, detected):
+                info = replace(info, wakeword_score=score, wakeword_detected=detected)
+            case InteractionTimingObserved(stage, elapsed_ms):
+                timings = dict(info.timings)
+                timings[stage] = elapsed_ms
+                info = replace(info, timings=tuple(timings.items()))
+            case VoiceSessionModeChanged(mode):
+                session_mode = mode
+            case UserTurnCommitted(turn_id, text):
+                conversation = conversation.commit_user(turn_id, text)
+            case ReplyGenerationStarted(reply_id):
+                conversation = conversation.start_reply(reply_id)
+            case ReplyDraftUpdated(reply_id, text):
+                conversation = conversation.update_reply_draft(reply_id, text)
+            case ReplyPhrase(reply_id, phrase_id, text):
+                conversation = conversation.queue_phrase(reply_id, phrase_id, text)
+            case ReplyPhrasePlaybackStarted(reply_id, phrase_id):
+                conversation = conversation.transition_phrase(
+                    reply_id, phrase_id, PhraseState.SPEAKING
+                )
+            case ReplyPhraseDelivered(reply_id, phrase_id):
+                conversation = conversation.transition_phrase(
+                    reply_id, phrase_id, PhraseState.DELIVERED
+                )
+            case ReplyGenerationCompleted(reply_id):
+                conversation = conversation.complete_reply(reply_id)
+            case CancelReply(_, reply_id):
+                conversation = conversation.interrupt_reply(reply_id)
+            case _:
+                return
+        self._set_snapshot(
+            system_info=info, conversation=conversation, session_mode=session_mode
         )
 
     def _publish(self, snapshot: DesktopSnapshot) -> None:
@@ -215,6 +280,10 @@ class DesktopRuntime:
             except Full:
                 self._updates.get_nowait()
                 self._updates.put_nowait(snapshot)
+
+    def _set_snapshot(self, **changes: object) -> None:
+        self._snapshot = replace(self._snapshot, **cast(Any, changes))
+        self._publish(self._snapshot)
 
     def _progress_mode(self) -> DesktopMode:
         if self._shutting_down:

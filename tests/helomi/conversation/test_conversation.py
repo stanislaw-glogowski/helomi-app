@@ -176,7 +176,7 @@ def test_configuration_domain_events_and_routing() -> None:
     brief_question = planner.deterministic_plan("Jak masz na imię?")
     assert brief_question is not None
     assert brief_question.depth is ResponseDepth.BRIEF
-    assert brief_question.reaction is ReactionPolicy.NONE
+    assert brief_question.reaction is ReactionPolicy.WAIT
     punctuation_free = planner.deterministic_plan("Jaka jest stolica Kanady")
     assert punctuation_free is not None
     assert punctuation_free.depth is ResponseDepth.BRIEF
@@ -626,7 +626,7 @@ def test_graph_emits_acknowledgement_for_slow_explicit_detailed_reply() -> None:
     asyncio.run(scenario())
 
 
-def test_graph_skips_wait_reaction_for_slow_brief_reply() -> None:
+def test_graph_emits_wait_reaction_for_slow_brief_reply() -> None:
     class Prepared:
         def next_wake_reaction(self) -> None:
             return None
@@ -654,11 +654,189 @@ def test_graph_skips_wait_reaction_for_slow_brief_reply() -> None:
                     stream_mode="custom",
                 )
             ]
-        assert "".join(event.content for event in events) == "Answer"
-        assert not any(event.reaction for event in events)
+        assert events[0] == ConversationTextChunk(
+            "Moment.\n", PreparedReactionKind.WAIT
+        )
+        assert "".join(event.content for event in events[1:]) == "Answer"
         assert [request.role for request in adapter.requests] == [
             LanguageModelRole.FAST
         ]
+
+    asyncio.run(scenario())
+
+
+def test_graph_skips_wait_reaction_for_fast_brief_reply() -> None:
+    class Prepared:
+        def next_wake_reaction(self) -> None:
+            return None
+
+        def next_acknowledgement_reaction(self) -> None:
+            return None
+
+        def next_wait_reaction(self) -> str:
+            return "Moment."
+
+    async def scenario() -> None:
+        adapter = FakeLanguageModel("Answer")
+        async with LanguageModelService(adapter) as service:
+            graph = ConversationGraph(
+                ConversationNodes(service, profile_preparation=Prepared())
+            ).compiled
+            events = [
+                event
+                async for event in graph.astream(
+                    {
+                        "messages": [HumanMessage("Jak masz na imię?")],
+                        "input_kind": "user_turn",
+                    },
+                    context=context(delay=10),
+                    stream_mode="custom",
+                )
+            ]
+        assert "".join(event.content for event in events) == "Answer"
+        assert not any(event.reaction for event in events)
+
+    asyncio.run(scenario())
+
+
+def test_graph_keeps_reaction_timer_through_tool_execution(tmp_path: Path) -> None:
+    class ToolCallingLanguageModel(FakeLanguageModel):
+        def generate(
+            self, request: LanguageModelRequest
+        ) -> Iterator[LanguageModelChunk]:
+            self.requests.append(request)
+            if request.tools:
+                yield LanguageModelChunk(
+                    tool_calls=(ToolCall("call-1", "file_write", {}),)
+                )
+                return
+            yield LanguageModelChunk("Saved.")
+
+    class BlockingTools(ToolService):
+        def __init__(self) -> None:
+            super().__init__(TextFileCatalog(tmp_path / "data"))
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def execute(self, call: ToolCall) -> Any:
+            self.started.set()
+            await self.release.wait()
+            return SimpleNamespace(
+                content="saved", is_error=False, quit_requested=False
+            )
+
+    class Prepared:
+        def next_acknowledgement_reaction(self) -> str:
+            return "Jasne."
+
+        def next_wait_reaction(self) -> None:
+            return None
+
+    async def scenario() -> None:
+        tools = BlockingTools()
+        await tools.start()
+        try:
+            adapter = ToolCallingLanguageModel()
+            async with LanguageModelService(adapter) as service:
+                graph = ConversationGraph(
+                    ConversationNodes(service, profile_preparation=Prepared())
+                ).compiled
+                events: list[ConversationTextChunk] = []
+                reaction_seen = asyncio.Event()
+
+                async def consume() -> None:
+                    async for event in graph.astream(
+                        {
+                            "messages": [
+                                HumanMessage("Napisz wiersz do pliku test.txt")
+                            ],
+                            "input_kind": "user_turn",
+                        },
+                        context=ConversationContext.from_profile(
+                            profile(),
+                            ConversationSettings(acknowledgement_delay=0.01),
+                            tools,
+                        ),
+                        stream_mode="custom",
+                    ):
+                        events.append(event)
+                        if event.reaction is PreparedReactionKind.ACKNOWLEDGEMENT:
+                            reaction_seen.set()
+
+                consumer = asyncio.create_task(consume())
+                await asyncio.wait_for(tools.started.wait(), 1)
+                await asyncio.wait_for(reaction_seen.wait(), 1)
+                tools.release.set()
+                await asyncio.wait_for(consumer, 1)
+        finally:
+            await tools.stop()
+
+        assert events == [
+            ConversationTextChunk("Jasne.\n", PreparedReactionKind.ACKNOWLEDGEMENT),
+            ConversationTextChunk("Saved."),
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_graph_handles_protocol_error_without_unhandled_stream_task(
+    tmp_path: Path,
+) -> None:
+    class InvalidToolLanguageModel(FakeLanguageModel):
+        def generate(
+            self, request: LanguageModelRequest
+        ) -> Iterator[LanguageModelChunk]:
+            self.requests.append(request)
+            raise LanguageModelProtocolError("Required tool call was not produced")
+            yield LanguageModelChunk()
+
+    class Prepared:
+        def next_acknowledgement_reaction(self) -> str:
+            return "Jasne."
+
+        def next_wait_reaction(self) -> None:
+            return None
+
+    async def scenario() -> None:
+        errors: list[dict[str, Any]] = []
+        loop = asyncio.get_running_loop()
+        previous_handler = loop.get_exception_handler()
+        loop.set_exception_handler(lambda _loop, details: errors.append(details))
+        tools = ToolService(TextFileCatalog(tmp_path / "data"))
+        await tools.start()
+        try:
+            adapter = InvalidToolLanguageModel()
+            async with LanguageModelService(adapter) as service:
+                graph = ConversationGraph(
+                    ConversationNodes(service, profile_preparation=Prepared())
+                ).compiled
+                events = [
+                    event
+                    async for event in graph.astream(
+                        {
+                            "messages": [
+                                HumanMessage("Napisz wiersz do pliku test.txt")
+                            ],
+                            "input_kind": "user_turn",
+                        },
+                        context=ConversationContext.from_profile(
+                            profile(),
+                            ConversationSettings(acknowledgement_delay=0),
+                            tools,
+                        ),
+                        stream_mode="custom",
+                    )
+                ]
+                await asyncio.sleep(0)
+        finally:
+            await tools.stop()
+            loop.set_exception_handler(previous_handler)
+
+        assert events == [
+            ConversationTextChunk("Jasne.\n", PreparedReactionKind.ACKNOWLEDGEMENT),
+            ConversationTextChunk("I could not complete the tool request."),
+        ]
+        assert errors == []
 
     asyncio.run(scenario())
 

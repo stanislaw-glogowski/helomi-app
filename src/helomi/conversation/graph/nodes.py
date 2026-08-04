@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections.abc import Callable
 from contextlib import suppress
 from time import perf_counter
 from typing import Any
@@ -117,7 +118,13 @@ class ConversationNodes:
         )
         memory_context = self._memory_context(memories)
         if pending := state.get("pending_tool"):
-            return await self._resolve_confirmation(pending, user_text, context)
+            reaction_task = self._start_reaction_timer(
+                ReactionPolicy.ACKNOWLEDGE, context, reply_started
+            )
+            try:
+                return await self._resolve_confirmation(pending, user_text, context)
+            finally:
+                await self._stop_reaction_timer(reaction_task)
         plan = self._turn_planner.deterministic_plan(user_text)
         if plan is None:
             plan = await self._classify(
@@ -142,123 +149,133 @@ class ConversationNodes:
                 context.tools.definitions if context.tools is not None else ()
             )
         }
-        reaction_policy = plan.reaction
-        repair_attempted = False
-        for _ in range(8):
-            tool_required = plan.tool_policy is ToolPolicy.REQUIRED and bool(
-                available_tools
-            )
-            request = LanguageModelRequest(
-                role,
-                self._request_messages(
-                    state,
-                    context,
-                    summary,
-                    [
-                        SystemMessage(content=instruction),
-                        *messages,
-                        *tool_context,
-                    ],
-                    memory_context,
-                ),
-                cache_prefix=self._cache_prefix(context),
-                tools=tuple(available_tools.values()),
-                tool_choice=(ToolChoice.REQUIRED if tool_required else ToolChoice.AUTO),
-            )
-            reaction_delay = None
-            if reaction_policy is ReactionPolicy.ACKNOWLEDGE:
-                elapsed = perf_counter() - reply_started
-                reaction_delay = max(0.0, context.acknowledgement_delay - elapsed)
-            elif reaction_policy is ReactionPolicy.WAIT:
-                elapsed = perf_counter() - reply_started
-                reaction_delay = max(0.0, context.wait_reaction_delay - elapsed)
-            try:
-                response, calls = await self._stream_visible(
-                    request,
-                    reaction_policy=reaction_policy,
-                    reaction_delay=reaction_delay,
-                    deliver=not tool_required,
+        reaction_task = self._start_reaction_timer(
+            plan.reaction, context, reply_started
+        )
+
+        def delivered() -> None:
+            if reaction_task is not None:
+                reaction_task.cancel()
+
+        try:
+            repair_attempted = False
+            for _ in range(8):
+                tool_required = plan.tool_policy is ToolPolicy.REQUIRED and bool(
+                    available_tools
                 )
-            except LanguageModelProtocolError as error:
-                logger.warning("Model tool protocol error: {}", type(error).__name__)
-                if tool_required and not repair_attempted:
-                    repair_attempted = True
-                    tool_context.append(
-                        SystemMessage(
-                            content=(
-                                "The previous response was invalid. Return exactly one "
-                                "available tool call and no prose."
-                            )
-                        )
+                request = LanguageModelRequest(
+                    role,
+                    self._request_messages(
+                        state,
+                        context,
+                        summary,
+                        [
+                            SystemMessage(content=instruction),
+                            *messages,
+                            *tool_context,
+                        ],
+                        memory_context,
+                    ),
+                    cache_prefix=self._cache_prefix(context),
+                    tools=tuple(available_tools.values()),
+                    tool_choice=(
+                        ToolChoice.REQUIRED if tool_required else ToolChoice.AUTO
+                    ),
+                )
+                try:
+                    response, calls = await self._stream_visible(
+                        request,
+                        deliver=not tool_required,
+                        on_visible=delivered,
                     )
-                    reaction_policy = ReactionPolicy.NONE
-                    continue
-                return self._tool_protocol_failure(tool_history)
-            reaction_policy = ReactionPolicy.NONE
-            if not calls:
-                if tool_required:
-                    if not repair_attempted:
+                except LanguageModelProtocolError as error:
+                    logger.warning(
+                        "Model tool protocol error: {}: {}", type(error).__name__, error
+                    )
+                    if tool_required and not repair_attempted:
                         repair_attempted = True
                         tool_context.append(
                             SystemMessage(
                                 content=(
-                                    "Return exactly one available tool call "
-                                    "and no prose."
+                                    "The previous response was invalid. Return "
+                                    "exactly one available tool call and no prose."
                                 )
                             )
                         )
                         continue
                     return self._tool_protocol_failure(tool_history)
-                return {"messages": [AIMessage(response)]}
-            if context.tools is None:
-                return {"messages": [AIMessage("I cannot use tools right now.")]}
-            background = False
-            for call in calls:
-                definition = context.tools.definition(call.name)
-                if definition is None:
-                    tool_context.append(
-                        SystemMessage(content=f"Tool error: unknown tool {call.name}.")
-                    )
-                    continue
-                if definition.require_confirmation:
-                    return {
-                        "messages": [
-                            AIMessage("Please confirm that I should run this tool.")
-                        ],
-                        "pending_tool": {
-                            "id": call.id,
-                            "name": call.name,
-                            "arguments": call.arguments,
-                        },
-                    }
-                if definition.mode == "background":
-                    await context.tools.enqueue(call)
-                    tool_history.append(
-                        AIMessage(content=f"Background tool accepted: {call.name}.")
-                    )
-                    if self._profile_preparation is not None and (
-                        reaction := self._profile_preparation.next_background_reaction()
-                    ):
-                        get_stream_writer()(ConversationTextChunk(f"{reaction}\n"))
-                    background = True
-                    continue
-                result = await context.tools.execute(call)
-                result_message = self._tool_result_message(call, result)
-                if result.quit_requested:
-                    tool_history.append(AIMessage(content="Quit requested."))
-                    self._emit_quit()
+                if not calls:
+                    if tool_required:
+                        if not repair_attempted:
+                            repair_attempted = True
+                            tool_context.append(
+                                SystemMessage(
+                                    content=(
+                                        "Return exactly one available tool call "
+                                        "and no prose."
+                                    )
+                                )
+                            )
+                            continue
+                        return self._tool_protocol_failure(tool_history)
+                    return {"messages": [AIMessage(response)]}
+                if context.tools is None:
+                    return {"messages": [AIMessage("I cannot use tools right now.")]}
+                background = False
+                for call in calls:
+                    definition = context.tools.definition(call.name)
+                    if definition is None:
+                        tool_context.append(
+                            SystemMessage(
+                                content=f"Tool error: unknown tool {call.name}."
+                            )
+                        )
+                        continue
+                    if definition.require_confirmation:
+                        return {
+                            "messages": [
+                                AIMessage("Please confirm that I should run this tool.")
+                            ],
+                            "pending_tool": {
+                                "id": call.id,
+                                "name": call.name,
+                                "arguments": call.arguments,
+                            },
+                        }
+                    if definition.mode == "background":
+                        await context.tools.enqueue(call)
+                        tool_history.append(
+                            AIMessage(content=f"Background tool accepted: {call.name}.")
+                        )
+                        delivered()
+                        if self._profile_preparation is not None and (
+                            reaction := (
+                                self._profile_preparation.next_background_reaction()
+                            )
+                        ):
+                            get_stream_writer()(ConversationTextChunk(f"{reaction}\n"))
+                        background = True
+                        continue
+                    result = await context.tools.execute(call)
+                    result_message = self._tool_result_message(call, result)
+                    if result.quit_requested:
+                        tool_history.append(AIMessage(content="Quit requested."))
+                        delivered()
+                        self._emit_quit()
+                        return {"messages": tool_history}
+                    tool_context.append(SystemMessage(content=result_message))
+                    if not result.is_error:
+                        available_tools.clear()
+                if background:
                     return {"messages": tool_history}
-                tool_context.append(SystemMessage(content=result_message))
-                if not result.is_error:
-                    available_tools.clear()
-            if background:
-                return {"messages": tool_history}
-        return {
-            "messages": [
-                *tool_history,
-                AIMessage("I could not complete the tool request."),
-            ]
-        }
+            return {
+                "messages": [
+                    *tool_history,
+                    AIMessage("I could not complete the tool request."),
+                ]
+            }
+        finally:
+            await self._stop_reaction_timer(reaction_task)
 
     async def _resolve_confirmation(
         self,
@@ -426,56 +443,63 @@ class ConversationNodes:
     async def _stream_visible(
         self,
         request: LanguageModelRequest,
-        reaction_policy: ReactionPolicy = ReactionPolicy.NONE,
-        reaction_delay: float | None = None,
         deliver: bool = True,
+        on_visible: Callable[[], None] | None = None,
     ) -> tuple[str, tuple[ToolCall, ...]]:
         writer = get_stream_writer()
         content = ""
         calls: list[ToolCall] = []
-        stream = self._language_model.generate(request)
-        if reaction_delay is not None:
-            first_chunk = asyncio.ensure_future(anext(stream))
-            try:
-                chunk = await asyncio.wait_for(
-                    asyncio.shield(first_chunk), reaction_delay
-                )
-            except TimeoutError:
-                reaction = self._next_reaction(reaction_policy)
-                if reaction is not None:
-                    writer(
-                        ConversationTextChunk(
-                            f"{reaction}\n",
-                            reaction=(
-                                PreparedReactionKind.ACKNOWLEDGEMENT
-                                if reaction_policy is ReactionPolicy.ACKNOWLEDGE
-                                else PreparedReactionKind.WAIT
-                            ),
-                        )
-                    )
-                try:
-                    chunk = await first_chunk
-                except StopAsyncIteration:
-                    return content, tuple(calls)
-            except StopAsyncIteration:
-                return content, tuple(calls)
-            except asyncio.CancelledError:
-                first_chunk.cancel()
-                with suppress(asyncio.CancelledError):
-                    await first_chunk
-                await stream.aclose()
-                raise
+        async for chunk in self._language_model.generate(request):
             content += chunk.content
             if deliver and chunk.content:
-                writer(ConversationTextChunk(chunk.content))
-            calls.extend(chunk.tool_calls)
-
-        async for chunk in stream:
-            content += chunk.content
-            if deliver and chunk.content:
+                if on_visible is not None:
+                    on_visible()
+                    on_visible = None
                 writer(ConversationTextChunk(chunk.content))
             calls.extend(chunk.tool_calls)
         return content, tuple(calls)
+
+    def _start_reaction_timer(
+        self,
+        policy: ReactionPolicy,
+        context: ConversationContext,
+        reply_started: float,
+    ) -> asyncio.Task[None] | None:
+        if policy is ReactionPolicy.NONE:
+            return None
+        delay = (
+            context.acknowledgement_delay
+            if policy is ReactionPolicy.ACKNOWLEDGE
+            else context.wait_reaction_delay
+        )
+        delay = max(0.0, delay - (perf_counter() - reply_started))
+        return asyncio.create_task(
+            self._emit_reaction_after(policy, delay), name="helomi-reaction"
+        )
+
+    async def _emit_reaction_after(self, policy: ReactionPolicy, delay: float) -> None:
+        await asyncio.sleep(delay)
+        reaction = self._next_reaction(policy)
+        if reaction is None:
+            return
+        get_stream_writer()(
+            ConversationTextChunk(
+                f"{reaction}\n",
+                reaction=(
+                    PreparedReactionKind.ACKNOWLEDGEMENT
+                    if policy is ReactionPolicy.ACKNOWLEDGE
+                    else PreparedReactionKind.WAIT
+                ),
+            )
+        )
+
+    @staticmethod
+    async def _stop_reaction_timer(task: asyncio.Task[None] | None) -> None:
+        if task is None:
+            return
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
 
     @staticmethod
     def _tool_protocol_failure(tool_history: list[AnyMessage]) -> dict[str, Any]:

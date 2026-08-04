@@ -151,7 +151,9 @@ class TurnPlanner:
         if words and words[0] in self._RESPONSE_REQUEST_WORDS:
             normalized_words = {word.strip(",") for word in words[1:]}
             if normalized_words & self._QUESTION_WORDS:
-                return TurnPlan(TurnIntent.RESPOND, ResponseDepth.BRIEF)
+                return TurnPlan(
+                    TurnIntent.RESPOND, ResponseDepth.BRIEF, ReactionPolicy.WAIT
+                )
             if normalized_words & self._CONTEXT_DEPENDENT_WORDS:
                 return None
             depth = (
@@ -170,7 +172,7 @@ class TurnPlanner:
                 reaction=(
                     ReactionPolicy.ACKNOWLEDGE
                     if depth is not ResponseDepth.BRIEF
-                    else ReactionPolicy.NONE
+                    else ReactionPolicy.WAIT
                 ),
             )
         if text.count("?") > 1 or any(
@@ -180,7 +182,9 @@ class TurnPlanner:
                 TurnIntent.RESPOND, ResponseDepth.DETAILED, ReactionPolicy.WAIT
             )
         if text.rstrip().endswith("?") or (words and words[0] in self._QUESTION_WORDS):
-            return TurnPlan(TurnIntent.RESPOND, ResponseDepth.BRIEF)
+            return TurnPlan(
+                TurnIntent.RESPOND, ResponseDepth.BRIEF, ReactionPolicy.WAIT
+            )
         return None
 
     def classified_plan(self, classification: str) -> TurnPlan:
@@ -188,8 +192,12 @@ class TurnPlanner:
         label = normalized.split(maxsplit=1)[0] if normalized else ""
         plans = {
             "NO_RESPONSE": TurnPlan(TurnIntent.NO_RESPONSE, ResponseDepth.BRIEF),
-            "CLARIFY": TurnPlan(TurnIntent.CLARIFY, ResponseDepth.BRIEF),
-            "BRIEF": TurnPlan(TurnIntent.RESPOND, ResponseDepth.BRIEF),
+            "CLARIFY": TurnPlan(
+                TurnIntent.CLARIFY, ResponseDepth.BRIEF, ReactionPolicy.WAIT
+            ),
+            "BRIEF": TurnPlan(
+                TurnIntent.RESPOND, ResponseDepth.BRIEF, ReactionPolicy.WAIT
+            ),
             "STANDARD": TurnPlan(
                 TurnIntent.RESPOND, ResponseDepth.STANDARD, ReactionPolicy.WAIT
             ),

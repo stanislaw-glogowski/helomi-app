@@ -1,14 +1,54 @@
+import asyncio
 import importlib
 import runpy
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 import helomi.desktop.runtime as runtime_module
 from helomi.app import ProgressSnapshot
+from helomi.conversation.events import (
+    CancelReply,
+    ReplyDraftUpdated,
+    ReplyGenerationCompleted,
+    ReplyGenerationStarted,
+    ReplyPhrase,
+)
 from helomi.desktop.runtime import DesktopRuntime
-from helomi.desktop.state import DesktopMode, DesktopSnapshot
+from helomi.desktop.state import (
+    DesktopMode,
+    DesktopSnapshot,
+)
+from helomi.desktop.windows import DesktopWindows
+from helomi.speech.events import (
+    InteractionTimingObserved,
+    ReplyPhraseDelivered,
+    ReplyPhrasePlaybackStarted,
+    UserTurnCommitted,
+    VADObserved,
+    VoiceSessionMode,
+    VoiceSessionModeChanged,
+    WakeWordObserved,
+)
+
+
+class BlockingSubscription:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args) -> None:
+        pass
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        await asyncio.Event().wait()
+
+    def task_done(self) -> None:
+        pass
 
 
 def test_desktop_imports_are_lazy() -> None:
@@ -65,12 +105,70 @@ def test_snapshot_projects_tray_titles_and_safe_actions() -> None:
     assert failed.retry_enabled
     assert running.tray_title == "Agent"
     assert not running.retry_enabled
+    assert not running.data_folder_enabled
+
+
+def test_snapshot_enables_only_existing_data_folders(tmp_path: Path) -> None:
+    snapshot = DesktopSnapshot(DesktopMode.RUNNING, data_path=tmp_path / "data")
+    assert not snapshot.data_folder_enabled
+    snapshot.data_path.mkdir()
+    assert snapshot.data_folder_enabled
+
+
+def test_runtime_reduces_live_history_and_system_events() -> None:
+    desktop = DesktopRuntime()
+    desktop._reduce_event(UserTurnCommitted(1, "Hello"))
+    desktop._reduce_event(ReplyGenerationStarted(2))
+    desktop._reduce_event(ReplyDraftUpdated(2, "Thinking"))
+    desktop._reduce_event(ReplyPhrase(2, 3, "Done."))
+    desktop._reduce_event(ReplyPhrasePlaybackStarted(2, 3))
+    desktop._reduce_event(ReplyPhraseDelivered(2, 3))
+    desktop._reduce_event(ReplyGenerationCompleted(2))
+    desktop._reduce_event(VADObserved(0.8, True))
+    desktop._reduce_event(WakeWordObserved(0.7, True))
+    desktop._reduce_event(InteractionTimingObserved("reply_started", 120.0))
+    desktop._reduce_event(VoiceSessionModeChanged(VoiceSessionMode.ACTIVE))
+
+    snapshot = desktop.drain()
+    assert snapshot is not None
+    assert snapshot.conversation.messages[0].text == "Hello"
+    reply = snapshot.conversation.messages[1]
+    assert reply.phrases[0].state.name == "DELIVERED"
+    assert snapshot.system_info.vad_detected
+    assert snapshot.system_info.wakeword_detected
+    assert snapshot.system_info.timings == (("reply_started", 120.0),)
+    assert not snapshot.waiting_for_wakeword
+    transcript = DesktopWindows._conversation_text_value(snapshot)
+    system_info = DesktopWindows._system_text_value(snapshot)
+    assert "[delivered] Done." in transcript
+    assert "REPLY STARTED" in system_info
+
+    desktop._reduce_event(CancelReply(reply_id=2))
+    interrupted = desktop.drain()
+    assert interrupted.conversation.messages[1].interrupted
+    assert "REPLY INTERRUPTED" in DesktopWindows._conversation_text_value(interrupted)
+
+
+def test_runtime_bounds_conversation_history() -> None:
+    desktop = DesktopRuntime()
+    for turn_id in range(201):
+        desktop._reduce_event(UserTurnCommitted(turn_id, str(turn_id)))
+    snapshot = desktop.drain()
+    assert snapshot is not None
+    assert len(snapshot.conversation.messages) == 200
+    assert snapshot.conversation.messages[0].turn_id == 1
+
+
+def test_native_window_text_projects_live_snapshot() -> None:
+    snapshot = DesktopSnapshot(DesktopMode.RUNNING)
+    assert "Waiting for" in DesktopWindows._conversation_text_value(snapshot)
+    assert "SIGNALS" in DesktopWindows._system_text_value(snapshot)
 
 
 def test_runtime_coalesces_updates_and_waits_for_shutdown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    profile = SimpleNamespace(id="agent", name="Agent")
+    profile = SimpleNamespace(id="agent", name="Agent", data_path=Path("/missing"))
 
     class Progress:
         def subscribe(self, listener):
@@ -82,8 +180,10 @@ def test_runtime_coalesces_updates_and_waits_for_shutdown(
             import asyncio
 
             self.startup_profile = profile
+            self.settings = object()
             self.progress = Progress()
             self.stopped = asyncio.Event()
+            self.subscribed = False
 
         async def __aenter__(self):
             return self
@@ -92,6 +192,7 @@ def test_runtime_coalesces_updates_and_waits_for_shutdown(
             pass
 
         async def start(self, profile_id: str) -> None:
+            assert self.subscribed
             if profile_id == "broken":
                 raise RuntimeError("startup failed")
 
@@ -101,7 +202,16 @@ def test_runtime_coalesces_updates_and_waits_for_shutdown(
         async def shutdown(self) -> None:
             self.stopped.set()
 
+        def subscribe(self, *_types):
+            self.subscribed = True
+            return BlockingSubscription()
+
     monkeypatch.setattr(runtime_module, "ApplicationRuntime", FakeRuntime)
+    monkeypatch.setattr(
+        runtime_module.SystemInfo,
+        "from_runtime",
+        classmethod(lambda cls, profile, _settings: cls(profile_name=profile.name)),
+    )
     desktop = DesktopRuntime()
     desktop.start()
     first = desktop._updates.get(timeout=1)
@@ -131,8 +241,11 @@ def test_runtime_reports_startup_failure_and_bootstrap_failure(
 
     class Runtime:
         def __init__(self, **_kwargs) -> None:
-            self.startup_profile = SimpleNamespace(id="agent", name="Agent")
+            self.startup_profile = SimpleNamespace(
+                id="agent", name="Agent", data_path=Path("/missing")
+            )
             self.progress = Progress()
+            self.settings = object()
 
         async def __aenter__(self):
             return self
@@ -149,7 +262,15 @@ def test_runtime_reports_startup_failure_and_bootstrap_failure(
         async def shutdown(self) -> None:
             pass
 
+        def subscribe(self, *_types):
+            return BlockingSubscription()
+
     monkeypatch.setattr(runtime_module, "ApplicationRuntime", Runtime)
+    monkeypatch.setattr(
+        runtime_module.SystemInfo,
+        "from_runtime",
+        classmethod(lambda cls, profile, _settings: cls(profile_name=profile.name)),
+    )
     desktop = DesktopRuntime()
     desktop.start()
     assert desktop._updates.get(timeout=1).mode is DesktopMode.FAILED
@@ -235,6 +356,7 @@ def test_runtime_guard_paths_and_internal_failure_projection() -> None:
 
 def test_menu_renders_status_retry_and_quit(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     class Menu:
         def __init__(self) -> None:
@@ -283,6 +405,19 @@ def test_menu_renders_status_retry_and_quit(
     monkeypatch.setitem(sys.modules, "rumps", fake_rumps)
     import helomi.desktop.menu as menu_module
 
+    class Windows:
+        def __init__(self) -> None:
+            self.snapshots = []
+
+        def update(self, snapshot) -> None:
+            self.snapshots.append(snapshot)
+
+        def show_conversation(self) -> None:
+            pass
+
+        def show_system_info(self) -> None:
+            pass
+
     class Bridge:
         def __init__(self, **_kwargs) -> None:
             self.shutdowns = 0
@@ -294,6 +429,7 @@ def test_menu_renders_status_retry_and_quit(
             self.shutdowns += 1
 
     monkeypatch.setattr(menu_module, "DesktopRuntime", Bridge)
+    monkeypatch.setattr(menu_module, "DesktopWindows", Windows)
     app = menu_module.MenuBarApp()
     app._snapshot = DesktopSnapshot(
         DesktopMode.FAILED,
@@ -312,6 +448,13 @@ def test_menu_renders_status_retry_and_quit(
         None,
         "Quit Helomi",
     ]
+    assert [getattr(item, "title", None) for item in items[:4]] == [
+        "Open Profile Data Folder",
+        "Conversation History…",
+        "System Info…",
+        None,
+    ]
+    assert items[0].callback is None
     app._quit(None)
     app._quit(None)
     assert app._runtime.shutdowns == 1
@@ -321,6 +464,36 @@ def test_menu_renders_status_retry_and_quit(
     assert not any(
         getattr(item, "title", None) == "Retry" for item in app._app.menu.items
     )
+
+    data_path = tmp_path / "data"
+    data_path.mkdir()
+    opened: list[str] = []
+    app._snapshot = DesktopSnapshot(DesktopMode.RUNNING, data_path=data_path)
+    app._render()
+    assert app._app.menu.items[0].callback is not None
+    monkeypatch.setattr(
+        menu_module,
+        "import_module",
+        lambda name: (
+            SimpleNamespace(
+                NSWorkspace=SimpleNamespace(
+                    sharedWorkspace=lambda: SimpleNamespace(
+                        openURL_=lambda url: opened.append(url)
+                    )
+                )
+            )
+            if name == "AppKit"
+            else SimpleNamespace(
+                NSURL=SimpleNamespace(fileURLWithPath_=lambda path: path)
+            )
+        ),
+    )
+    app._open_data_folder(None)
+    assert opened == [str(data_path)]
+    data_path.rmdir()
+    app._open_data_folder(None)
+    assert opened == [str(data_path)]
+    assert app._app.menu.items[0].callback is None
 
 
 def test_menu_run_drains_updates_and_quits_after_runtime_termination(
@@ -359,6 +532,16 @@ def test_menu_run_drains_updates_and_quits_after_runtime_termination(
     )
     monkeypatch.setitem(sys.modules, "rumps", fake_rumps)
     import helomi.desktop.menu as menu_module
+
+    monkeypatch.setattr(
+        menu_module,
+        "DesktopWindows",
+        lambda: SimpleNamespace(
+            update=lambda _snapshot: None,
+            show_conversation=lambda: None,
+            show_system_info=lambda: None,
+        ),
+    )
 
     class Bridge:
         terminated = True

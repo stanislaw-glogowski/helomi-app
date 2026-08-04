@@ -13,6 +13,11 @@ shows startup progress and failures, offers retry after a failed start, and
 shuts down through **Quit Helomi** or an explicit spoken request to close the
 application.
 
+**Conversation History…** shows the current run's live in-memory transcript.
+**System Info…** shows live signals, runtime configuration, and interaction
+timings. **Open Profile Data Folder** opens the active profile's `data/`
+directory when it exists.
+
 Each profile supplies the assistant identity, prompts, wake-word label and ONNX
 model path, conversation model roles, and speech-model overrides. See
 [Profiles](profiles.md) before editing one.
