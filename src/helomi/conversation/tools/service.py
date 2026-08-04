@@ -5,7 +5,7 @@ import json
 import os
 from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 import httpx
 from mcp.client.stdio import stdio_client
@@ -17,6 +17,10 @@ from helomi.resources import TextFileCatalog
 from mcp import ClientSession, StdioServerParameters
 
 from .domain import ToolCall, ToolDefinition, ToolResult
+
+
+def _open_stdio_error_sink() -> TextIO:
+    return open(os.devnull, "w", encoding="utf-8")
 
 
 class ToolService:
@@ -114,6 +118,7 @@ class ToolService:
         if self._stack is None:
             raise RuntimeError("Tool service is not started")
         if isinstance(endpoint, StdioMcpEndpoint):
+            errlog = self._stack.enter_context(_open_stdio_error_sink())
             transport = await self._stack.enter_async_context(
                 stdio_client(
                     StdioServerParameters(
@@ -121,7 +126,8 @@ class ToolService:
                         args=list(endpoint.args),
                         env=self._stdio_environment(endpoint),
                         cwd=str(self._repository_root()),
-                    )
+                    ),
+                    errlog=errlog,
                 )
             )
             read, write = transport

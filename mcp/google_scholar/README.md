@@ -24,8 +24,9 @@ uv sync
 .venv/bin/google-scholar-mcp
 ```
 
-The process communicates over standard input and output. Do not write regular
-output to its stdout.
+The process communicates over standard input and output. It deliberately emits
+no runtime logs or diagnostics to stdout or stderr; tool failures are returned
+through MCP responses.
 
 ## Connect from a Helomi profile override
 

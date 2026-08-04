@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import pytest
 from mcp import Client
@@ -22,6 +23,23 @@ class FakeService:
 
     def get_author(self, scholar_id: str, publications_limit: int) -> AuthorProfile:
         return AuthorProfile(scholar_id=scholar_id, name="Ada Lovelace")
+
+
+def test_stdio_entrypoint_disables_logging(monkeypatch: pytest.MonkeyPatch) -> None:
+    previous_disable_level = logging.root.manager.disable
+    observed: list[tuple[str, int]] = []
+
+    def run(*, transport: str) -> None:
+        observed.append((transport, logging.root.manager.disable))
+
+    monkeypatch.setattr(server.mcp, "run", run)
+    try:
+        server.main()
+    finally:
+        logging.disable(previous_disable_level)
+
+    assert server.mcp.settings.log_level == "CRITICAL"
+    assert observed == [("stdio", logging.CRITICAL)]
 
 
 def test_mcp_exposes_and_calls_both_tools(monkeypatch: pytest.MonkeyPatch) -> None:

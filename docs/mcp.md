@@ -49,6 +49,11 @@ temporary-directory variables) plus names explicitly mapped through
 `env_from_env`. Streamable HTTP headers are mapped similarly with
 `headers_from_env`.
 
+Internal stdio endpoints must keep stdout exclusive to MCP protocol messages
+and must not emit runtime logs or diagnostics to stdout or stderr. Helomi also
+discards child-process stderr instead of forwarding it into the CLI. Tool
+failures should be returned through the MCP protocol so they remain visible.
+
 ```yaml
 mcp:
   endpoints:

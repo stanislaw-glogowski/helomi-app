@@ -115,7 +115,8 @@ class TurnPlanner:
     _FILE_ACTION = re.compile(
         r"\b(?:create|write|save|replace|overwrite|read|open|list|show|"
         r"utw[óo]rz\w*|stw[óo]rz\w*|napisz|wpisz|zapisz|zast[ąa]p|"
-        r"nadpisz|odczytaj|przeczytaj|otw[óo]rz\w*|wymie[nń]\w*|poka[żz])\b",
+        r"nadpisz|odczytaj|przeczytaj|wrzu[cć]\w*|otw[óo]rz\w*|"
+        r"wymie[nń]\w*|poka[żz])\b",
         re.IGNORECASE,
     )
     _MEMORY_ACTION = re.compile(

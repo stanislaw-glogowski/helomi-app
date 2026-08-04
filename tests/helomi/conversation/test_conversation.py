@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
@@ -462,11 +463,12 @@ def test_tool_service_covers_remote_background_and_error_paths(
 def test_tool_service_uses_repository_root_for_stdio_endpoints(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     @asynccontextmanager
-    async def unavailable_stdio_client(parameters: object):
+    async def unavailable_stdio_client(parameters: object, *, errlog: object):
         captured["parameters"] = parameters
+        captured["errlog"] = errlog
         raise OSError("test endpoint is unavailable")
         yield
 
@@ -495,6 +497,9 @@ def test_tool_service_uses_repository_root_for_stdio_endpoints(
     assert repository_root == Path(__file__).parents[3]
     assert Path(parameters.cwd) == repository_root
     assert (repository_root / parameters.command.removeprefix("./")).is_file()
+    errlog = captured["errlog"]
+    assert errlog.name == os.devnull
+    assert errlog.closed is True
 
 
 def test_tool_service_warns_when_repository_root_is_unavailable(
@@ -926,15 +931,20 @@ def test_mlx_adapter_normalizes_gemma_tool_call_and_reasoning() -> None:
 def test_turn_planner_requires_tools_for_profile_data_and_memory() -> None:
     planner = TurnPlanner()
     file_plan = planner.deterministic_plan("Utwórz plik Dowcip")
+    contextual_file_plan = planner.deterministic_plan(
+        "I proszę cię, żebyś te informacje, które znalazłaś, wrzuciła do pliku ABC."
+    )
     memory_plan = planner.deterministic_plan("Remember that I prefer tea")
     poem_plan = planner.deterministic_plan("Napisz krótki wiersz")
     file_question_plan = planner.deterministic_plan("Opowiedz o pliku")
 
     assert file_plan is not None
+    assert contextual_file_plan is not None
     assert memory_plan is not None
     assert poem_plan is not None
     assert file_question_plan is not None
     assert file_plan.tool_policy is ToolPolicy.REQUIRED
+    assert contextual_file_plan.tool_policy is ToolPolicy.REQUIRED
     assert memory_plan.tool_policy is ToolPolicy.REQUIRED
     assert poem_plan.tool_policy is ToolPolicy.OPTIONAL
     assert file_question_plan.tool_policy is ToolPolicy.OPTIONAL

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from mcp.server import MCPServer
 
@@ -10,6 +11,7 @@ from .scholar import ScholarError, ScholarService
 mcp = MCPServer(
     "Google Scholar",
     description="Search Google Scholar publications and retrieve author profiles.",
+    log_level="CRITICAL",
 )
 _scholar = ScholarService()
 
@@ -47,4 +49,5 @@ async def get_author(
 
 def main() -> None:
     """Run the MCP server over standard input and output."""
+    logging.disable(logging.CRITICAL)
     mcp.run(transport="stdio")

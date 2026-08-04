@@ -4,9 +4,11 @@ Each directory under `mcp/` is an isolated MCP server project. Keep its runtime
 dependencies, `pyproject.toml`, lockfile, source, tests, and README inside that
 endpoint directory; do not add endpoint dependencies to Helomi's root project.
 
-For stdio servers, reserve stdout exclusively for MCP protocol messages. Send
-logs and diagnostics to stderr. Do not commit credentials, proxy configuration,
-local environments, caches, recordings, or generated artifacts.
+For stdio servers, reserve stdout exclusively for MCP protocol messages and do
+not emit runtime logs or diagnostics to stdout or stderr. Return operational
+failures through MCP tool errors or structured results. Do not commit
+credentials, proxy configuration, local environments, caches, recordings, or
+generated artifacts.
 
 Document local Helomi connections with relative commands rooted at `./mcp/` and
 place examples in a profile's `profile.override.yml`. Treat these internal
