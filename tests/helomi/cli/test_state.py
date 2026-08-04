@@ -217,12 +217,24 @@ def test_state_reduces_runtime_events_and_reports_modes() -> None:
     state = state.reduce_event(ReplyGenerationStarted(2))
     state = state.reduce_event(ReplyDraftUpdated(2, "Interrupted draft"))
     state = state.reduce_event(CancelReply("", 2))
-    interrupted = state.conversation.messages[-1]
-    assert isinstance(interrupted, AssistantMessage)
-    assert interrupted.draft == "Interrupted draft"
+    assert not any(
+        isinstance(message, AssistantMessage) and message.reply_id == 2
+        for message in state.conversation.messages
+    )
     state = state.reduce_event(ReplyGenerationStarted(3))
     state = state.reduce_event(CancelReply())
     assert state.generating_replies == frozenset()
+    assert not any(
+        isinstance(message, AssistantMessage) and message.reply_id == 3
+        for message in state.conversation.messages
+    )
+
+    state = state.reduce_event(ReplyGenerationStarted(4))
+    state = state.reduce_event(ReplyGenerationCompleted(4))
+    assert not any(
+        isinstance(message, AssistantMessage) and message.reply_id == 4
+        for message in state.conversation.messages
+    )
     state = state.reduce_event(ShutdownEvent())
     assert state.mode is RuntimeMode.SHUTTING_DOWN
     assert state.reduce_event(replace(ShutdownEvent())) == state

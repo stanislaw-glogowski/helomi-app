@@ -256,6 +256,8 @@ class ConversationState:
         message, index = self._assistant(reply_id)
         if message is None or message.interrupted:
             return self
+        if not message.phrases:
+            return self._remove_message(index)
         return self._replace_message(index, replace(message, draft=""))
 
     def interrupt_reply(self, reply_id: ReplyId | None) -> ConversationState:
@@ -266,6 +268,8 @@ class ConversationState:
         )
         if message is None:
             return self
+        if not message.phrases:
+            return self._remove_message(index)
         return self._replace_message(
             index,
             replace(message, interrupted=True),
@@ -294,6 +298,11 @@ class ConversationState:
     ) -> ConversationState:
         messages = list(self.messages)
         messages[index] = message
+        return replace(self, messages=tuple(messages))
+
+    def _remove_message(self, index: int) -> ConversationState:
+        messages = list(self.messages)
+        del messages[index]
         return replace(self, messages=tuple(messages))
 
     @staticmethod
