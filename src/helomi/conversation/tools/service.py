@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 from contextlib import AsyncExitStack
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -119,7 +120,7 @@ class ToolService:
                         command=endpoint.command,
                         args=list(endpoint.args),
                         env=self._stdio_environment(endpoint),
-                        cwd=str(self._text_files.root.parent),
+                        cwd=str(self._repository_root()),
                     )
                 )
             )
@@ -370,6 +371,19 @@ class ToolService:
             {child: os.environ[host] for child, host in endpoint.env_from_env.items()}
         )
         return inherited
+
+    @staticmethod
+    def _repository_root() -> Path:
+        source = Path(__file__).resolve()
+        for candidate in source.parents:
+            if (candidate / "pyproject.toml").is_file() and (
+                candidate / "mcp"
+            ).is_dir():
+                return candidate
+        raise RuntimeError(
+            "Helomi repository root could not be resolved; "
+            "relative MCP commands require a source checkout with an mcp directory"
+        )
 
     def _drain_background(self) -> None:
         while True:

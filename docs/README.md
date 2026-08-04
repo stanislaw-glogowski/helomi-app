@@ -6,6 +6,7 @@
 - [Usage](usage.md): profile selection, voice interaction, and interruption.
 - [Configuration](configuration.md): data root, settings, adapters, and validation.
 - [Profiles](profiles.md): profile layout and authoring.
+- [MCP endpoints](mcp.md): profile-connected tool servers.
 - [Troubleshooting](troubleshooting.md): common setup and runtime failures.
 - [Privacy and models](privacy-and-models.md): local-data and license boundaries.
 

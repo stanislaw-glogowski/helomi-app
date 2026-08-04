@@ -27,24 +27,44 @@ uv sync
 The process communicates over standard input and output. Do not write regular
 output to its stdout.
 
-## Connect from a Helomi profile
+## Connect from a Helomi profile override
 
-After `uv sync`, add this endpoint to the profile's `settings.yml`, replacing
-`/absolute/path/to/helomi-app` with the actual repository path:
+After `uv sync`, add this endpoint to the selected profile's local override:
+
+```text
+.helomi/locales/<language>/profiles/<profile-id>/profile.override.yml
+```
 
 ```yaml
 mcp:
   endpoints:
     - id: google_scholar
       transport: stdio
-      command: /absolute/path/to/helomi-app/mcp/google_scholar/.venv/bin/google-scholar-mcp
+      command: ./mcp/google_scholar/.venv/bin/google-scholar-mcp
       mode: immediate
       require_confirmation: false
 ```
 
+Helomi starts stdio MCP servers with the source checkout root as their working
+directory, so the relative `./mcp/...` command works regardless of the selected
+profile. This local-server convention requires a source checkout; use a command
+from `PATH` or an absolute executable path for installed deployments.
+
+`profile.override.yml` is deep-merged over `profile.yml`, but its
+`mcp.endpoints` list replaces the complete base list rather than appending to
+it. Keep the override local: profile directories ignore it by default.
+
 Helomi exposes the tools as `mcp__google_scholar__search_papers` and
-`mcp__google_scholar__get_author`. This README is the only profile-connection
-artifact added by this package; no Helomi profile is changed automatically.
+`mcp__google_scholar__get_author`.
+
+## Verify
+
+```sh
+UV_CACHE_DIR=/private/tmp/google-scholar-uv-cache uv run ruff check .
+UV_CACHE_DIR=/private/tmp/google-scholar-uv-cache uv run ruff format --check .
+UV_CACHE_DIR=/private/tmp/google-scholar-uv-cache uv run pyrefly check
+UV_CACHE_DIR=/private/tmp/google-scholar-uv-cache uv run pytest -q
+```
 
 ## Operational limits
 

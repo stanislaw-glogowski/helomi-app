@@ -101,6 +101,7 @@ for the data flow and lifecycle.
 - [Using Helomi](docs/usage.md)
 - [Configuration](docs/configuration.md)
 - [Creating a profile](docs/profiles.md)
+- [MCP endpoints](docs/mcp.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [All documentation](docs/README.md)
 - [Contributing](CONTRIBUTING.md)

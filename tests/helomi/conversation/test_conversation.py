@@ -1,6 +1,8 @@
 import asyncio
 import sys
 from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any, ClassVar
 
@@ -10,6 +12,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import ValidationError
 
 import helomi.conversation.model as model_module
+import helomi.conversation.tools.service as tool_service_module
 from helomi.common.events import EventBus, ShutdownEvent
 from helomi.conversation import run_conversation_worker
 from helomi.conversation.config import ConversationSettings
@@ -58,6 +61,7 @@ from helomi.conversation.profile import (
     ConversationPrompts,
     ConversationReactions,
     ProfilePreparation,
+    StdioMcpEndpoint,
 )
 from helomi.conversation.reply import (
     ConversationQuit,
@@ -69,6 +73,7 @@ from helomi.conversation.tools.domain import ToolCall, ToolDefinition
 from helomi.conversation.tools.service import ToolService
 from helomi.conversation.worker import Worker
 from helomi.resources import TextFileCatalog
+from mcp import StdioServerParameters
 from tests.support import FakeLanguageModel
 
 
@@ -451,6 +456,70 @@ def test_tool_service_covers_remote_background_and_error_paths(
     assert ToolService._environment_mapping({"Authorization": "HELOMI_TOKEN"}) == {
         "Authorization": "secret"
     }
+    asyncio.run(scenario())
+
+
+def test_tool_service_uses_repository_root_for_stdio_endpoints(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    @asynccontextmanager
+    async def unavailable_stdio_client(parameters: object):
+        captured["parameters"] = parameters
+        raise OSError("test endpoint is unavailable")
+        yield
+
+    async def scenario() -> None:
+        service = ToolService(
+            TextFileCatalog(tmp_path / "data"),
+            (
+                StdioMcpEndpoint(
+                    id="google_scholar",
+                    command="./mcp/google_scholar/.venv/bin/google-scholar-mcp",
+                ),
+            ),
+        )
+        await service.start()
+        try:
+            assert "test endpoint is unavailable" in service.warnings[0]
+        finally:
+            await service.stop()
+
+    monkeypatch.setattr(tool_service_module, "stdio_client", unavailable_stdio_client)
+    asyncio.run(scenario())
+
+    parameters = captured["parameters"]
+    assert isinstance(parameters, StdioServerParameters)
+    repository_root = ToolService._repository_root()
+    assert repository_root == Path(__file__).parents[3]
+    assert Path(parameters.cwd) == repository_root
+    assert (repository_root / parameters.command.removeprefix("./")).is_file()
+
+
+def test_tool_service_warns_when_repository_root_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def scenario() -> None:
+        service = ToolService(
+            TextFileCatalog(tmp_path / "data"),
+            (StdioMcpEndpoint(id="local", command="./mcp/example"),),
+        )
+        await service.start()
+        try:
+            assert service.warnings == (
+                "MCP endpoint 'local' is unavailable: Helomi repository root could "
+                "not be resolved; relative MCP commands require a source checkout "
+                "with an mcp directory",
+            )
+        finally:
+            await service.stop()
+
+    monkeypatch.setattr(
+        tool_service_module,
+        "__file__",
+        str(tmp_path / "site-packages" / "helomi" / "conversation" / "tools.py"),
+    )
     asyncio.run(scenario())
 
 
