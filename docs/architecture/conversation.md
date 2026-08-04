@@ -22,6 +22,14 @@ terminal UI. After a completed user reply, summarization is a separate idle
 maintenance run. A new activation, user turn, interruption, or shutdown cancels
 maintenance before starting further model work.
 
+Each selected profile owns a local SQLite memory database. Its LangGraph
+checkpointer restores the profile's one stable conversation thread after restart;
+after each successful idle summary, the graph retains only the configured recent
+messages and compacts superseded checkpoints. A separate keyed-fact table accepts
+only explicit remember/list/forget tool requests. SQLite FTS5 retrieves up to five
+facts relevant to the current user turn and supplies them as system context; no
+automatic fact extraction runs.
+
 `TurnPlanner` first handles empty input, exact cancellation phrases, explicit
 response requests, explicit detailed requests, and standalone questions locally,
 including common punctuation-free Polish forms produced by transcription. It sends
@@ -52,6 +60,13 @@ subprocesses, filesystem watching, and job execution remain outside graph state;
 only the conversational result is checkpointed.
 Completed background summaries use protected delivery: Helomi waits for the
 current reply to finish and does not let barge-in interrupt the summary.
+
+Model adapters normalize provider-specific reasoning and tool-call syntax before
+it reaches the graph. Explicit file and durable-memory requests require a valid
+tool call: Helomi buffers the candidate response, retries one malformed response
+with a strict instruction, and never exposes protocol markers or accepts prose
+as evidence that a side effect succeeded. MLX uses its tokenizer-native parser
+for model families such as Gemma; LangChain uses provider-native tool calls.
 
 When speech detects barge-in, `CancelReply` cancels the active task, drains
 queued inputs, and records the actually delivered prefix as context for the next

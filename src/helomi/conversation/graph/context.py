@@ -7,6 +7,7 @@ from ..config import ConversationSettings
 from ..profile import ConversationProfile
 
 if TYPE_CHECKING:
+    from ..memory import ConversationMemory
     from ..tools.service import ToolService
 
 type ConversationRuntime = Runtime[ConversationContext]
@@ -20,6 +21,7 @@ class ConversationContext:
     summary_prompt: str
     acknowledgement_delay: float
     wait_reaction_delay: float
+    memory: ConversationMemory | None = None
     tools: ToolService | None = None
 
     @staticmethod
@@ -27,6 +29,7 @@ class ConversationContext:
         profile: ConversationProfile,
         settings: ConversationSettings | None = None,
         tools: ToolService | None = None,
+        memory: ConversationMemory | None = None,
     ) -> ConversationContext:
         settings = settings or ConversationSettings()
         return ConversationContext(
@@ -36,5 +39,6 @@ class ConversationContext:
             summary_prompt=profile.prompts.summary,
             acknowledgement_delay=settings.acknowledgement_delay,
             wait_reaction_delay=settings.wait_reaction_delay,
+            memory=memory,
             tools=tools,
         )

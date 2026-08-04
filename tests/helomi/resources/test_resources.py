@@ -119,6 +119,18 @@ def test_local_store_loads_profile_settings_and_models(tmp_path: Path) -> None:
     assert store.ensure_model_path("nested", "model.onnx") == model_path
 
 
+def test_local_store_scopes_data_and_memory_to_a_profile(tmp_path: Path) -> None:
+    profile_path = write_profile(tmp_path, "first")
+    write_profile(tmp_path, "second")
+    store = LocalStore(tmp_path)
+
+    assert store.text_files("first").root == profile_path / "data"
+    assert store.memory_path("first") == profile_path / "db" / "memory.db"
+    assert store.memory_path("first") != store.memory_path("second")
+    with pytest.raises(ValueError, match="directory name"):
+        store.memory_path("../second")
+
+
 def test_profile_can_omit_wakeword_for_always_listening_mode(tmp_path: Path) -> None:
     profile_path = write_profile(tmp_path)
     profile_file = profile_path / "profile.yml"
@@ -563,6 +575,12 @@ def test_text_file_catalog_contains_paths_and_enforces_write_modes(
                 catalog.read("/tmp/outside.txt")
             with pytest.raises(ValueError, match=r"\.txt extension"):
                 catalog.read("notes/today.md")
+            assert catalog.write("Żółć/Dówcip.TXT", "joke", mode="create") == (
+                "zolc/dowcip.txt"
+            )
+            assert catalog.read("żółć/dówcip") == "joke"
+            with pytest.raises(ValueError, match="supported characters"):
+                catalog.read("你好")
             with pytest.raises(ValueError, match="stay inside"):
                 catalog.read("../outside.txt")
         finally:

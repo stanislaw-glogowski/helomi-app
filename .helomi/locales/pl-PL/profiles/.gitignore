@@ -6,3 +6,5 @@
 !lucy/
 !viki/
 */profile.override.yml
+*/data/
+*/db/

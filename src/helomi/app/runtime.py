@@ -14,6 +14,10 @@ from helomi.conversation import (
     QuitRequested,
     run_conversation_worker,
 )
+from helomi.conversation.memory import (
+    InMemoryConversationMemory,
+    SqliteConversationMemory,
+)
 from helomi.conversation.tools.service import ToolService
 from helomi.resources import LocalStore, Profile, ProfileEntry, Settings
 from helomi.speech import run_speech_worker
@@ -193,17 +197,28 @@ async def _run_workers(
                 )
             )
 
+    memory = (
+        SqliteConversationMemory(store.memory_path(profile.id))
+        if hasattr(store, "memory_path")
+        else InMemoryConversationMemory()
+    )
+    await memory.start()
     tools = (
         ToolService(
-            store.text_files(),
+            store.text_files(profile.id),
             profile.mcp.endpoints,
+            memory=memory,
             on_background_result=background_completed,
         )
         if hasattr(store, "text_files")
         else None
     )
-    if tools is not None:
-        await tools.start()
+    try:
+        if tools is not None:
+            await tools.start()
+    except BaseException:
+        await memory.stop()
+        raise
     quit_ready = asyncio.Event()
     quit_coordinator = asyncio.create_task(
         _shutdown_after_quit(event_bus, quit_ready),
@@ -219,6 +234,7 @@ async def _run_workers(
                     settings.conversation,
                     start_event,
                     tools,
+                    memory,
                 )
             )
             tasks.create_task(
@@ -236,6 +252,7 @@ async def _run_workers(
             await quit_coordinator
         if tools is not None:
             await tools.stop()
+        await memory.stop()
 
 
 async def _shutdown_after_quit(event_bus: EventBus, ready: asyncio.Event) -> None:

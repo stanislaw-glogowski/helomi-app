@@ -47,6 +47,7 @@ details or recurring benchmark measurements.
 | [0005](0005-lazy-local-model-adapters.md) | Lazy local model adapters | 2026-08-03 |
 | [0006](0006-natural-voice-conversation-policy.md) | Natural voice conversation policy | 2026-08-03 |
 | [0007](0007-reusable-application-runtime-boundary.md) | Reusable application runtime boundary | 2026-08-03 |
+| [0009](0009-profile-scoped-sqlite-memory.md) | Profile-scoped SQLite memory | 2026-08-04 |
 
 ### Draft
 

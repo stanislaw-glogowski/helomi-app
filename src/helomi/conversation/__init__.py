@@ -20,13 +20,21 @@ from .events import (
     ReplyPhrase,
     UserTurn,
 )
-from .graph import ResponseDepth, TurnIntent, TurnPlan, TurnPlanner
+from .graph import ResponseDepth, ToolPolicy, TurnIntent, TurnPlan, TurnPlanner
+from .memory import (
+    ConversationMemory,
+    InMemoryConversationMemory,
+    MemoryFact,
+    SqliteConversationMemory,
+)
 from .model import (
     ConversationMessage,
     ConversationRole,
     LanguageModelChunk,
+    LanguageModelProtocolError,
     LanguageModelRequest,
     LanguageModelRole,
+    ToolChoice,
 )
 from .profile import ConversationProfile, ConversationReactions
 from .reply import ConversationTextChunk
@@ -38,6 +46,7 @@ __all__ = [
     "BackgroundResult",
     "CancelReply",
     "ConversationActivated",
+    "ConversationMemory",
     "ConversationMessage",
     "ConversationProfile",
     "ConversationReactions",
@@ -46,9 +55,12 @@ __all__ = [
     "ConversationSettings",
     "ConversationTextChunk",
     "GenerateReply",
+    "InMemoryConversationMemory",
     "LanguageModelChunk",
+    "LanguageModelProtocolError",
     "LanguageModelRequest",
     "LanguageModelRole",
+    "MemoryFact",
     "PhraseId",
     "QuitRequested",
     "ReplyChunk",
@@ -58,6 +70,9 @@ __all__ = [
     "ReplyId",
     "ReplyPhrase",
     "ResponseDepth",
+    "SqliteConversationMemory",
+    "ToolChoice",
+    "ToolPolicy",
     "TurnIntent",
     "TurnPlan",
     "TurnPlanner",
@@ -72,10 +87,10 @@ async def run_conversation_worker(
     settings: ConversationSettings,
     start_event: asyncio.Event | None = None,
     tools: ToolService | None = None,
+    memory: ConversationMemory | None = None,
 ) -> None:
-    from langgraph.checkpoint.memory import InMemorySaver
-
     from .graph import ConversationContext, ConversationGraph, ConversationNodes
+    from .memory import InMemoryConversationMemory
     from .model import LanguageModelService, get_language_model
     from .profile import ProfilePreparation
     from .worker import Worker
@@ -85,12 +100,13 @@ async def run_conversation_worker(
         settings.language_model,
         require_classifier=True,
     )
-    context = ConversationContext.from_profile(profile, settings, tools)
+    memory = memory or InMemoryConversationMemory()
+    context = ConversationContext.from_profile(profile, settings, tools, memory)
     async with LanguageModelService(language_model) as service:
         preparation = ProfilePreparation(service, profile.reactions)
         graph = ConversationGraph(
             nodes=ConversationNodes(service, profile_preparation=preparation),
-            checkpointer=InMemorySaver(),
+            checkpointer=memory.checkpointer,
         )
         await Worker(
             event_bus=event_bus,
@@ -98,4 +114,5 @@ async def run_conversation_worker(
             context=context,
             profile_preparation=preparation,
             start_event=start_event,
+            memory=memory,
         ).run()

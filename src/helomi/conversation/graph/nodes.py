@@ -4,22 +4,39 @@ from contextlib import suppress
 from time import perf_counter
 from typing import Any
 
-from langchain.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
+from langchain.messages import (
+    AIMessage,
+    AnyMessage,
+    HumanMessage,
+    RemoveMessage,
+    SystemMessage,
+)
 from langchain_core.prompts import PromptTemplate
 from langgraph.config import get_stream_writer
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from loguru import logger
 
 from ..model import (
     ConversationMessage,
     ConversationRole,
+    LanguageModelProtocolError,
     LanguageModelRequest,
     LanguageModelRole,
     LanguageModelService,
+    ToolChoice,
 )
 from ..profile import ProfilePreparation
 from ..reply import ConversationQuit, ConversationTextChunk, PreparedReactionKind
 from ..tools.domain import ToolCall, ToolResult
 from .context import ConversationContext, ConversationRuntime
-from .routing import ReactionPolicy, ResponseDepth, TurnIntent, TurnPlan, TurnPlanner
+from .routing import (
+    ReactionPolicy,
+    ResponseDepth,
+    ToolPolicy,
+    TurnIntent,
+    TurnPlan,
+    TurnPlanner,
+)
 from .state import ConversationState
 
 
@@ -95,11 +112,17 @@ class ConversationNodes:
             ),
             "",
         )
+        memories = (
+            await context.memory.search(user_text) if context.memory is not None else ()
+        )
+        memory_context = self._memory_context(memories)
         if pending := state.get("pending_tool"):
             return await self._resolve_confirmation(pending, user_text, context)
         plan = self._turn_planner.deterministic_plan(user_text)
         if plan is None:
-            plan = await self._classify(state, context, summary, messages)
+            plan = await self._classify(
+                state, context, summary, messages, memory_context
+            )
         if plan.intent is TurnIntent.QUIT:
             self._emit_quit()
             return {"messages": [AIMessage("Quit requested.")]}
@@ -120,17 +143,27 @@ class ConversationNodes:
             )
         }
         reaction_policy = plan.reaction
+        repair_attempted = False
         for _ in range(8):
+            tool_required = plan.tool_policy is ToolPolicy.REQUIRED and bool(
+                available_tools
+            )
             request = LanguageModelRequest(
                 role,
                 self._request_messages(
                     state,
                     context,
                     summary,
-                    [SystemMessage(content=instruction), *messages, *tool_context],
+                    [
+                        SystemMessage(content=instruction),
+                        *messages,
+                        *tool_context,
+                    ],
+                    memory_context,
                 ),
                 cache_prefix=self._cache_prefix(context),
                 tools=tuple(available_tools.values()),
+                tool_choice=(ToolChoice.REQUIRED if tool_required else ToolChoice.AUTO),
             )
             reaction_delay = None
             if reaction_policy is ReactionPolicy.ACKNOWLEDGE:
@@ -139,14 +172,44 @@ class ConversationNodes:
             elif reaction_policy is ReactionPolicy.WAIT:
                 elapsed = perf_counter() - reply_started
                 reaction_delay = max(0.0, context.wait_reaction_delay - elapsed)
-            response, calls = await self._stream_visible(
-                request,
-                reaction_policy=reaction_policy,
-                reaction_delay=reaction_delay,
-            )
+            try:
+                response, calls = await self._stream_visible(
+                    request,
+                    reaction_policy=reaction_policy,
+                    reaction_delay=reaction_delay,
+                    deliver=not tool_required,
+                )
+            except LanguageModelProtocolError as error:
+                logger.warning("Model tool protocol error: {}", type(error).__name__)
+                if tool_required and not repair_attempted:
+                    repair_attempted = True
+                    tool_context.append(
+                        SystemMessage(
+                            content=(
+                                "The previous response was invalid. Return exactly one "
+                                "available tool call and no prose."
+                            )
+                        )
+                    )
+                    reaction_policy = ReactionPolicy.NONE
+                    continue
+                return self._tool_protocol_failure(tool_history)
             reaction_policy = ReactionPolicy.NONE
             if not calls:
-                return {"messages": [*tool_history, AIMessage(response)]}
+                if tool_required:
+                    if not repair_attempted:
+                        repair_attempted = True
+                        tool_context.append(
+                            SystemMessage(
+                                content=(
+                                    "Return exactly one available tool call "
+                                    "and no prose."
+                                )
+                            )
+                        )
+                        continue
+                    return self._tool_protocol_failure(tool_history)
+                return {"messages": [AIMessage(response)]}
             if context.tools is None:
                 return {"messages": [AIMessage("I cannot use tools right now.")]}
             background = False
@@ -185,7 +248,6 @@ class ConversationNodes:
                     tool_history.append(AIMessage(content="Quit requested."))
                     self._emit_quit()
                     return {"messages": tool_history}
-                tool_history.append(AIMessage(content=result_message))
                 tool_context.append(SystemMessage(content=result_message))
                 if not result.is_error:
                     available_tools.clear()
@@ -256,8 +318,16 @@ class ConversationNodes:
         context: ConversationContext,
         summary: str,
         messages: list[AnyMessage],
+        memory_context: SystemMessage | None = None,
     ) -> TurnPlan:
         classification = ""
+        tool_catalog = "\n".join(
+            f"- {tool.name}: {tool.description}"
+            for tool in (context.tools.definitions if context.tools is not None else ())
+        )
+        classifier_prompt = self._turn_planner.CLASSIFICATION_PROMPT
+        if tool_catalog:
+            classifier_prompt = f"{classifier_prompt}\nAvailable tools:\n{tool_catalog}"
         try:
             async for chunk in self._language_model.generate(
                 LanguageModelRequest(
@@ -267,11 +337,10 @@ class ConversationNodes:
                         context,
                         summary,
                         [
-                            SystemMessage(
-                                content=self._turn_planner.CLASSIFICATION_PROMPT
-                            ),
+                            SystemMessage(content=classifier_prompt),
                             *messages,
                         ],
+                        memory_context,
                     ),
                     cache_prefix=self._cache_prefix(context),
                 )
@@ -298,7 +367,7 @@ class ConversationNodes:
         self,
         state: ConversationState,
         runtime: ConversationRuntime,
-    ) -> dict[str, str]:
+    ) -> dict[str, Any]:
         context = runtime.context
         summary_prompt = PromptTemplate.from_template(context.summary_prompt).format(
             conversation_summary=state.get("summary", "") or "No previous summary.",
@@ -319,7 +388,12 @@ class ConversationNodes:
             )
         ):
             content += chunk.content
-        return {"summary": content, "delivery_context": ""}
+        recent = state["messages"][-context.recent_messages :]
+        return {
+            "summary": content,
+            "delivery_context": "",
+            "messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *recent],
+        }
 
     async def background_result(
         self,
@@ -354,6 +428,7 @@ class ConversationNodes:
         request: LanguageModelRequest,
         reaction_policy: ReactionPolicy = ReactionPolicy.NONE,
         reaction_delay: float | None = None,
+        deliver: bool = True,
     ) -> tuple[str, tuple[ToolCall, ...]]:
         writer = get_stream_writer()
         content = ""
@@ -391,16 +466,22 @@ class ConversationNodes:
                 await stream.aclose()
                 raise
             content += chunk.content
-            if chunk.content:
+            if deliver and chunk.content:
                 writer(ConversationTextChunk(chunk.content))
             calls.extend(chunk.tool_calls)
 
         async for chunk in stream:
             content += chunk.content
-            if chunk.content:
+            if deliver and chunk.content:
                 writer(ConversationTextChunk(chunk.content))
             calls.extend(chunk.tool_calls)
         return content, tuple(calls)
+
+    @staticmethod
+    def _tool_protocol_failure(tool_history: list[AnyMessage]) -> dict[str, Any]:
+        content = "I could not complete the tool request."
+        get_stream_writer()(ConversationTextChunk(content))
+        return {"messages": [*tool_history, AIMessage(content)]}
 
     def _next_reaction(self, policy: ReactionPolicy) -> str | None:
         if self._profile_preparation is None:
@@ -427,6 +508,7 @@ class ConversationNodes:
         context: ConversationContext,
         summary: str,
         messages: list[AnyMessage],
+        memory_context: SystemMessage | None = None,
     ) -> tuple[ConversationMessage, ...]:
         return cls._domain_messages(
             [
@@ -442,6 +524,7 @@ class ConversationNodes:
                     content="Conversation summary: "
                     f"{summary or 'No previous conversation.'}"
                 ),
+                *([memory_context] if memory_context is not None else []),
                 *cls._delivery_messages(state),
                 *messages,
             ]
@@ -494,3 +577,16 @@ class ConversationNodes:
     def _delivery_messages(state: ConversationState) -> list[SystemMessage]:
         context = state.get("delivery_context", "")
         return [SystemMessage(content=context)] if context else []
+
+    @staticmethod
+    def _memory_context(memories: tuple[Any, ...]) -> SystemMessage | None:
+        if not memories:
+            return None
+        content = "\n".join(f"- {memory.key}: {memory.content}" for memory in memories)
+        return SystemMessage(
+            content=(
+                "Relevant durable profile memories follow. Use them as user-provided "
+                "context, but do not claim more certainty than they support:\n"
+                f"{content}"
+            )
+        )

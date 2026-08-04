@@ -10,8 +10,10 @@ from ..config import (
 from ..domain import (
     ConversationRole,
     LanguageModelChunk,
+    LanguageModelProtocolError,
     LanguageModelRequest,
     LanguageModelRole,
+    ToolChoice,
 )
 from ..ports import LanguageModel
 
@@ -58,6 +60,9 @@ class LangChainLanguageModel(LanguageModel):
         ]
         model = self._model(request.role)
         if request.tools:
+            bind_kwargs: dict[str, Any] = {}
+            if request.tool_choice is ToolChoice.REQUIRED:
+                bind_kwargs["tool_choice"] = "any"
             model = model.bind_tools(
                 [
                     {
@@ -69,11 +74,12 @@ class LangChainLanguageModel(LanguageModel):
                         },
                     }
                     for tool in request.tools
-                ]
+                ],
+                **bind_kwargs,
             )
         calls: list[ToolCall] = []
         for chunk in model.stream(messages):
-            if chunk.text:
+            if chunk.text and request.tool_choice is not ToolChoice.REQUIRED:
                 yield LanguageModelChunk(chunk.text)
             for call in getattr(chunk, "tool_calls", ()):
                 if call.get("name") and call.get("id"):
@@ -86,6 +92,8 @@ class LangChainLanguageModel(LanguageModel):
                     )
         if calls:
             yield LanguageModelChunk(tool_calls=tuple(calls))
+        elif request.tool_choice is ToolChoice.REQUIRED:
+            raise LanguageModelProtocolError("Required tool call was not produced")
 
     def _model(self, role: LanguageModelRole) -> Any:
         if model := self._models.get(role):

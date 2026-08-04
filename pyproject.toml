@@ -13,7 +13,7 @@ dependencies = [
     "langgraph>=1.2.10",
     "loguru>=0.7.3",
     "mlx-audio>=0.4.7",
-    "mlx-lm>=0.30.6",
+    "mlx-lm>=0.31.2",
     "mlx>=0.32.0",
     "mcp>=1.28,<2",
     "numpy>=2.5.1",
@@ -29,6 +29,7 @@ dependencies = [
     "soxr>=1.0.0",
     "textual>=8.2.8",
     "watchfiles>=1.2.0",
+    "langgraph-checkpoint-sqlite>=3.0.1",
 ]
 
 [project.scripts]

@@ -1,14 +1,22 @@
 import copy
+import json
+import re
 from collections import OrderedDict
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 from huggingface_hub.utils import disable_progress_bars
 
-from ...tools.domain import ToolCall
+from ...tools.domain import ToolCall, ToolDefinition
 from ..config import MLXModelProfile, MLXModelsProfile
-from ..domain import LanguageModelChunk, LanguageModelRequest, LanguageModelRole
+from ..domain import (
+    LanguageModelChunk,
+    LanguageModelProtocolError,
+    LanguageModelRequest,
+    LanguageModelRole,
+    ToolChoice,
+)
 from ..ports import LanguageModel
 
 
@@ -25,7 +33,9 @@ class _VisibleTextFilter:
     _START = "<|channel>"
     _END = "<channel|>"
 
-    def __init__(self) -> None:
+    def __init__(self, start: str = _START, end: str = _END) -> None:
+        self._start = start
+        self._end = end
         self._pending = ""
         self._resolved = False
 
@@ -33,15 +43,15 @@ class _VisibleTextFilter:
         if self._resolved:
             return text
         self._pending += text
-        if self._START.startswith(self._pending):
+        if self._start.startswith(self._pending):
             return ""
-        if not self._pending.startswith(self._START):
+        if not self._pending.startswith(self._start):
             self._resolved = True
             visible, self._pending = self._pending, ""
             return visible
-        if self._END not in self._pending:
+        if self._end not in self._pending:
             return ""
-        _, visible = self._pending.split(self._END, 1)
+        _, visible = self._pending.split(self._end, 1)
         self._pending = ""
         self._resolved = True
         return visible.lstrip("\n")
@@ -49,10 +59,24 @@ class _VisibleTextFilter:
     def finish(self) -> str:
         pending, self._pending = self._pending, ""
         self._resolved = True
-        return "" if pending.startswith(self._START) else pending
+        return "" if pending.startswith(self._start) else pending
+
+
+_GENERIC_THINKING_BLOCK = re.compile(
+    r"<(?:thinking|think|thought)>.*?</(?:thinking|think|thought)?>",
+    re.IGNORECASE | re.DOTALL,
+)
+_GENERIC_THINKING_OPEN = re.compile(r"<(?:thinking|think|thought)>", re.IGNORECASE)
+_GENERIC_THINKING_CLOSE = re.compile(r"</(?:thinking|think|thought)?>", re.IGNORECASE)
 
 
 class MLXLanguageModel(LanguageModel):
+    _TOOL_ALIASES: ClassVar[dict[str, str]] = {
+        "default_list_files": "files_list",
+        "default_read_file": "file_read",
+        "default_write_file": "file_write",
+    }
+
     def __init__(self, profiles: MLXModelsProfile) -> None:
         super().__init__()
         self._profiles = profiles
@@ -146,53 +170,170 @@ class MLXLanguageModel(LanguageModel):
                 )
                 if response.text
             )
-            parser = getattr(loaded.tokenizer, "tool_parser", None)
-            if parser is not None:
-                try:
-                    parsed = parser(content, tool_schemas)
-                    parsed_calls = parsed if isinstance(parsed, list) else [parsed]
-                    yield LanguageModelChunk(
-                        tool_calls=tuple(
-                            ToolCall(
-                                id=self._tool_call_id(call, index),
-                                name=str(call["name"]),
-                                arguments=dict(call["arguments"]),
-                            )
-                            for index, call in enumerate(parsed_calls)
-                        )
-                    )
-                    return
-                except KeyError, TypeError, ValueError:
-                    pass
-            visible = self._visible_text(content)
+            if calls := self._tool_calls(
+                content, loaded.tokenizer, tool_schemas, request.tools
+            ):
+                yield LanguageModelChunk(tool_calls=calls)
+                return
+            visible = self._visible_text(content, loaded.tokenizer)
+            if request.tool_choice is ToolChoice.REQUIRED:
+                raise LanguageModelProtocolError("Required tool call was not produced")
             if visible:
                 yield LanguageModelChunk(visible)
             return
-        visible = _VisibleTextFilter()
-        for response in self._stream_generate(
-            loaded.model,
-            loaded.tokenizer,
-            prompt=prompt_value,
-            max_tokens=profile.max_tokens,
-            sampler=sampler,
-            prompt_cache=prompt_cache,
-        ):
-            if response.text:
-                if content := visible.feed(response.text):
-                    yield LanguageModelChunk(content)
-        if content := visible.finish():
-            yield LanguageModelChunk(content)
+        content = "".join(
+            response.text
+            for response in self._stream_generate(
+                loaded.model,
+                loaded.tokenizer,
+                prompt=prompt_value,
+                max_tokens=profile.max_tokens,
+                sampler=sampler,
+                prompt_cache=prompt_cache,
+            )
+            if response.text
+        )
+        if visible := self._visible_text(content, loaded.tokenizer):
+            yield LanguageModelChunk(visible)
 
     @staticmethod
-    def _visible_text(content: str) -> str:
-        visible = _VisibleTextFilter()
-        return f"{visible.feed(content)}{visible.finish()}"
+    def _visible_text(content: str, tokenizer: Any | None = None) -> str:
+        """Remove model protocol channels from a complete response."""
+        start = getattr(tokenizer, "think_start", None) or _VisibleTextFilter._START
+        end = getattr(tokenizer, "think_end", None) or _VisibleTextFilter._END
+        if start in content:
+            if end not in content:
+                raise LanguageModelProtocolError("Unclosed model reasoning channel")
+            content = re.sub(
+                rf"(?:^|\s)thought\s*{re.escape(start)}.*?{re.escape(end)}",
+                " ",
+                content,
+                flags=re.DOTALL,
+            )
+            content = re.sub(
+                rf"{re.escape(start)}.*?{re.escape(end)}",
+                " ",
+                content,
+                flags=re.DOTALL,
+            )
+        content = _GENERIC_THINKING_BLOCK.sub(" ", content)
+        if _GENERIC_THINKING_OPEN.search(content) or _GENERIC_THINKING_CLOSE.search(
+            content
+        ):
+            raise LanguageModelProtocolError("Unclosed model thinking block")
+        if "<|tool_call" in content or "<tool_call|>" in content:
+            raise LanguageModelProtocolError("Unparsed model tool-call syntax")
+        return content.strip()
+
+    def _tool_calls(
+        self,
+        content: str,
+        tokenizer: Any,
+        tool_schemas: list[dict[str, Any]],
+        tools: tuple[ToolDefinition, ...],
+    ) -> tuple[ToolCall, ...]:
+        """Normalize tokenizer-native and legacy tool-call formats."""
+        parser = getattr(tokenizer, "tool_parser", None)
+        if parser is not None:
+            try:
+                parsed = parser(content, tool_schemas)
+                parsed_calls = parsed if isinstance(parsed, list) else [parsed]
+                if calls := self._validated_calls(parsed_calls, tools):
+                    return calls
+            except KeyError, TypeError, ValueError, json.JSONDecodeError:
+                pass
+        return self._fallback_tool_calls(content, tools)
+
+    def _validated_calls(
+        self,
+        parsed_calls: list[dict[str, Any]],
+        tools: tuple[ToolDefinition, ...],
+    ) -> tuple[ToolCall, ...]:
+        available = {tool.name for tool in tools}
+        calls: list[ToolCall] = []
+        for index, call in enumerate(parsed_calls):
+            name = self._TOOL_ALIASES.get(str(call["name"]), str(call["name"]))
+            arguments = call["arguments"]
+            if name not in available or not isinstance(arguments, dict):
+                return ()
+            calls.append(
+                ToolCall(
+                    id=self._tool_call_id(call, index), name=name, arguments=arguments
+                )
+            )
+        return tuple(calls)
 
     def _tool_call_id(self, call: dict[str, Any], index: int) -> str:
         if call_id := call.get("id"):
             return str(call_id)
         self._tool_call_sequence += 1
         return f"mlx-{self._tool_call_sequence}-{index}"
+
+    def _fallback_tool_calls(
+        self,
+        content: str,
+        tools: tuple[ToolDefinition, ...],
+    ) -> tuple[ToolCall, ...]:
+        """Parse known Qwen tool-call wire formats when tokenizer parsing fails."""
+        available = {tool.name for tool in tools}
+        calls: list[ToolCall] = []
+        decoder = json.JSONDecoder()
+        for match in re.finditer(r"tool_call:([a-zA-Z0-9_-]+)\s*\(", content):
+            name = match.group(1)
+            if name not in available:
+                continue
+            try:
+                arguments, end = decoder.raw_decode(content[match.end() :])
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(arguments, dict):
+                continue
+            if not content[match.end() + end :].lstrip().startswith(")"):
+                continue
+            calls.append(
+                ToolCall(
+                    id=self._tool_call_id({}, len(calls)),
+                    name=name,
+                    arguments=arguments,
+                )
+            )
+        tagged_start = "<|tool_call|>call:"
+        tagged_end = "<tool_call|>"
+        offset = 0
+        while (start := content.find(tagged_start, offset)) >= 0:
+            name_start = start + len(tagged_start)
+            arguments_start = content.find("{", name_start)
+            end = content.find(tagged_end, name_start)
+            if arguments_start < 0 or end < 0 or arguments_start >= end:
+                offset = name_start
+                continue
+            raw_name = content[name_start:arguments_start].strip()
+            name = self._TOOL_ALIASES.get(raw_name, raw_name)
+            arguments = self._tagged_arguments(content[arguments_start:end])
+            if name in available and arguments is not None:
+                calls.append(
+                    ToolCall(
+                        id=self._tool_call_id({}, len(calls)),
+                        name=name,
+                        arguments=arguments,
+                    )
+                )
+            offset = end + len(tagged_end)
+        return tuple(calls)
+
+    @staticmethod
+    def _tagged_arguments(value: str) -> dict[str, Any] | None:
+        """Decode Qwen's JSON-like object with its known unquoted argument keys."""
+        normalized = re.sub(
+            r"([,{]\s*)(content|mode|path)\s*:",
+            r'\1"\2":',
+            value.strip(),
+        )
+        try:
+            arguments = json.loads(normalized)
+        except json.JSONDecodeError:
+            return None
+        return arguments if isinstance(arguments, dict) else None
 
     def _model(self, role: LanguageModelRole) -> _LoadedModel:
         profile = self._profile(role)

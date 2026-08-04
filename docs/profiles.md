@@ -13,12 +13,14 @@ locales/<language>/profiles/<profile-id>/
 │   ├── system.md
 │   ├── opening.md
 │   └── summary.md
-└── reactions/
+├── reactions/
     ├── wake.txt
     ├── acknowledge.txt
     ├── wait.txt
     ├── background.txt
     └── quit.txt
+├── data/                         # optional local text-file tool data
+└── db/memory.db                  # local conversation and durable facts
 ```
 
 All eight content files are required. Prompt paths are fixed and reaction files
@@ -91,11 +93,20 @@ endpoints unless they are intentionally versioned defaults. Add an override to
 
 ## Tools and MCP
 
-Helomi always exposes only local text-file tools and a quit action. Files are
-limited to `<data-root>/data/**/*.txt`; writing requires an explicit `create`
+Helomi always exposes only local text-file tools, memory tools, and a quit action.
+Files are limited to `<data-root>/locales/<language>/profiles/<profile-id>/data/**/*.txt`; writing requires an explicit `create`
 or `replace` request. Tool calls may omit the `.txt` extension, so `test` resolves
-to `test.txt`; any other extension is rejected. The directory is watched so
+to `test.txt`. Every path is canonicalized to lowercase ASCII: Polish diacritics
+are transliterated (`żółć` becomes `zolc`) and unsupported characters are removed;
+an empty resulting path is rejected. Any other extension is rejected. The directory is watched so
 external changes appear in the file catalog without restarting the app.
+
+Each profile keeps its resumable conversation state and explicit durable facts in
+its local `db/memory.db`. Helomi searches up to five relevant facts for a user turn.
+It saves, lists, or deletes facts only through explicit `memory_remember`,
+`memory_list`, and `memory_forget` requests; it does not automatically extract
+facts from conversation. Profile data and SQLite files are intentionally ignored
+by the supplied profile `.gitignore` files.
 
 `mcp.endpoints` is optional. An endpoint is either `streamable_http` with a URL
 and optional request headers read from environment variables, or `stdio` with a

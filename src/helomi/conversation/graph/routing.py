@@ -23,11 +23,17 @@ class ReactionPolicy(StrEnum):
     WAIT = "wait"
 
 
+class ToolPolicy(StrEnum):
+    OPTIONAL = "optional"
+    REQUIRED = "required"
+
+
 @dataclass(frozen=True, slots=True)
 class TurnPlan:
     intent: TurnIntent
     depth: ResponseDepth
     reaction: ReactionPolicy = ReactionPolicy.NONE
+    tool_policy: ToolPolicy = ToolPolicy.OPTIONAL
 
 
 class TurnPlanner:
@@ -38,7 +44,9 @@ class TurnPlanner:
         "exactly one label: NO_RESPONSE for a listener acknowledgement that needs no "
         "answer, CLARIFY when one concise clarification question is needed, BRIEF for "
         "a 1-2 sentence answer, STANDARD for a 2-4 sentence answer, or DETAILED for "
-        "a comprehensive answer. Never return CANCEL."
+        "a comprehensive answer, or TOOL_REQUIRED when the user explicitly asks "
+        "to use an available tool or requires external state/a side effect. Never "
+        "return CANCEL."
     )
     _CANCEL_PHRASES = frozenset({"stop", "przestań", "anuluj", "nieważne"})
     _QUIT_REQUEST = re.compile(
@@ -103,6 +111,18 @@ class TurnPlanner:
     )
     _CONTEXT_DEPENDENT_WORDS = frozenset({"dalej", "jeszcze", "tamto", "to", "więcej"})
     _WHITESPACE = re.compile(r"\s+")
+    _FILE_RESOURCE = re.compile(r"\b(?:file|files|plik\w*)\b", re.IGNORECASE)
+    _FILE_ACTION = re.compile(
+        r"\b(?:create|write|save|replace|overwrite|read|open|list|show|"
+        r"utw[óo]rz\w*|stw[óo]rz\w*|napisz|wpisz|zapisz|zast[ąa]p|"
+        r"nadpisz|odczytaj|przeczytaj|otw[óo]rz\w*|wymie[nń]\w*|poka[żz])\b",
+        re.IGNORECASE,
+    )
+    _MEMORY_ACTION = re.compile(
+        r"\b(?:remember|forget|memory|memories|zapami[ęe]taj|zapomnij|"
+        r"pami[ęe]c\w*|wspomnieni\w*)\b",
+        re.IGNORECASE,
+    )
 
     @classmethod
     def normalize(cls, text: str) -> str:
@@ -116,6 +136,16 @@ class TurnPlanner:
             return TurnPlan(TurnIntent.CANCEL, ResponseDepth.BRIEF)
         if self._QUIT_REQUEST.fullmatch(normalized):
             return TurnPlan(TurnIntent.QUIT, ResponseDepth.BRIEF)
+        if self._MEMORY_ACTION.search(normalized) or (
+            self._FILE_RESOURCE.search(normalized)
+            and self._FILE_ACTION.search(normalized)
+        ):
+            return TurnPlan(
+                TurnIntent.RESPOND,
+                ResponseDepth.STANDARD,
+                ReactionPolicy.ACKNOWLEDGE,
+                ToolPolicy.REQUIRED,
+            )
         words = normalized.split()
         if words and words[0] in self._RESPONSE_REQUEST_WORDS:
             normalized_words = {word.strip(",") for word in words[1:]}
@@ -164,6 +194,12 @@ class TurnPlanner:
             ),
             "DETAILED": TurnPlan(
                 TurnIntent.RESPOND, ResponseDepth.DETAILED, ReactionPolicy.WAIT
+            ),
+            "TOOL_REQUIRED": TurnPlan(
+                TurnIntent.RESPOND,
+                ResponseDepth.STANDARD,
+                ReactionPolicy.ACKNOWLEDGE,
+                ToolPolicy.REQUIRED,
             ),
         }
         return plans.get(

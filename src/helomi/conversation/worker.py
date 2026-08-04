@@ -24,6 +24,7 @@ from .events import (
     UserTurn,
 )
 from .graph import ConversationContext, ConversationGraph
+from .memory import ConversationMemory
 from .profile import ProfilePreparation
 from .reply import ConversationQuit, ConversationTextChunk, ReplySegmenter
 
@@ -38,6 +39,7 @@ class Worker(Component):
         context: ConversationContext,
         profile_preparation: ProfilePreparation | None = None,
         start_event: asyncio.Event | None = None,
+        memory: ConversationMemory | None = None,
     ) -> None:
         super().__init__()
         self._event_bus = event_bus
@@ -54,6 +56,7 @@ class Worker(Component):
         self._delivery_context = ""
         self._shutdown_event = asyncio.Event()
         self._start_event = start_event
+        self._memory = memory
         self._events_ready = asyncio.Event()
         self._reply_sequence = 0
         self._logger.debug("INITIALIZED")
@@ -191,6 +194,8 @@ class Worker(Component):
             config=config,
             context=self._context,
         )
+        if self._memory is not None:
+            await self._memory.compact(self.THREAD_ID)
 
     async def _stream(
         self,

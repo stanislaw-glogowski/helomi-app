@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import re
+import unicodedata
 from pathlib import Path
 
 from watchfiles import awatch
@@ -44,7 +46,7 @@ class TextFileCatalog:
             raise FileNotFoundError(f"Text file does not exist: {path}")
         return resolved.read_text(encoding="utf-8")
 
-    def write(self, path: str, content: str, *, mode: str) -> None:
+    def write(self, path: str, content: str, *, mode: str) -> str:
         if mode not in {"create", "replace"}:
             raise ValueError("Text file mode must be 'create' or 'replace'")
         resolved = self._resolve(path)
@@ -57,6 +59,7 @@ class TextFileCatalog:
         resolved.write_text(content, encoding="utf-8")
         self._refresh()
         self._changed.set()
+        return resolved.relative_to(self._root).as_posix()
 
     async def wait_for_change(self) -> None:
         await self._changed.wait()
@@ -83,14 +86,26 @@ class TextFileCatalog:
         path = Path(value)
         if path.is_absolute():
             raise ValueError("Text file path must be relative")
-        if not path.suffix:
-            path = path.with_suffix(".txt")
-        elif path.suffix != ".txt":
+        if path.suffix and path.suffix.lower() != ".txt":
             raise ValueError("Text file path must use the .txt extension")
+        if not path.parts or any(part in {".", ".."} for part in path.parts):
+            raise ValueError("Text file path must stay inside the data directory")
+        parts = [self._normalized_component(part) for part in path.parts]
+        if any(not part for part in parts):
+            raise ValueError("Text file path must contain supported characters")
+        path = Path(*parts).with_suffix(".txt")
         resolved = (self._root / path).resolve()
         if not self._contained(resolved):
             raise ValueError("Text file path must stay inside the data directory")
         return resolved
+
+    @staticmethod
+    def _normalized_component(value: str) -> str:
+        normalized = unicodedata.normalize(
+            "NFKD", value.translate(str.maketrans({"ł": "l", "Ł": "L"}))
+        )
+        ascii_value = normalized.encode("ascii", "ignore").decode("ascii").lower()
+        return re.sub(r"[^a-z0-9._-]", "", ascii_value)
 
     def _contained(self, path: Path) -> bool:
         try:

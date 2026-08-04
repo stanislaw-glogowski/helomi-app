@@ -29,16 +29,20 @@ from helomi.conversation.graph import (
     ConversationNodes,
     ReactionPolicy,
     ResponseDepth,
+    ToolPolicy,
     TurnIntent,
     TurnPlanner,
 )
+from helomi.conversation.memory import InMemoryConversationMemory
 from helomi.conversation.model import (
     ConversationMessage,
     ConversationRole,
     LanguageModelChunk,
+    LanguageModelProtocolError,
     LanguageModelRequest,
     LanguageModelRole,
     LanguageModelService,
+    ToolChoice,
     get_language_model,
 )
 from helomi.conversation.model.adapters.langchain import LangChainLanguageModel
@@ -322,7 +326,9 @@ def test_tool_service_executes_and_deduplicates_builtin_file_calls(tmp_path) -> 
                 {"path": "note", "content": "hello", "mode": "create"},
             )
             assert not (await service.execute(write)).is_error
-            assert (await service.execute(write)).content == "Text file saved."
+            assert (
+                await service.execute(write)
+            ).content == "Text file saved: note.txt."
             assert (tmp_path / "data" / "note.txt").read_text() == "hello"
             read = await service.execute(
                 ToolCall("read-1", "file_read", {"path": "note"})
@@ -332,6 +338,57 @@ def test_tool_service_executes_and_deduplicates_builtin_file_calls(tmp_path) -> 
             assert quit_result.quit_requested
         finally:
             await service.stop()
+
+    asyncio.run(scenario())
+
+
+def test_tool_service_manages_explicit_profile_memories(tmp_path) -> None:
+    async def scenario() -> None:
+        memory = InMemoryConversationMemory()
+        service = ToolService(TextFileCatalog(tmp_path / "data"), memory=memory)
+        await service.start()
+        try:
+            assert service.definition("memory_remember") is not None
+            saved = await service.execute(
+                ToolCall(
+                    "remember",
+                    "memory_remember",
+                    {"key": "user.city", "content": "Kraków"},
+                )
+            )
+            assert saved.content == "Memory saved: user.city."
+            listed = await service.execute(ToolCall("list", "memory_list", {}))
+            assert listed.content == '[{"key": "user.city", "content": "Kraków"}]'
+            assert (
+                await service.execute(
+                    ToolCall("forget", "memory_forget", {"key": "user.city"})
+                )
+            ).content == "Memory forgotten: user.city."
+        finally:
+            await service.stop()
+
+    asyncio.run(scenario())
+
+
+def test_graph_injects_relevant_durable_memory_for_a_user_turn() -> None:
+    async def scenario() -> None:
+        memory = InMemoryConversationMemory()
+        await memory.remember("user.city", "The user lives in Kraków.")
+        adapter = FakeLanguageModel("Kraków.")
+        async with LanguageModelService(adapter) as service:
+            graph = ConversationGraph(ConversationNodes(service)).compiled
+            await graph.ainvoke(
+                {
+                    "messages": [HumanMessage("Where does the user live?")],
+                    "input_kind": "user_turn",
+                },
+                context=ConversationContext.from_profile(profile(), memory=memory),
+            )
+
+        assert (
+            "user.city: The user lives in Kraków."
+            in adapter.requests[0].messages[0].content
+        )
 
     asyncio.run(scenario())
 
@@ -709,7 +766,7 @@ def test_graph_executes_tool_only_chunk_after_acknowledgement_delay(tmp_path) ->
             (
                 'Tool call file_write({"content_length": 27, "mode": "create", '
                 '"path": "wiersz.txt"}) succeeded: '
-                "Text file saved."
+                "Text file saved: wiersz.txt."
             )
             in message.content
             for message in adapter.requests[1].messages
@@ -726,6 +783,205 @@ def test_mlx_adapter_assigns_unique_ids_to_parser_calls() -> None:
 
     assert first != second
     assert adapter._tool_call_id({"id": "provider-id"}, 0) == "provider-id"
+
+
+def test_mlx_adapter_parses_qwen_style_tool_call_fallback() -> None:
+    adapter = MLXLanguageModel(profile().models_mlx)
+
+    calls = adapter._fallback_tool_calls(
+        'Chwila. tool_call:file_read({"path": "wiersz"})',
+        (ToolDefinition("file_read", "Read", {"type": "object"}),),
+    )
+
+    assert len(calls) == 1
+    assert calls[0].name == "file_read"
+    assert calls[0].arguments == {"path": "wiersz"}
+
+
+def test_mlx_adapter_parses_qwen_tagged_default_file_tool_call() -> None:
+    adapter = MLXLanguageModel(profile().models_mlx)
+
+    calls = adapter._fallback_tool_calls(
+        '<|tool_call|>call:default_write_file{content: "joke",'
+        'mode: "create",path: "dowcip"}<tool_call|>',
+        (ToolDefinition("file_write", "Write", {"type": "object"}),),
+    )
+
+    assert len(calls) == 1
+    assert calls[0].name == "file_write"
+    assert calls[0].arguments == {
+        "content": "joke",
+        "mode": "create",
+        "path": "dowcip",
+    }
+
+
+def test_mlx_adapter_normalizes_gemma_tool_call_and_reasoning() -> None:
+    adapter = MLXLanguageModel(profile().models_mlx)
+    tokenizer = SimpleNamespace(
+        think_start="<|channel>thought",
+        think_end="<channel|>",
+        tool_parser=lambda content, tools: {
+            "name": "file_read",
+            "arguments": {"path": "wiersz"},
+        },
+    )
+
+    calls = adapter._tool_calls(
+        '<|tool_call>call:file_read{path:<|"|>wiersz<|"|>}<tool_call|>',
+        tokenizer,
+        [],
+        (ToolDefinition("file_read", "Read", {"type": "object"}),),
+    )
+
+    assert calls[0].name == "file_read"
+    assert (
+        MLXLanguageModel._visible_text(
+            "Zaraz. thought <|channel>thought\nsecret<channel|>Widoczna odpowiedź.",
+            tokenizer,
+        )
+        == "Zaraz. Widoczna odpowiedź."
+    )
+    with pytest.raises(LanguageModelProtocolError, match="Unclosed"):
+        MLXLanguageModel._visible_text("<|channel>thought secret", tokenizer)
+    assert (
+        MLXLanguageModel._visible_text(
+            "<thinking>loop</><thinking>loop</>Visible answer.", tokenizer
+        )
+        == "Visible answer."
+    )
+    with pytest.raises(LanguageModelProtocolError, match="thinking"):
+        MLXLanguageModel._visible_text("<thinking>loop", tokenizer)
+
+
+def test_turn_planner_requires_tools_for_profile_data_and_memory() -> None:
+    planner = TurnPlanner()
+    file_plan = planner.deterministic_plan("Utwórz plik Dowcip")
+    memory_plan = planner.deterministic_plan("Remember that I prefer tea")
+    poem_plan = planner.deterministic_plan("Napisz krótki wiersz")
+    file_question_plan = planner.deterministic_plan("Opowiedz o pliku")
+
+    assert file_plan is not None
+    assert memory_plan is not None
+    assert poem_plan is not None
+    assert file_question_plan is not None
+    assert file_plan.tool_policy is ToolPolicy.REQUIRED
+    assert memory_plan.tool_policy is ToolPolicy.REQUIRED
+    assert poem_plan.tool_policy is ToolPolicy.OPTIONAL
+    assert file_question_plan.tool_policy is ToolPolicy.OPTIONAL
+    assert planner.classified_plan("TOOL_REQUIRED").tool_policy is ToolPolicy.REQUIRED
+
+
+def test_graph_retries_required_tool_call_without_delivering_prose(tmp_path) -> None:
+    class RepairingLanguageModel(FakeLanguageModel):
+        def __init__(self) -> None:
+            super().__init__()
+            self.tool_attempts = 0
+
+        def generate(
+            self, request: LanguageModelRequest
+        ) -> Iterator[LanguageModelChunk]:
+            self.requests.append(request)
+            if request.tools:
+                self.tool_attempts += 1
+                if self.tool_attempts == 1:
+                    yield LanguageModelChunk("Plik został utworzony.")
+                    return
+                yield LanguageModelChunk(
+                    tool_calls=(
+                        ToolCall(
+                            "write-joke",
+                            "file_write",
+                            {
+                                "path": "dowcip",
+                                "content": "Żart",
+                                "mode": "create",
+                            },
+                        ),
+                    )
+                )
+                return
+            yield LanguageModelChunk("Gotowe.")
+
+    async def scenario() -> tuple[list[ConversationTextChunk], RepairingLanguageModel]:
+        tools = ToolService(TextFileCatalog(tmp_path / "data"))
+        await tools.start()
+        try:
+            adapter = RepairingLanguageModel()
+            async with LanguageModelService(adapter) as service:
+                graph = ConversationGraph(ConversationNodes(service)).compiled
+                events = [
+                    event
+                    async for event in graph.astream(
+                        {
+                            "messages": [HumanMessage("Utwórz plik Dowcip")],
+                            "input_kind": "user_turn",
+                        },
+                        context=ConversationContext.from_profile(
+                            profile(), tools=tools
+                        ),
+                        stream_mode="custom",
+                    )
+                ]
+        finally:
+            await tools.stop()
+        return events, adapter
+
+    events, adapter = asyncio.run(scenario())
+
+    assert [event.content for event in events] == ["Gotowe."]
+    assert (tmp_path / "data" / "dowcip.txt").read_text(encoding="utf-8") == "Żart"
+    assert [request.tool_choice for request in adapter.requests] == [
+        ToolChoice.REQUIRED,
+        ToolChoice.REQUIRED,
+        ToolChoice.AUTO,
+    ]
+
+
+def test_graph_fails_required_tool_call_after_one_silent_repair(tmp_path) -> None:
+    class InvalidToolLanguageModel(FakeLanguageModel):
+        def generate(
+            self, request: LanguageModelRequest
+        ) -> Iterator[LanguageModelChunk]:
+            self.requests.append(request)
+            yield LanguageModelChunk("Plik został utworzony.")
+
+    async def scenario() -> tuple[
+        list[ConversationTextChunk], InvalidToolLanguageModel
+    ]:
+        tools = ToolService(TextFileCatalog(tmp_path / "data"))
+        await tools.start()
+        try:
+            adapter = InvalidToolLanguageModel()
+            async with LanguageModelService(adapter) as service:
+                graph = ConversationGraph(ConversationNodes(service)).compiled
+                events = [
+                    event
+                    async for event in graph.astream(
+                        {
+                            "messages": [HumanMessage("Utwórz plik Dowcip")],
+                            "input_kind": "user_turn",
+                        },
+                        context=ConversationContext.from_profile(
+                            profile(), tools=tools
+                        ),
+                        stream_mode="custom",
+                    )
+                ]
+        finally:
+            await tools.stop()
+        return events, adapter
+
+    events, adapter = asyncio.run(scenario())
+
+    assert [event.content for event in events] == [
+        "I could not complete the tool request."
+    ]
+    assert not (tmp_path / "data" / "dowcip.txt").exists()
+    assert [request.tool_choice for request in adapter.requests] == [
+        ToolChoice.REQUIRED,
+        ToolChoice.REQUIRED,
+    ]
 
 
 def test_graph_handles_empty_response_after_acknowledgement_delay() -> None:
@@ -1112,6 +1368,38 @@ def test_langchain_adapter_maps_messages_and_configuration(
         ollama_adapter.prepare(LanguageModelRole.FAST)
     assert calls[1][1]["reasoning"] == "low"
     assert calls[1][1]["base_url"] == "http://test.local"
+
+
+def test_langchain_adapter_requires_and_validates_tool_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeChat:
+        def __init__(self) -> None:
+            self.bind_kwargs: dict[str, Any] = {}
+
+        def bind_tools(self, tools: list[dict[str, Any]], **kwargs: Any) -> FakeChat:
+            self.bind_kwargs = kwargs
+            return self
+
+        def stream(self, messages: list[Any]) -> Iterator[Any]:
+            return iter(())
+
+    chat = FakeChat()
+    monkeypatch.setattr(
+        "langchain.chat_models.init_chat_model", lambda *args, **kwargs: chat
+    )
+    adapter = LangChainLanguageModel(profile().models_langchain, LangChainSettings())
+    request = LanguageModelRequest(
+        LanguageModelRole.FAST,
+        (ConversationMessage(ConversationRole.USER, "Create a file"),),
+        tools=(ToolDefinition("file_write", "Write", {"type": "object"}),),
+        tool_choice=ToolChoice.REQUIRED,
+    )
+
+    with adapter, pytest.raises(LanguageModelProtocolError, match="Required"):
+        list(adapter.generate(request))
+
+    assert chat.bind_kwargs == {"tool_choice": "any"}
 
 
 def test_mlx_adapter_loads_lazily_and_streams(monkeypatch: pytest.MonkeyPatch) -> None:

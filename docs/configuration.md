@@ -26,7 +26,9 @@ Its copied defaults never replace existing destination files.
 │       └── profiles/<profile-id>/
 │           ├── profile.yml
 │           ├── prompts/{system,opening,summary}.md
-│           └── reactions/{wake,acknowledge,wait,background,quit}.txt
+│           ├── reactions/{wake,acknowledge,wait,background,quit}.txt
+│           ├── data/                    # local text-file tool data
+│           └── db/memory.db             # local conversation and durable facts
 ├── models/
 │   ├── embedding_model.onnx
 │   ├── melspectrogram.onnx

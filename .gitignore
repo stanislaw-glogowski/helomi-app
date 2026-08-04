@@ -30,7 +30,6 @@ src/**/bin/
 benchmarks/*/reports/
 
 # Resources
-.helomi/data/
 .helomi/models/*
 .helomi/**/settings.override.yml
 

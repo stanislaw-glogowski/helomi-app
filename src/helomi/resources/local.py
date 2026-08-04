@@ -36,8 +36,11 @@ class LocalStore(ModelCatalog, ProfileCatalog, SettingsStore):
             raise FileNotFoundError(f"Model file does not exist: {path}")
         return path
 
-    def text_files(self) -> TextFileCatalog:
-        return TextFileCatalog(self._root_path / "data")
+    def text_files(self, profile_id: str) -> TextFileCatalog:
+        return TextFileCatalog(self._profile_directory(profile_id) / "data")
+
+    def memory_path(self, profile_id: str) -> Path:
+        return self._profile_directory(profile_id) / "db" / "memory.db"
 
     def load_profile(self, name: str) -> Profile:
         path = self._profiles_path / name
@@ -194,3 +197,20 @@ class LocalStore(ModelCatalog, ProfileCatalog, SettingsStore):
             if name:
                 return name
         return path.name
+
+    def _profile_directory(self, profile_id: str) -> Path:
+        if not isinstance(profile_id, str) or not profile_id:
+            raise ValueError("Profile id must be a directory name")
+        profiles_path = self._profiles_path.resolve()
+        path = (profiles_path / profile_id).resolve()
+        if path.name != profile_id:
+            raise ValueError("Profile id must be a directory name")
+        try:
+            path.relative_to(profiles_path)
+        except ValueError as error:
+            raise ValueError(
+                "Profile id must stay inside profiles directory"
+            ) from error
+        if not path.is_dir():
+            raise FileNotFoundError(f"Profile directory does not exist: {path}")
+        return path

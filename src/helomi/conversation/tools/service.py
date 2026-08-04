@@ -7,12 +7,13 @@ from contextlib import AsyncExitStack
 from typing import Any
 
 import httpx
-from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
+from helomi.conversation.memory import ConversationMemory
 from helomi.conversation.profile import McpEndpoint, StdioMcpEndpoint
 from helomi.resources import TextFileCatalog
+from mcp import ClientSession, StdioServerParameters
 
 from .domain import ToolCall, ToolDefinition, ToolResult
 
@@ -28,9 +29,11 @@ class ToolService:
         text_files: TextFileCatalog,
         endpoints: tuple[McpEndpoint, ...] = (),
         *,
+        memory: ConversationMemory | None = None,
         on_background_result: Any = None,
     ) -> None:
         self._text_files = text_files
+        self._memory = memory
         self._endpoints = endpoints
         self._on_background_result = on_background_result
         self._stack: AsyncExitStack | None = None
@@ -181,7 +184,7 @@ class ToolService:
                 ToolDefinition(
                     "file_write",
                     "Create or replace a UTF-8 text file. The .txt extension may "
-                    "be omitted.",
+                    "be omitted. Paths are normalized to lowercase ASCII.",
                     {
                         "type": "object",
                         "properties": {
@@ -215,6 +218,53 @@ class ToolService:
                 None,
             ),
         }
+        if self._memory is not None:
+            self._tools.update(
+                {
+                    "memory_remember": (
+                        ToolDefinition(
+                            "memory_remember",
+                            "Remember a durable profile fact only when the user "
+                            "explicitly asks you to remember it. Reusing a key updates "
+                            "that fact.",
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "key": {"type": "string"},
+                                    "content": {"type": "string"},
+                                },
+                                "required": ["key", "content"],
+                            },
+                        ),
+                        None,
+                        None,
+                    ),
+                    "memory_list": (
+                        ToolDefinition(
+                            "memory_list",
+                            "List durable profile facts when the user explicitly asks "
+                            "what you remember.",
+                            {"type": "object"},
+                        ),
+                        None,
+                        None,
+                    ),
+                    "memory_forget": (
+                        ToolDefinition(
+                            "memory_forget",
+                            "Forget a durable profile fact only when the user "
+                            "explicitly asks you to forget it.",
+                            {
+                                "type": "object",
+                                "properties": {"key": {"type": "string"}},
+                                "required": ["key"],
+                            },
+                        ),
+                        None,
+                        None,
+                    ),
+                }
+            )
 
     async def _execute_once(self, call: ToolCall) -> ToolResult:
         item = self._tools.get(call.name)
@@ -223,7 +273,7 @@ class ToolService:
         _, endpoint_id, remote_name = item
         try:
             if endpoint_id is None:
-                return self._execute_builtin(call)
+                return await self._execute_builtin(call)
             session = self._sessions[endpoint_id]
             timeout = (
                 self._BACKGROUND_TIMEOUT
@@ -245,7 +295,7 @@ class ToolService:
         except Exception as error:
             return ToolResult(call.id, f"Tool failed: {error}", True)
 
-    def _execute_builtin(self, call: ToolCall) -> ToolResult:
+    async def _execute_builtin(self, call: ToolCall) -> ToolResult:
         if call.name == "files_list":
             return ToolResult(call.id, json.dumps(self._text_files.list()))
         if call.name == "file_read":
@@ -254,14 +304,38 @@ class ToolService:
                 self._text_files.read(str(call.arguments["path"])),
             )
         if call.name == "file_write":
-            self._text_files.write(
+            path = self._text_files.write(
                 str(call.arguments["path"]),
                 str(call.arguments["content"]),
                 mode=str(call.arguments["mode"]),
             )
-            return ToolResult(call.id, "Text file saved.")
+            return ToolResult(call.id, f"Text file saved: {path}.")
         if call.name == "app_quit":
             return ToolResult(call.id, "Quit requested.", quit_requested=True)
+        if call.name == "memory_remember" and self._memory is not None:
+            key = str(call.arguments["key"])
+            await self._memory.remember(key, str(call.arguments["content"]))
+            return ToolResult(call.id, f"Memory saved: {key.strip().lower()}.")
+        if call.name == "memory_list" and self._memory is not None:
+            facts = await self._memory.list()
+            return ToolResult(
+                call.id,
+                json.dumps(
+                    [{"key": fact.key, "content": fact.content} for fact in facts],
+                    ensure_ascii=False,
+                ),
+            )
+        if call.name == "memory_forget" and self._memory is not None:
+            key = str(call.arguments["key"])
+            forgotten = await self._memory.forget(key)
+            return ToolResult(
+                call.id,
+                (
+                    f"Memory forgotten: {key.strip().lower()}."
+                    if forgotten
+                    else f"No memory exists for: {key.strip().lower()}."
+                ),
+            )
         return ToolResult(call.id, f"Tool does not exist: {call.name}", True)
 
     async def _background_loop(self) -> None:

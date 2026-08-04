@@ -16,6 +16,17 @@ class LanguageModelRole(StrEnum):
     CLASSIFIER = "classifier"
 
 
+class ToolChoice(StrEnum):
+    """Whether a model response must contain a valid tool call."""
+
+    AUTO = "auto"
+    REQUIRED = "required"
+
+
+class LanguageModelProtocolError(RuntimeError):
+    """A model emitted control syntax or failed a required tool-call contract."""
+
+
 @dataclass(frozen=True, slots=True)
 class ConversationMessage:
     role: ConversationRole
@@ -28,6 +39,7 @@ class LanguageModelRequest:
     messages: tuple[ConversationMessage, ...]
     cache_prefix: str | None = None
     tools: tuple[ToolDefinition, ...] = ()
+    tool_choice: ToolChoice = ToolChoice.AUTO
 
 
 @dataclass(frozen=True, slots=True)
