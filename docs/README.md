@@ -1,5 +1,10 @@
 # Helomi documentation
 
+## Project
+
+- [Changelog](../CHANGELOG.md): version history and unreleased changes.
+- [Contributing](../CONTRIBUTING.md): development setup and contribution rules.
+
 ## Use Helomi
 
 - [Getting started](getting-started.md): requirements, initialization, and first run.

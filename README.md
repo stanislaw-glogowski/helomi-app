@@ -6,6 +6,9 @@
 
 **A local, privacy-first voice assistant for Apple Silicon Macs.**
 
+> **Project status: early preview.** Helomi is under active development and
+> will not receive a public release until the preview stage is complete.
+
 Helomi listens for a local wake word, transcribes speech, generates a streamed
 reply, synthesizes it, and plays it back. The supplied configuration uses local
 MLX models and a native macOS audio helper with Apple Voice Processing.
@@ -103,6 +106,7 @@ for the data flow and lifecycle.
 - [Creating a profile](docs/profiles.md)
 - [MCP endpoints](docs/mcp.md)
 - [Troubleshooting](docs/troubleshooting.md)
+- [Changelog](CHANGELOG.md)
 - [All documentation](docs/README.md)
 - [Contributing](CONTRIBUTING.md)
 

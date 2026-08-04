@@ -1,6 +1,6 @@
 [project]
 name = "helomi-app"
-version = "0.1.0"
+version = "0.2.0"
 description = "A local, privacy-first voice assistant for Apple Silicon Macs"
 readme = "README.md"
 license = "MIT"
