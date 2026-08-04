@@ -24,7 +24,10 @@ class CustomBuildHook(BuildHookInterface):
             / "bin"
             / "audio"
         )
-        sources = [native_audio / "Package.swift", *native_audio.glob("Sources/**/*.swift")]
+        sources = [
+            native_audio / "Package.swift",
+            *native_audio.glob("Sources/**/*.swift"),
+        ]
 
         if not executable.exists() or any(
             source.stat().st_mtime > executable.stat().st_mtime for source in sources

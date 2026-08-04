@@ -15,12 +15,11 @@ class Qwen3ASRModel(MLXBaseModel[MLXQwen3ASRProfile, MLXQwen3ASRSettings]):
 
         model = self._require_model()
 
-        # TODO: add supported options from profile and settings
         options: dict[str, Any] = {
             "stream": False,
         }
-        # language="",
-        # temperature=0.0,
+        if self._settings.language is not None:
+            options["language"] = self._settings.language
 
         result = model.generate(frame.samples, **options)
 

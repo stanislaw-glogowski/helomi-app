@@ -13,13 +13,12 @@ class WhisperModel(MLXBaseModel[MLXWhisperProfile, MLXWhisperSettings]):
     def transcribe(self, frame: AudioFrame) -> Iterator[TranscriptionChunk]:
         model = self._require_model()
 
-        # TODO: add supported options from profile
         options: dict[str, Any] = {
             "task": "transcribe",
             "verbose": None,
         }
-        if self._profile.language is not None:
-            options["language"] = self._profile.language
+        if self._settings.language is not None:
+            options["language"] = self._settings.language
 
         result = model.generate(
             frame.samples,

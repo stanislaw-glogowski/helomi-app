@@ -2,3 +2,7 @@
 # selected at the root or with --language. Use settings.override.yml locally.
 profiles:
   default: "alexa"
+
+speech:
+  stt:
+    language: "pl"

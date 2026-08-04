@@ -15,8 +15,10 @@ class ParakeetTDTModel(MLXBaseModel[MLXParakeetTDTProfile, MLXParakeetTDTSetting
 
         model = self._require_model()
 
-        # TODO: add supported options from profile and settings
         options: dict[str, Any] = {}
+
+        if self._settings.language is not None:
+            options["language"] = self._settings.language
 
         for chunk in model.stream_generate(mx.array(frame.samples), **options):
             yield TranscriptionChunk(

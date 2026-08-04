@@ -15,6 +15,7 @@ type STTSettings = Annotated[
 
 class MLXBaseSettings(ConfigModel):
     model_id: str = Field(min_length=1)
+    language: str | None = Field(default=None, min_length=1)
 
 
 class MLXBaseProfile(ConfigModel):
@@ -31,6 +32,7 @@ class MLXParakeetTDTSettings(MLXBaseSettings):
 
 class MLXParakeetTDTProfile(MLXBaseProfile):
     pass
+
 
 
 class MLXQwen3ASRSettings(MLXBaseSettings):
@@ -54,7 +56,7 @@ class MLXWhisperSettings(MLXBaseSettings):
 
 
 class MLXWhisperProfile(MLXBaseProfile):
-    language: str | None = Field(default=None, min_length=1)
+    pass
 
 
 class STTProfile(ConfigModel):
