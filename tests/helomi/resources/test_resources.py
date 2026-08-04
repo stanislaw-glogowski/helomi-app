@@ -551,15 +551,18 @@ def test_text_file_catalog_contains_paths_and_enforces_write_modes(
         catalog = TextFileCatalog(tmp_path / "data")
         await catalog.start()
         try:
-            catalog.write("notes/today.txt", "hello", mode="create")
+            catalog.write("notes/today", "hello", mode="create")
             assert catalog.list() == ("notes/today.txt",)
+            assert catalog.read("notes/today") == "hello"
             assert catalog.read("notes/today.txt") == "hello"
             with pytest.raises(FileExistsError):
                 catalog.write("notes/today.txt", "again", mode="create")
             catalog.write("notes/today.txt", "again", mode="replace")
             assert catalog.read("notes/today.txt") == "again"
-            with pytest.raises(ValueError, match=r"relative .txt"):
+            with pytest.raises(ValueError, match="relative"):
                 catalog.read("/tmp/outside.txt")
+            with pytest.raises(ValueError, match=r"\.txt extension"):
+                catalog.read("notes/today.md")
             with pytest.raises(ValueError, match="stay inside"):
                 catalog.read("../outside.txt")
         finally:

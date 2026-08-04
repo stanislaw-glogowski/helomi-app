@@ -93,8 +93,9 @@ endpoints unless they are intentionally versioned defaults. Add an override to
 
 Helomi always exposes only local text-file tools and a quit action. Files are
 limited to `<data-root>/data/**/*.txt`; writing requires an explicit `create`
-or `replace` request. The directory is watched so external changes appear in
-the file catalog without restarting the app.
+or `replace` request. Tool calls may omit the `.txt` extension, so `test` resolves
+to `test.txt`; any other extension is rejected. The directory is watched so
+external changes appear in the file catalog without restarting the app.
 
 `mcp.endpoints` is optional. An endpoint is either `streamable_http` with a URL
 and optional request headers read from environment variables, or `stdio` with a

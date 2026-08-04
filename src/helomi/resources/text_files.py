@@ -81,8 +81,12 @@ class TextFileCatalog:
 
     def _resolve(self, value: str) -> Path:
         path = Path(value)
-        if path.is_absolute() or path.suffix != ".txt":
-            raise ValueError("Text file path must be a relative .txt path")
+        if path.is_absolute():
+            raise ValueError("Text file path must be relative")
+        if not path.suffix:
+            path = path.with_suffix(".txt")
+        elif path.suffix != ".txt":
+            raise ValueError("Text file path must use the .txt extension")
         resolved = (self._root / path).resolve()
         if not self._contained(resolved):
             raise ValueError("Text file path must stay inside the data directory")

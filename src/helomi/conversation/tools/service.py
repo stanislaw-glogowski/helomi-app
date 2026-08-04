@@ -159,10 +159,18 @@ class ToolService:
             "file_read": (
                 ToolDefinition(
                     "file_read",
-                    "Read a UTF-8 text file.",
+                    "Read a UTF-8 text file. The .txt extension may be omitted.",
                     {
                         "type": "object",
-                        "properties": {"path": {"type": "string"}},
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": (
+                                    "Relative text-file path, with optional .txt "
+                                    "extension."
+                                ),
+                            }
+                        },
                         "required": ["path"],
                     },
                 ),
@@ -172,13 +180,23 @@ class ToolService:
             "file_write": (
                 ToolDefinition(
                     "file_write",
-                    "Create or replace a UTF-8 text file.",
+                    "Create or replace a UTF-8 text file. The .txt extension may "
+                    "be omitted.",
                     {
                         "type": "object",
                         "properties": {
-                            "path": {"type": "string"},
+                            "path": {
+                                "type": "string",
+                                "description": (
+                                    "Relative text-file path, with optional .txt "
+                                    "extension."
+                                ),
+                            },
                             "content": {"type": "string"},
-                            "mode": {"enum": ["create", "replace"]},
+                            "mode": {
+                                "type": "string",
+                                "enum": ["create", "replace"],
+                            },
                         },
                         "required": ["path", "content", "mode"],
                     },

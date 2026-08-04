@@ -1,3 +1,5 @@
+"""Terminal frontend for Helomi."""
+
 import os
 
 # Helomi uses Transformers tokenizers through MLX without the PyTorch model runtime.

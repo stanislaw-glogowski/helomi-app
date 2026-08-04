@@ -1,4 +1,5 @@
 import asyncio
+import json
 from contextlib import suppress
 from time import perf_counter
 from typing import Any
@@ -16,7 +17,7 @@ from ..model import (
 )
 from ..profile import ProfilePreparation
 from ..reply import ConversationQuit, ConversationTextChunk, PreparedReactionKind
-from ..tools.domain import ToolCall
+from ..tools.domain import ToolCall, ToolResult
 from .context import ConversationContext, ConversationRuntime
 from .routing import ReactionPolicy, ResponseDepth, TurnIntent, TurnPlan, TurnPlanner
 from .state import ConversationState
@@ -27,6 +28,14 @@ class ConversationNodes:
     REPLY = "reply"
     SUMMARIZE = "summarize"
     BACKGROUND_RESULT = "background_result"
+    TOOL_INSTRUCTION = (
+        "Use an available tool whenever the request depends on external state or "
+        "requires a side effect. To report a file's contents, call file_read even "
+        "if the conversation appears to contain or imply those contents. A tool "
+        "action succeeded only when its result explicitly says succeeded. If a "
+        "tool result says failed, correct the call or state the failure plainly; "
+        "never claim completion."
+    )
 
     def __init__(
         self,
@@ -101,9 +110,15 @@ class ConversationNodes:
             if plan.depth is ResponseDepth.DETAILED
             else LanguageModelRole.FAST
         )
-        instruction = self._response_instruction(plan)
+        instruction = f"{self._response_instruction(plan)} {self.TOOL_INSTRUCTION}"
         tool_context: list[SystemMessage] = []
         tool_history: list[AnyMessage] = []
+        available_tools = {
+            definition.name: definition
+            for definition in (
+                context.tools.definitions if context.tools is not None else ()
+            )
+        }
         reaction_policy = plan.reaction
         for _ in range(8):
             request = LanguageModelRequest(
@@ -115,7 +130,7 @@ class ConversationNodes:
                     [SystemMessage(content=instruction), *messages, *tool_context],
                 ),
                 cache_prefix=self._cache_prefix(context),
-                tools=(context.tools.definitions if context.tools is not None else ()),
+                tools=tuple(available_tools.values()),
             )
             reaction_delay = None
             if reaction_policy is ReactionPolicy.ACKNOWLEDGE:
@@ -165,18 +180,15 @@ class ConversationNodes:
                     background = True
                     continue
                 result = await context.tools.execute(call)
+                result_message = self._tool_result_message(call, result)
                 if result.quit_requested:
                     tool_history.append(AIMessage(content="Quit requested."))
                     self._emit_quit()
                     return {"messages": tool_history}
-                tool_history.append(
-                    AIMessage(content=f"Tool result for {call.name}: {result.content}")
-                )
-                tool_context.append(
-                    SystemMessage(
-                        content=f"Tool result for {call.name}: {result.content}"
-                    )
-                )
+                tool_history.append(AIMessage(content=result_message))
+                tool_context.append(SystemMessage(content=result_message))
+                if not result.is_error:
+                    available_tools.clear()
             if background:
                 return {"messages": tool_history}
         return {
@@ -226,7 +238,7 @@ class ConversationNodes:
             self._emit_quit()
             return {"messages": [], "pending_tool": None}
         return {
-            "messages": [AIMessage(f"Tool result: {result.content}")],
+            "messages": [AIMessage(self._tool_result_message(call, result))],
             "pending_tool": None,
         }
 
@@ -398,6 +410,15 @@ class ConversationNodes:
         if policy is ReactionPolicy.WAIT:
             return self._profile_preparation.next_wait_reaction()
         return None
+
+    @staticmethod
+    def _tool_result_message(call: ToolCall, result: ToolResult) -> str:
+        status = "failed" if result.is_error else "succeeded"
+        arguments = dict(call.arguments)
+        if call.name == "file_write" and "content" in arguments:
+            arguments["content_length"] = len(str(arguments.pop("content")))
+        arguments_json = json.dumps(arguments, ensure_ascii=False, sort_keys=True)
+        return f"Tool call {call.name}({arguments_json}) {status}: {result.content}"
 
     @classmethod
     def _request_messages(

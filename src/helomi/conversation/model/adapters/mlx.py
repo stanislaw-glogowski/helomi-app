@@ -19,6 +19,39 @@ class _LoadedModel:
     prompt_caches: OrderedDict[str, tuple[tuple[int, ...], Any]]
 
 
+class _VisibleTextFilter:
+    """Remove a leading model-internal channel block without delaying normal text."""
+
+    _START = "<|channel>"
+    _END = "<channel|>"
+
+    def __init__(self) -> None:
+        self._pending = ""
+        self._resolved = False
+
+    def feed(self, text: str) -> str:
+        if self._resolved:
+            return text
+        self._pending += text
+        if self._START.startswith(self._pending):
+            return ""
+        if not self._pending.startswith(self._START):
+            self._resolved = True
+            visible, self._pending = self._pending, ""
+            return visible
+        if self._END not in self._pending:
+            return ""
+        _, visible = self._pending.split(self._END, 1)
+        self._pending = ""
+        self._resolved = True
+        return visible.lstrip("\n")
+
+    def finish(self) -> str:
+        pending, self._pending = self._pending, ""
+        self._resolved = True
+        return "" if pending.startswith(self._START) else pending
+
+
 class MLXLanguageModel(LanguageModel):
     def __init__(self, profiles: MLXModelsProfile) -> None:
         super().__init__()
@@ -30,6 +63,7 @@ class MLXLanguageModel(LanguageModel):
         self._make_prompt_cache: Any = None
         self._generate_step: Any = None
         self._array: Any = None
+        self._tool_call_sequence = 0
 
     def open(self) -> None:
         if self._load is not None:
@@ -120,7 +154,7 @@ class MLXLanguageModel(LanguageModel):
                     yield LanguageModelChunk(
                         tool_calls=tuple(
                             ToolCall(
-                                id=str(call.get("id", index)),
+                                id=self._tool_call_id(call, index),
                                 name=str(call["name"]),
                                 arguments=dict(call["arguments"]),
                             )
@@ -130,9 +164,11 @@ class MLXLanguageModel(LanguageModel):
                     return
                 except KeyError, TypeError, ValueError:
                     pass
-            if content:
-                yield LanguageModelChunk(content)
+            visible = self._visible_text(content)
+            if visible:
+                yield LanguageModelChunk(visible)
             return
+        visible = _VisibleTextFilter()
         for response in self._stream_generate(
             loaded.model,
             loaded.tokenizer,
@@ -142,7 +178,21 @@ class MLXLanguageModel(LanguageModel):
             prompt_cache=prompt_cache,
         ):
             if response.text:
-                yield LanguageModelChunk(response.text)
+                if content := visible.feed(response.text):
+                    yield LanguageModelChunk(content)
+        if content := visible.finish():
+            yield LanguageModelChunk(content)
+
+    @staticmethod
+    def _visible_text(content: str) -> str:
+        visible = _VisibleTextFilter()
+        return f"{visible.feed(content)}{visible.finish()}"
+
+    def _tool_call_id(self, call: dict[str, Any], index: int) -> str:
+        if call_id := call.get("id"):
+            return str(call_id)
+        self._tool_call_sequence += 1
+        return f"mlx-{self._tool_call_sequence}-{index}"
 
     def _model(self, role: LanguageModelRole) -> _LoadedModel:
         profile = self._profile(role)

@@ -310,15 +310,22 @@ def test_tool_service_executes_and_deduplicates_builtin_file_calls(tmp_path) -> 
         service = ToolService(TextFileCatalog(tmp_path / "data"))
         await service.start()
         try:
+            write_definition = service.definition("file_write")
+            assert write_definition is not None
+            assert write_definition.input_schema["properties"]["mode"] == {
+                "type": "string",
+                "enum": ["create", "replace"],
+            }
             write = ToolCall(
                 "write-1",
                 "file_write",
-                {"path": "note.txt", "content": "hello", "mode": "create"},
+                {"path": "note", "content": "hello", "mode": "create"},
             )
             assert not (await service.execute(write)).is_error
             assert (await service.execute(write)).content == "Text file saved."
+            assert (tmp_path / "data" / "note.txt").read_text() == "hello"
             read = await service.execute(
-                ToolCall("read-1", "file_read", {"path": "note.txt"})
+                ToolCall("read-1", "file_read", {"path": "note"})
             )
             assert read.content == "hello"
             quit_result = await service.execute(ToolCall("quit-1", "app_quit", {}))
@@ -634,7 +641,7 @@ def test_graph_executes_tool_only_chunk_after_acknowledgement_delay(tmp_path) ->
             self, request: LanguageModelRequest
         ) -> Iterator[LanguageModelChunk]:
             self.requests.append(request)
-            if len(self.requests) == 1:
+            if any(tool.name == "file_write" for tool in request.tools):
                 yield LanguageModelChunk(
                     tool_calls=(
                         ToolCall(
@@ -693,8 +700,32 @@ def test_graph_executes_tool_only_chunk_after_acknowledgement_delay(tmp_path) ->
         ]
         assert (tmp_path / "data" / "wiersz.txt").read_text(encoding="utf-8") == poem
         assert len(adapter.requests) == 2
+        assert adapter.requests[1].tools == ()
+        assert (
+            ConversationNodes.TOOL_INSTRUCTION
+            in adapter.requests[0].messages[0].content
+        )
+        assert any(
+            (
+                'Tool call file_write({"content_length": 27, "mode": "create", '
+                '"path": "wiersz.txt"}) succeeded: '
+                "Text file saved."
+            )
+            in message.content
+            for message in adapter.requests[1].messages
+        )
 
     asyncio.run(scenario())
+
+
+def test_mlx_adapter_assigns_unique_ids_to_parser_calls() -> None:
+    adapter = MLXLanguageModel(profile().models_mlx)
+
+    first = adapter._tool_call_id({}, 0)
+    second = adapter._tool_call_id({}, 0)
+
+    assert first != second
+    assert adapter._tool_call_id({"id": "provider-id"}, 0) == "provider-id"
 
 
 def test_graph_handles_empty_response_after_acknowledgement_delay() -> None:
@@ -1114,7 +1145,14 @@ def test_mlx_adapter_loads_lazily_and_streams(monkeypatch: pytest.MonkeyPatch) -
 
     def stream_generate(*args, **kwargs):
         calls["generations"].append(kwargs)
-        yield SimpleNamespace(text="chunk")
+        for text in (
+            "<|",
+            "channel>thought\n",
+            "internal reasoning",
+            "<channel|>",
+            "chunk",
+        ):
+            yield SimpleNamespace(text=text)
 
     mlx_lm.stream_generate = stream_generate
     mlx = ModuleType("mlx")
@@ -1157,6 +1195,7 @@ def test_mlx_adapter_loads_lazily_and_streams(monkeypatch: pytest.MonkeyPatch) -
                         ConversationMessage(ConversationRole.USER, "question"),
                     ),
                     cache_prefix="system",
+                    tools=(ToolDefinition("demo", "Demo tool", {"type": "object"}),),
                 )
             )
         )
