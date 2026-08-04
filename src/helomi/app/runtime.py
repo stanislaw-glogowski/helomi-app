@@ -8,6 +8,7 @@ from typing import Self
 from helomi.common.events import Event, EventBus, EventSubscription, ShutdownEvent
 from helomi.conversation import (
     BackgroundResult,
+    ConversationActivated,
     ConversationReady,
     GenerateReply,
     QuitRequested,
@@ -241,23 +242,32 @@ async def _shutdown_after_quit(event_bus: EventBus, ready: asyncio.Event) -> Non
     with event_bus.subscribe(
         QuitRequested, ReplyPhraseDelivered, ShutdownEvent
     ) as events:
+        last_delivered: tuple[int, int] | None = None
         ready.set()
         async for event in events:
             try:
                 if isinstance(event, ShutdownEvent):
                     return
+                if isinstance(event, ReplyPhraseDelivered):
+                    last_delivered = (event.reply_id, event.phrase_id)
+                    continue
                 if not isinstance(event, QuitRequested):
                     continue
+                expected = (event.reply_id, event.final_phrase_id)
+                if event.final_phrase_id == 0 or last_delivered == expected:
+                    event_bus.publish(ShutdownEvent())
+                    return
                 while True:
                     delivered = await asyncio.wait_for(events.__anext__(), timeout=10)
                     try:
                         if isinstance(delivered, ShutdownEvent):
                             return
-                        if (
-                            isinstance(delivered, ReplyPhraseDelivered)
-                            and delivered.reply_id == event.reply_id
-                            and delivered.phrase_id == event.final_phrase_id
-                        ):
+                        if isinstance(delivered, ReplyPhraseDelivered):
+                            last_delivered = (
+                                delivered.reply_id,
+                                delivered.phrase_id,
+                            )
+                        if last_delivered == expected:
                             event_bus.publish(ShutdownEvent())
                             return
                     finally:
@@ -315,6 +325,8 @@ async def _start_runtime(
         else:
             await ready
             start_event.set()
+            if profile.wakeword is None:
+                event_bus.publish(GenerateReply(ConversationActivated()))
             return backend
     raise RuntimeError("Helomi runtime stopped before it became ready")
 

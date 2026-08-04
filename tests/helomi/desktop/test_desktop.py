@@ -199,6 +199,15 @@ def test_runtime_guard_paths_and_internal_failure_projection() -> None:
         await desktop._watch_runtime("agent")
         assert desktop.drain().detail == "worker failed"
 
+        class StoppedRuntime:
+            async def wait(self) -> None:
+                pass
+
+        desktop._runtime = StoppedRuntime()
+        desktop._shutdown_signal = asyncio.Event()
+        await desktop._watch_runtime("agent")
+        assert desktop._shutdown_signal.is_set()
+
         desktop._runtime = None
         await desktop._start_profile("agent")
         assert not desktop._command_active
@@ -376,7 +385,6 @@ def test_menu_run_drains_updates_and_quits_after_runtime_termination(
     app.run()
     assert app._runtime.started
     assert calls == ["timer", "render", "app"]
-    app._quit_requested = True
     app._drain_updates(None)
     assert app._runtime.joined
     assert calls[-2:] == ["render", "quit"]

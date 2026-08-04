@@ -182,14 +182,8 @@ class DesktopRuntime:
         else:
             if self._shutting_down:
                 return
-            self._publish(
-                DesktopSnapshot(
-                    DesktopMode.FAILED,
-                    self._profile_name,
-                    profile_id,
-                    "Helomi runtime stopped",
-                )
-            )
+            if self._shutdown_signal is not None:
+                self._shutdown_signal.set()
 
     async def _shutdown(self) -> None:
         try:

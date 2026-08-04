@@ -169,6 +169,23 @@ wakeword: null
     assert profile.wakeword is None
 
 
+def test_local_store_loads_locale_stt_language_override(tmp_path: Path) -> None:
+    write_profile(tmp_path)
+    (tmp_path / "settings.yml").write_text(
+        "language: en-US\nspeech:\n  stt:\n    adapter: mlx:parakeet-tdt\n",
+        encoding="utf-8",
+    )
+    locale_settings = tmp_path / "locales" / "en-US" / "settings.yml"
+    locale_settings.write_text(
+        "speech:\n  stt:\n    language: pl\n",
+        encoding="utf-8",
+    )
+
+    settings = LocalStore(tmp_path).load_settings()
+
+    assert settings.speech.stt.language == "pl"
+
+
 def test_local_store_rejects_language_in_locale_settings(tmp_path: Path) -> None:
     write_profile(tmp_path)
     (tmp_path / "locales" / "en-US" / "settings.yml").write_text(

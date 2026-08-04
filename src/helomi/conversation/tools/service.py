@@ -189,7 +189,8 @@ class ToolService:
             "app_quit": (
                 ToolDefinition(
                     "app_quit",
-                    "Quit Helomi after a spoken goodbye.",
+                    "Immediately quit Helomi when the user explicitly asks to close, "
+                    "quit, exit, or shut down Helomi or the app.",
                     {"type": "object"},
                 ),
                 None,

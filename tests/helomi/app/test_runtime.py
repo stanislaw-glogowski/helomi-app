@@ -6,9 +6,14 @@ import pytest
 import helomi.app.runtime as runtime_module
 from helomi.app import ApplicationRuntime, ProgressStore
 from helomi.common.events import ShutdownEvent
-from helomi.conversation import ConversationReady
+from helomi.conversation import (
+    ConversationActivated,
+    ConversationReady,
+    GenerateReply,
+    QuitRequested,
+)
 from helomi.resources import ProfileEntry, Settings
-from helomi.speech.events import SpeechReady
+from helomi.speech.events import ReplyPhraseDelivered, SpeechReady
 from tests.helomi.cli.test_state import profile as make_profile
 
 
@@ -134,6 +139,50 @@ def test_worker_composition_and_shutdown_readiness(
             bus.publish(ShutdownEvent())
             with pytest.raises(asyncio.CancelledError):
                 await waiting
+
+    asyncio.run(scenario())
+
+
+def test_always_listening_profile_starts_with_welcome_reaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        bus = runtime_module.EventBus()
+        profile = make_profile(wakeword=None)
+
+        async def workers(*_args) -> None:
+            event_bus, _profile, _settings, _store, start_event = _args
+            with event_bus.subscribe(GenerateReply, ShutdownEvent) as events:
+                event_bus.publish(ConversationReady(), SpeechReady())
+                await start_event.wait()
+                event = await events.__anext__()
+                events.task_done()
+                assert event == GenerateReply(ConversationActivated())
+
+        monkeypatch.setattr(runtime_module, "_run_workers", workers)
+        backend = await runtime_module._start_runtime(
+            bus, profile, Settings(), object()
+        )
+        await asyncio.wait_for(backend, 1)
+
+    asyncio.run(scenario())
+
+
+def test_quit_coordinator_accepts_goodbye_delivered_before_quit_request() -> None:
+    async def scenario() -> None:
+        bus = runtime_module.EventBus()
+        ready = asyncio.Event()
+        with bus.subscribe(ShutdownEvent) as shutdowns:
+            coordinator = asyncio.create_task(
+                runtime_module._shutdown_after_quit(bus, ready)
+            )
+            await ready.wait()
+            bus.publish(ReplyPhraseDelivered(reply_id=3, phrase_id=2))
+            bus.publish(QuitRequested(reply_id=3, final_phrase_id=2))
+            event = await asyncio.wait_for(shutdowns.__anext__(), 1)
+            shutdowns.task_done()
+            assert isinstance(event, ShutdownEvent)
+            await asyncio.wait_for(coordinator, 1)
 
     asyncio.run(scenario())
 

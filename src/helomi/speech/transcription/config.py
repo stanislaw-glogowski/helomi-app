@@ -1,4 +1,4 @@
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, Literal
 
 from pydantic import Field
 
@@ -15,7 +15,6 @@ type STTSettings = Annotated[
 
 class MLXBaseSettings(ConfigModel):
     model_id: str = Field(min_length=1)
-    language: ClassVar[str | None] = None
 
 
 class MLXBaseProfile(ConfigModel):
@@ -28,6 +27,7 @@ class MLXParakeetTDTSettings(MLXBaseSettings):
         min_length=1,
         default="mlx-community/parakeet-tdt-0.6b-v3",
     )
+    language: str | None = Field(default=None, min_length=1)
 
 
 class MLXParakeetTDTProfile(MLXBaseProfile):
@@ -40,6 +40,7 @@ class MLXQwen3ASRSettings(MLXBaseSettings):
         min_length=1,
         default="mlx-community/Qwen3-ASR-0.6B-8bit",
     )
+    language: str | None = Field(default=None, min_length=1)
 
 
 class MLXQwen3ASRProfile(MLXBaseProfile):

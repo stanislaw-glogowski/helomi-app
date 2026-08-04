@@ -176,9 +176,19 @@ def test_speech_configuration_defaults_and_validation() -> None:
     with pytest.raises(ValidationError, match="model_path"):
         WakeWordProfile.model_validate({"model": "wake.onnx"})
 
+    parakeet = SpeechSettings.model_validate(
+        {"stt": {"adapter": "mlx:parakeet-tdt", "language": "pl"}}
+    )
+    assert parakeet.stt.language == "pl"
+
+    qwen = SpeechSettings.model_validate(
+        {"stt": {"adapter": "mlx:qwen3-asr", "language": "pl"}}
+    )
+    assert qwen.stt.language == "pl"
+
     with pytest.raises(ValidationError, match="extra_forbidden"):
         SpeechSettings.model_validate(
-            {"stt": {"adapter": "mlx:parakeet-tdt", "language": "pl"}}
+            {"stt": {"adapter": "mlx:whisper", "language": "pl"}}
         )
 
 

@@ -51,7 +51,7 @@ class LanguageModelService(AbstractAsyncService):
                             case None:
                                 break
                             case LanguageModelChunk():
-                                if response.content:
+                                if response.content or response.tool_calls:
                                     yield response
                     finally:
                         responses.task_done()

@@ -123,7 +123,7 @@ from one adapter into another adapter's configuration.
 | --- | --- | --- | --- |
 | Conversation | `mlx` | adapter only | `model_id`, `max_tokens`, `temperature`, `top_p`, `top_k`, `thinking` per role |
 | Conversation | `langchain` | `base_url` | `model_id`, `max_tokens`, `temperature`, `top_p`, `thinking` per role |
-| STT | `mlx:parakeet-tdt` / `mlx:qwen3-asr` | `model_id` | optional `model_id` |
+| STT | `mlx:parakeet-tdt` / `mlx:qwen3-asr` | `model_id`, optional `language` | optional `model_id` |
 | STT | `mlx:whisper` | `model_id` | optional `model_id`, `language` |
 | TTS | `piper` | `repo_id`, `normalize_audio`, `volume` | `model_path`, optional repository and voice tuning |
 | TTS | `mlx:chatterbox` | `model_id`, `lang_code` | optional `model_id`, `lang_code` |

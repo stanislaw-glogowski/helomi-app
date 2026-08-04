@@ -37,7 +37,7 @@ class MenuBarApp:
         if snapshot := self._runtime.drain():
             self._snapshot = snapshot
             self._render()
-        if self._quit_requested and self._runtime.terminated:
+        if self._runtime.terminated:
             self._runtime.join()
             self._rumps.quit_application()
 

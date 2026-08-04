@@ -1,6 +1,6 @@
 import asyncio
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from types import ModuleType, SimpleNamespace
 from typing import Any, ClassVar
 
@@ -54,7 +54,11 @@ from helomi.conversation.profile import (
     ConversationReactions,
     ProfilePreparation,
 )
-from helomi.conversation.reply import ConversationTextChunk, ReplySegmenter
+from helomi.conversation.reply import (
+    ConversationQuit,
+    ConversationTextChunk,
+    ReplySegmenter,
+)
 from helomi.conversation.tools.domain import ToolCall, ToolDefinition
 from helomi.conversation.tools.service import ToolService
 from helomi.conversation.worker import Worker
@@ -145,6 +149,14 @@ def test_configuration_domain_events_and_routing() -> None:
     planner = TurnPlanner()
     assert planner.deterministic_plan("").intent is TurnIntent.NO_RESPONSE
     assert planner.deterministic_plan("anuluj").intent is TurnIntent.CANCEL
+    for request in (
+        "Close the app",
+        "Could you quit Helomi?",
+        "Zamknij aplikację",
+        "Czy możesz się wyłączyć?",
+    ):
+        assert planner.deterministic_plan(request).intent is TurnIntent.QUIT
+    assert planner.deterministic_plan("Nie zamykaj aplikacji") is None
     assert planner.deterministic_plan("Jak masz na imię?").depth is ResponseDepth.BRIEF
     punctuation_free = planner.deterministic_plan("Jaka jest stolica Kanady")
     assert punctuation_free is not None
@@ -537,6 +549,117 @@ def test_graph_skips_classifier_for_explicit_response_request() -> None:
         assert [request.role for request in adapter.requests] == [
             LanguageModelRole.FAST
         ]
+
+    asyncio.run(scenario())
+
+
+def test_graph_executes_tool_only_chunk_after_acknowledgement_delay(tmp_path) -> None:
+    poem = "Noc nad Wisłą, cichy blask."
+
+    class ToolCallingLanguageModel(FakeLanguageModel):
+        def generate(
+            self, request: LanguageModelRequest
+        ) -> Iterator[LanguageModelChunk]:
+            self.requests.append(request)
+            if len(self.requests) == 1:
+                yield LanguageModelChunk(
+                    tool_calls=(
+                        ToolCall(
+                            "write-poem",
+                            "file_write",
+                            {
+                                "path": "wiersz.txt",
+                                "content": poem,
+                                "mode": "create",
+                            },
+                        ),
+                    )
+                )
+                return
+            yield LanguageModelChunk("Wiersz został zapisany.")
+
+    async def scenario() -> None:
+        tools = ToolService(TextFileCatalog(tmp_path / "data"))
+        await tools.start()
+        try:
+            adapter = ToolCallingLanguageModel()
+            async with LanguageModelService(adapter) as service:
+                graph = ConversationGraph(ConversationNodes(service)).compiled
+                events = [
+                    event
+                    async for event in graph.astream(
+                        {
+                            "messages": [
+                                HumanMessage("Napisz wiersz do pliku wiersz.txt")
+                            ],
+                            "input_kind": "user_turn",
+                        },
+                        context=ConversationContext.from_profile(
+                            profile(),
+                            ConversationSettings(acknowledgement_delay=0),
+                            tools,
+                        ),
+                        stream_mode="custom",
+                    )
+                ]
+        finally:
+            await tools.stop()
+
+        assert events == [ConversationTextChunk("Wiersz został zapisany.")]
+        assert (tmp_path / "data" / "wiersz.txt").read_text(encoding="utf-8") == poem
+        assert len(adapter.requests) == 2
+
+    asyncio.run(scenario())
+
+
+def test_graph_handles_empty_response_after_acknowledgement_delay() -> None:
+    async def scenario() -> None:
+        adapter = FakeLanguageModel("")
+        async with LanguageModelService(adapter) as service:
+            graph = ConversationGraph(ConversationNodes(service)).compiled
+            events = [
+                event
+                async for event in graph.astream(
+                    {
+                        "messages": [HumanMessage("Napisz krótki wiersz")],
+                        "input_kind": "user_turn",
+                    },
+                    context=context(delay=0),
+                    stream_mode="custom",
+                )
+            ]
+        assert events == []
+
+    asyncio.run(scenario())
+
+
+def test_graph_quits_deterministically_without_model_generation() -> None:
+    class Prepared:
+        def next_quit_reaction(self) -> str:
+            return "Do usłyszenia."
+
+    async def scenario() -> None:
+        adapter = FakeLanguageModel("must not be generated")
+        async with LanguageModelService(adapter) as service:
+            graph = ConversationGraph(
+                ConversationNodes(service, profile_preparation=Prepared())
+            ).compiled
+            events = [
+                event
+                async for event in graph.astream(
+                    {
+                        "messages": [HumanMessage("Zamknij aplikację")],
+                        "input_kind": "user_turn",
+                    },
+                    context=context(),
+                    stream_mode="custom",
+                )
+            ]
+        assert events == [
+            ConversationTextChunk("Do usłyszenia.\n", True),
+            ConversationQuit(),
+        ]
+        assert adapter.requests == []
 
     asyncio.run(scenario())
 

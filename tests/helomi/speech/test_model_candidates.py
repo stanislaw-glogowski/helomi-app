@@ -72,7 +72,7 @@ def _install_loader(
 def test_parakeet_adapter_contract(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeModel:
         def stream_generate(self, _samples, **options):
-            assert options == {}
+            assert options == {"language": "pl"}
             return iter(
                 (SimpleNamespace(text="rozpoznany "), SimpleNamespace(text="tekst"))
             )
@@ -83,7 +83,7 @@ def test_parakeet_adapter_contract(monkeypatch: pytest.MonkeyPatch) -> None:
 
     model = ParakeetTDTModel(
         MLXParakeetTDTProfile(model_id="profile/parakeet"),
-        MLXParakeetTDTSettings(model_id="settings/parakeet"),
+        MLXParakeetTDTSettings(model_id="settings/parakeet", language="pl"),
     )
     with model:
         chunks = list(model.transcribe(FORMAT.build_frame(np.zeros(512))))
@@ -99,7 +99,7 @@ def test_qwen3_adapter_contract(monkeypatch: pytest.MonkeyPatch) -> None:
 
     class FakeModel:
         def generate(self, *_args, **kwargs):
-            assert kwargs == {"stream": False}
+            assert kwargs == {"stream": False, "language": "pl"}
             return FakeSTTOutput(" rozpoznany tekst ")
 
     loaded_ids: list[str] = []
@@ -108,7 +108,7 @@ def test_qwen3_adapter_contract(monkeypatch: pytest.MonkeyPatch) -> None:
 
     model = Qwen3ASRModel(
         MLXQwen3ASRProfile(),
-        MLXQwen3ASRSettings(model_id="settings/qwen"),
+        MLXQwen3ASRSettings(model_id="settings/qwen", language="pl"),
     )
     with model:
         chunks = list(model.transcribe(FORMAT.build_frame(np.zeros(512))))

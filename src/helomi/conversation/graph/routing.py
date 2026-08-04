@@ -13,6 +13,7 @@ class TurnIntent(StrEnum):
     RESPOND = "respond"
     CLARIFY = "clarify"
     CANCEL = "cancel"
+    QUIT = "quit"
     NO_RESPONSE = "no_response"
 
 
@@ -34,6 +35,19 @@ class TurnPlanner:
         "a comprehensive answer. Never return CANCEL."
     )
     _CANCEL_PHRASES = frozenset({"stop", "przestań", "anuluj", "nieważne"})
+    _QUIT_REQUEST = re.compile(
+        r"(?:(?:please|proszę|prosze) )?"
+        r"(?:"
+        r"(?:(?:can|could|would|will) you )?"
+        r"(?:close|quit|exit)(?: (?:the )?(?:app|application|helomi|yourself))?"
+        r"|shut down(?: (?:the )?(?:app|application|helomi))?"
+        r"|(?:(?:czy )?(?:możesz|mozesz)(?: się| sie)? )?"
+        r"(?:zamknij|zamknąć|zamknac|wyłącz|wylacz|wyłączyć|wylaczyc|"
+        r"zakończ|zakoncz|zakończyć|zakonczyc)"
+        r"(?: (?:aplikację|aplikacje|program|helomi|się|sie|działanie|dzialanie))?"
+        r")"
+        r"(?: (?:please|proszę|prosze))?"
+    )
     _DETAIL_MARKERS = ("dokładnie", "szczegółowo", "krok po kroku", "pełny plan")
     _BRIEF_MARKERS = (
         "jednym zdaniu",
@@ -94,6 +108,8 @@ class TurnPlanner:
             return TurnPlan(TurnIntent.NO_RESPONSE, ResponseDepth.BRIEF)
         if normalized in self._CANCEL_PHRASES:
             return TurnPlan(TurnIntent.CANCEL, ResponseDepth.BRIEF)
+        if self._QUIT_REQUEST.fullmatch(normalized):
+            return TurnPlan(TurnIntent.QUIT, ResponseDepth.BRIEF)
         if text.count("?") > 1 or any(
             marker in normalized for marker in self._DETAIL_MARKERS
         ):

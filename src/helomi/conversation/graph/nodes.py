@@ -91,6 +91,9 @@ class ConversationNodes:
         plan = self._turn_planner.deterministic_plan(user_text)
         if plan is None:
             plan = await self._classify(state, context, summary, messages)
+        if plan.intent is TurnIntent.QUIT:
+            self._emit_quit()
+            return {"messages": [AIMessage("Quit requested.")]}
         if plan.intent in {TurnIntent.NO_RESPONSE, TurnIntent.CANCEL}:
             return {"messages": []}
         role = (
@@ -159,13 +162,7 @@ class ConversationNodes:
                 result = await context.tools.execute(call)
                 if result.quit_requested:
                     tool_history.append(AIMessage(content="Quit requested."))
-                    if self._profile_preparation is not None and (
-                        reaction := self._profile_preparation.next_quit_reaction()
-                    ):
-                        get_stream_writer()(
-                            ConversationTextChunk(f"{reaction}\n", True)
-                        )
-                    get_stream_writer()(ConversationQuit())
+                    self._emit_quit()
                     return {"messages": tool_history}
                 tool_history.append(
                     AIMessage(content=f"Tool result for {call.name}: {result.content}")
@@ -221,16 +218,20 @@ class ConversationNodes:
             return {"messages": [], "pending_tool": None}
         result = await context.tools.execute(call)
         if result.quit_requested:
-            if self._profile_preparation is not None and (
-                reaction := self._profile_preparation.next_quit_reaction()
-            ):
-                get_stream_writer()(ConversationTextChunk(f"{reaction}\n", True))
-            get_stream_writer()(ConversationQuit())
+            self._emit_quit()
             return {"messages": [], "pending_tool": None}
         return {
             "messages": [AIMessage(f"Tool result: {result.content}")],
             "pending_tool": None,
         }
+
+    def _emit_quit(self) -> None:
+        writer = get_stream_writer()
+        if self._profile_preparation is not None and (
+            reaction := self._profile_preparation.next_quit_reaction()
+        ):
+            writer(ConversationTextChunk(f"{reaction}\n", True))
+        writer(ConversationQuit())
 
     async def _classify(
         self,
@@ -351,7 +352,10 @@ class ConversationNodes:
                     reaction := self._profile_preparation.next_reaction()
                 ):
                     writer(ConversationTextChunk(f"{reaction}\n", True))
-                chunk = await first_chunk
+                try:
+                    chunk = await first_chunk
+                except StopAsyncIteration:
+                    return content, tuple(calls)
             except StopAsyncIteration:
                 return content, tuple(calls)
             except asyncio.CancelledError:
@@ -361,12 +365,14 @@ class ConversationNodes:
                 await stream.aclose()
                 raise
             content += chunk.content
-            writer(ConversationTextChunk(chunk.content))
+            if chunk.content:
+                writer(ConversationTextChunk(chunk.content))
             calls.extend(chunk.tool_calls)
 
         async for chunk in stream:
             content += chunk.content
-            writer(ConversationTextChunk(chunk.content))
+            if chunk.content:
+                writer(ConversationTextChunk(chunk.content))
             calls.extend(chunk.tool_calls)
         return content, tuple(calls)
 
