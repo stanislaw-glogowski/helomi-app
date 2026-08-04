@@ -224,6 +224,22 @@ def test_terminal_app_profile_startup_navigation_and_live_updates() -> None:
     asyncio.run(scenario())
 
 
+def test_terminal_app_skips_profile_picker_for_explicit_selection() -> None:
+    async def scenario() -> None:
+        app = TerminalApp(
+            (ProfileEntry("valid", "Valid", profile()),),
+            UiEventBridge(),
+            LogBuffer(),
+            ProgressStore(),
+            selected_profile_id="valid",
+        )
+        async with app.run_test(size=(90, 30)) as pilot:
+            await pilot.pause()
+            assert not isinstance(app.screen, ProfilePicker)
+
+    asyncio.run(scenario())
+
+
 def test_conversation_follows_latest_until_user_scrolls_history() -> None:
     class ConversationApp(App[None]):
         CSS = """

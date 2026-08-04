@@ -22,8 +22,7 @@ class DesktopRuntime:
         self._thread: Thread | None = None
         self._command_active = False
         self._selected_profile_id: str | None = None
-        self._profiles = ()
-        self._default_profile_id: str | None = None
+        self._profile_name = "Helomi"
         self._runtime: ApplicationRuntime | None = None
         self._shutdown_signal: asyncio.Event | None = None
         self._shutting_down = False
@@ -40,18 +39,17 @@ class DesktopRuntime:
         self._thread.start()
         self._loop_ready.wait()
 
-    def start_profile(
-        self, profile_id: str, *, retry: bool = False
-    ) -> Future[None] | None:
+    def retry(self) -> Future[None] | None:
         if self._command_active or self._loop is None:
             return None
+        profile_id = self._selected_profile_id
+        if profile_id is None:
+            return None
         self._command_active = True
-        self._selected_profile_id = profile_id
         self._publish(
             DesktopSnapshot(
-                DesktopMode.RETRYING if retry else DesktopMode.STARTING,
-                self._profiles,
-                self._default_profile_id,
+                DesktopMode.RETRYING,
+                self._profile_name,
                 profile_id,
             )
         )
@@ -69,8 +67,7 @@ class DesktopRuntime:
         self._publish(
             DesktopSnapshot(
                 DesktopMode.SHUTTING_DOWN,
-                self._profiles,
-                self._default_profile_id,
+                self._profile_name,
                 self._selected_profile_id,
             )
         )
@@ -102,19 +99,21 @@ class DesktopRuntime:
         self._shutdown_signal = shutdown
         try:
             async with ApplicationRuntime() as runtime:
-                self._profiles = runtime.profiles
-                self._default_profile_id = runtime.default_profile_id
                 unsubscribe = runtime.progress.subscribe(
                     lambda progress: self._progress_changed(progress)
                 )
+                profile = runtime.startup_profile
+                self._selected_profile_id = profile.id
+                self._profile_name = profile.name
                 self._publish(
                     DesktopSnapshot(
-                        DesktopMode.READY,
-                        self._profiles,
-                        self._default_profile_id,
+                        DesktopMode.STARTING,
+                        self._profile_name,
+                        profile.id,
                     )
                 )
                 self._runtime = runtime
+                await self._start_profile(profile.id)
                 await shutdown.wait()
                 unsubscribe()
         except Exception as error:
@@ -135,8 +134,7 @@ class DesktopRuntime:
             self._publish(
                 DesktopSnapshot(
                     DesktopMode.FAILED,
-                    self._profiles,
-                    self._default_profile_id,
+                    self._profile_name,
                     profile_id,
                     str(error),
                 )
@@ -146,8 +144,7 @@ class DesktopRuntime:
         self._publish(
             DesktopSnapshot(
                 DesktopMode.RUNNING,
-                self._profiles,
-                self._default_profile_id,
+                self._profile_name,
                 profile_id,
             )
         )
@@ -167,8 +164,7 @@ class DesktopRuntime:
             self._publish(
                 DesktopSnapshot(
                     DesktopMode.FAILED,
-                    self._profiles,
-                    self._default_profile_id,
+                    self._profile_name,
                     profile_id,
                     str(error),
                 )
@@ -179,8 +175,7 @@ class DesktopRuntime:
             self._publish(
                 DesktopSnapshot(
                     DesktopMode.FAILED,
-                    self._profiles,
-                    self._default_profile_id,
+                    self._profile_name,
                     profile_id,
                     "Helomi runtime stopped",
                 )
@@ -203,8 +198,7 @@ class DesktopRuntime:
         self._publish(
             DesktopSnapshot(
                 self._progress_mode(),
-                self._profiles,
-                self._default_profile_id,
+                self._profile_name,
                 self._selected_profile_id,
                 progress=progress,
             )

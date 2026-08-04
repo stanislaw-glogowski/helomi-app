@@ -9,7 +9,6 @@ import helomi.desktop.runtime as runtime_module
 from helomi.app import ProgressSnapshot
 from helomi.desktop.runtime import DesktopRuntime
 from helomi.desktop.state import DesktopMode, DesktopSnapshot
-from helomi.resources import ProfileEntry
 
 
 def test_desktop_imports_are_lazy() -> None:
@@ -44,13 +43,14 @@ def test_desktop_entrypoints_call_the_lazy_menu_factory(
     assert calls == [True, True]
 
 
-def test_snapshot_enables_only_safe_actions() -> None:
-    ready = DesktopSnapshot(DesktopMode.READY)
-    failed = DesktopSnapshot(DesktopMode.FAILED, selected_profile_id="agent")
-    running = DesktopSnapshot(DesktopMode.RUNNING, selected_profile_id="agent")
-    assert ready.profiles_enabled
-    assert failed.profiles_enabled and failed.retry_enabled
-    assert not running.profiles_enabled
+def test_snapshot_projects_tray_titles_and_safe_actions() -> None:
+    starting = DesktopSnapshot(DesktopMode.STARTING, "Agent")
+    failed = DesktopSnapshot(DesktopMode.FAILED, "Agent", "agent")
+    running = DesktopSnapshot(DesktopMode.RUNNING, "Agent", "agent")
+    assert starting.tray_title == "⏳ Agent"
+    assert failed.tray_title == "❌ Agent"
+    assert failed.retry_enabled
+    assert running.tray_title == "Agent"
     assert not running.retry_enabled
 
 
@@ -68,8 +68,7 @@ def test_runtime_coalesces_updates_and_waits_for_shutdown(
         def __init__(self) -> None:
             import asyncio
 
-            self.profiles = (ProfileEntry("agent", "Agent", profile),)
-            self.default_profile_id = "agent"
+            self.startup_profile = profile
             self.progress = Progress()
             self.stopped = asyncio.Event()
 
@@ -93,9 +92,8 @@ def test_runtime_coalesces_updates_and_waits_for_shutdown(
     desktop = DesktopRuntime()
     desktop.start()
     first = desktop._updates.get(timeout=1)
-    assert first.mode is DesktopMode.READY
-    assert desktop.start_profile("agent") is not None
-    running = desktop._updates.get(timeout=1)
+    assert first.mode in {DesktopMode.STARTING, DesktopMode.RUNNING}
+    running = desktop.drain() or first
     assert running.mode in {DesktopMode.STARTING, DesktopMode.RUNNING}
     snapshot = desktop.drain() or running
     assert snapshot.selected_profile_id == "agent"
@@ -120,8 +118,7 @@ def test_runtime_reports_startup_failure_and_bootstrap_failure(
 
     class Runtime:
         def __init__(self) -> None:
-            self.profiles = (ProfileEntry("agent", "Agent", SimpleNamespace()),)
-            self.default_profile_id = None
+            self.startup_profile = SimpleNamespace(id="agent", name="Agent")
             self.progress = Progress()
 
         async def __aenter__(self):
@@ -142,11 +139,7 @@ def test_runtime_reports_startup_failure_and_bootstrap_failure(
     monkeypatch.setattr(runtime_module, "ApplicationRuntime", Runtime)
     desktop = DesktopRuntime()
     desktop.start()
-    desktop._updates.get(timeout=1)
-    command = desktop.start_profile("agent")
-    assert command is not None
-    command.result(timeout=1)
-    assert desktop.drain().mode is DesktopMode.FAILED
+    assert desktop._updates.get(timeout=1).mode is DesktopMode.FAILED
     shutdown = desktop.shutdown()
     assert shutdown is not None
     shutdown.result(timeout=1)
@@ -180,11 +173,11 @@ def test_runtime_guard_paths_and_internal_failure_projection() -> None:
 
         desktop = DesktopRuntime()
         assert not desktop.terminated
-        assert desktop.start_profile("agent") is None
+        assert desktop.retry() is None
         assert desktop.shutdown() is None
         desktop._command_active = True
         desktop._loop = asyncio.get_running_loop()
-        assert desktop.start_profile("agent") is None
+        assert desktop.retry() is None
         desktop._command_active = False
         desktop._runtime = FailingRuntime()
         await desktop._watch_runtime("agent")
@@ -215,7 +208,7 @@ def test_runtime_guard_paths_and_internal_failure_projection() -> None:
     asyncio.run(scenario())
 
 
-def test_menu_renders_profiles_retry_and_quit(
+def test_menu_renders_status_retry_and_quit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class Menu:
@@ -244,6 +237,7 @@ def test_menu_renders_profiles_retry_and_quit(
     class App:
         def __init__(self, *_args, **_kwargs) -> None:
             self.menu = Menu()
+            self.title = ""
 
         def run(self) -> None:
             pass
@@ -268,7 +262,7 @@ def test_menu_renders_profiles_retry_and_quit(
         def __init__(self) -> None:
             self.shutdowns = 0
 
-        def start_profile(self, *_args, **_kwargs) -> None:
+        def retry(self) -> None:
             pass
 
         def shutdown(self) -> None:
@@ -278,27 +272,21 @@ def test_menu_renders_profiles_retry_and_quit(
     app = menu_module.MenuBarApp()
     app._snapshot = DesktopSnapshot(
         DesktopMode.FAILED,
-        profiles=(
-            ProfileEntry("agent", "Agent", SimpleNamespace()),
-            ProfileEntry("broken", "Broken", error="invalid"),
-        ),
-        default_profile_id="agent",
+        profile_name="Agent",
         selected_profile_id="agent",
         detail="startup failed",
         progress=ProgressSnapshot(),
     )
     app._render()
     items = app._app.menu.items
-    profiles = next(
-        item for item in items if getattr(item, "title", None) == "Profiles"
-    )
-    assert [item.title for item in profiles.items] == [
-        "Agent (default)",
-        "Broken — unavailable",
-    ]
-    assert profiles.items[0].state
-    assert profiles.items[1].callback is None
+    assert app._app.title == "❌ Agent"
+    assert not any(getattr(item, "title", None) == "Profiles" for item in items)
     assert any(getattr(item, "title", None) == "Retry" for item in items)
+    assert [getattr(item, "title", None) for item in items[-3:]] == [
+        "Status: Failed",
+        None,
+        "Quit Helomi",
+    ]
     app._quit(None)
     app._quit(None)
     assert app._runtime.shutdowns == 1

@@ -33,6 +33,7 @@ async def run() -> None:
             logs,
             runtime.progress,
             runtime.default_profile_id,
+            runtime.settings.selected_profile,
         )
         app_task = asyncio.create_task(app.run_async(), name="helomi-ui")
         bridge_task = asyncio.create_task(
@@ -45,7 +46,10 @@ async def run() -> None:
 
         try:
             await asyncio.gather(app.wait_mounted(), bridge.wait_ready())
-            profile = await app.select_profile()
+            if runtime.settings.selected_profile:
+                profile = runtime.selected_profile
+            else:
+                profile = await app.select_profile()
             if profile is None:
                 return
             app.configure_runtime(profile, runtime.settings)

@@ -14,7 +14,7 @@ class MenuBarApp:
         self._runtime = DesktopRuntime()
         self._snapshot = DesktopSnapshot(DesktopMode.READY, detail="Loading profiles…")
         self._quit_requested = False
-        self._app = rumps.App("Helomi", quit_button=None)
+        self._app = rumps.App("⏳ Helomi", quit_button=None)
         self._timer = rumps.Timer(self._drain_updates, 0.1)
 
     def run(self) -> None:
@@ -36,48 +36,26 @@ class MenuBarApp:
     def _render(self) -> None:
         rumps = self._rumps
         snapshot = self._snapshot
-        status = rumps.MenuItem(snapshot.mode.value)
-        status.set_callback(None)
+        self._app.title = snapshot.tray_title
         if snapshot.detail:
             detail = rumps.MenuItem(snapshot.detail)
             detail.set_callback(None)
         else:
             detail = None
 
-        profiles = rumps.MenuItem("Profiles")
-        for entry in snapshot.profiles:
-            title = entry.name
-            if entry.id == snapshot.default_profile_id:
-                title += " (default)"
-            if entry.profile is None:
-                title += " — unavailable"
-            item = rumps.MenuItem(title)
-            item.state = entry.id == snapshot.selected_profile_id
-            item.set_callback(
-                self._select_profile(entry.id)
-                if entry.profile is not None and snapshot.profiles_enabled
-                else None
-            )
-            profiles.add(item)
-
-        items: list[object] = [status]
+        items: list[object] = []
         if detail is not None:
             items.append(detail)
-        items.append(profiles)
         if snapshot.retry_enabled:
             retry = rumps.MenuItem("Retry")
-            retry.set_callback(
-                lambda _: self._runtime.start_profile(
-                    snapshot.selected_profile_id or "", retry=True
-                )
-            )
+            retry.set_callback(lambda _: self._runtime.retry())
             items.append(retry)
+        status = rumps.MenuItem(f"Status: {snapshot.mode.value}")
+        status.set_callback(None)
+        items.append(status)
         items.extend([None, rumps.MenuItem("Quit Helomi", callback=self._quit)])
         self._app.menu.clear()
         self._app.menu.update(items)
-
-    def _select_profile(self, profile_id: str):
-        return lambda _: self._runtime.start_profile(profile_id)
 
     def _quit(self, _item: object) -> None:
         if self._quit_requested:

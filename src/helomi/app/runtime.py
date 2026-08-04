@@ -70,6 +70,28 @@ class ApplicationRuntime(AbstractAsyncContextManager):
         return self.settings.default_profile
 
     @property
+    def selected_profile(self) -> Profile | None:
+        """Return the explicit configured startup profile, if any."""
+        profile_id = self.settings.selected_profile
+        if not profile_id:
+            return None
+        return self._profile(profile_id, label="Selected")
+
+    @property
+    def startup_profile(self) -> Profile:
+        """Return the configured startup profile or the validated default."""
+        if profile := self.selected_profile:
+            return profile
+        if profile_id := self.default_profile_id:
+            for entry in self.profiles:
+                if entry.id == profile_id and entry.profile is not None:
+                    return entry.profile
+        for entry in self.profiles:
+            if entry.profile is not None:
+                return entry.profile
+        raise FileNotFoundError("No valid profiles are available")
+
+    @property
     def progress(self) -> ProgressStore:
         self._require_open()
         return self._progress
@@ -121,13 +143,15 @@ class ApplicationRuntime(AbstractAsyncContextManager):
             if self._backend is backend:
                 self._backend = None
 
-    def _profile(self, profile_id: str) -> Profile:
+    def _profile(self, profile_id: str, *, label: str = "Profile") -> Profile:
         for entry in self.profiles:
             if entry.id == profile_id:
                 if entry.profile is None:
-                    raise ValueError(entry.error or f"Profile is invalid: {profile_id}")
+                    raise ValueError(
+                        entry.error or f"{label} profile is invalid: {profile_id}"
+                    )
                 return entry.profile
-        raise ValueError(f"Profile does not exist: {profile_id}")
+        raise ValueError(f"{label} profile does not exist: {profile_id}")
 
     def _require_open(self) -> None:
         if not self._entered:

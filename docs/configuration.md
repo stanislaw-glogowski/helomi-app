@@ -54,6 +54,7 @@ The supplied settings are in `.helomi/settings.yml`:
 
 ```yaml
 default_profile: alexa
+selected_profile: ""
 
 conversation:
   language_model:
@@ -84,6 +85,7 @@ speech:
 | Area | Settings contract |
 | --- | --- |
 | `default_profile` | Optional profile directory id. |
+| `selected_profile` | Explicit profile directory id to start without the CLI picker. Leave empty to retain CLI selection; the desktop then uses `default_profile` or the first valid profile. An explicit unavailable profile fails startup rather than falling back. |
 | `conversation.language_model` | `mlx`, or `langchain` with `base_url`. |
 | `conversation.acknowledgement_delay` | Non-negative seconds from reply planning before one prepared wait reaction may play. |
 | `conversation` classifier | Alexa requires the configured local `classifier` model role for ambiguous turns. |

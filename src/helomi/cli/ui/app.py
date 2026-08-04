@@ -44,6 +44,7 @@ class TerminalApp(App[None]):
         logs: LogBuffer,
         progress: ProgressStore,
         default_profile_id: str | None = None,
+        selected_profile_id: str = "",
     ) -> None:
         super().__init__()
         self._profiles = profiles
@@ -51,6 +52,7 @@ class TerminalApp(App[None]):
         self._logs = logs
         self._progress = progress
         self._default_profile_id = default_profile_id
+        self._selected_profile_id = selected_profile_id
         self._profile_queue: asyncio.Queue[Profile | None] = asyncio.Queue(maxsize=1)
         self._startup_queue: asyncio.Queue[bool | None] = asyncio.Queue(maxsize=1)
         self._startup_screen: StartupScreen | None = None
@@ -178,10 +180,11 @@ class TerminalApp(App[None]):
         self.set_interval(0.08, self._refresh_telemetry)
         self.set_interval(0.08, self._flush_logs)
         self.set_interval(0.1, self._refresh_progress)
-        self.push_screen(
-            ProfilePicker(self._profiles, self._default_profile_id),
-            self._profile_selected,
-        )
+        if not self._selected_profile_id:
+            self.push_screen(
+                ProfilePicker(self._profiles, self._default_profile_id),
+                self._profile_selected,
+            )
 
     def _profile_selected(self, profile: Profile | None) -> None:
         self._profile_queue.put_nowait(profile)

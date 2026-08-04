@@ -12,6 +12,7 @@ from helomi.speech.config import SpeechSettings
 
 class Settings(ConfigModel):
     default_profile: str | None = Field(default=None, min_length=1)
+    selected_profile: str = ""
     conversation: ConversationSettings = ConversationSettings()
     speech: SpeechSettings = SpeechSettings()
 

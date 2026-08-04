@@ -99,6 +99,7 @@ def test_local_store_loads_profile_settings_and_models(tmp_path: Path) -> None:
     assert settings.conversation.language_model.adapter == "langchain"
     assert settings.conversation.language_model.base_url == "http://models.local:11434"
     assert settings.speech.audio.driver == "pyaudio"
+    assert settings.selected_profile == ""
     assert store.load_default_profile().id == "second"
     assert store.ensure_model_path("nested", "model.onnx") == model_path
 
@@ -252,9 +253,13 @@ def test_settings_override_can_add_a_scalar_value(tmp_path: Path) -> None:
     default = tmp_path / "settings.yml"
     override = tmp_path / "settings.override.yml"
     default.write_text("{}\n", encoding="utf-8")
-    override.write_text("default_profile: alexa\n", encoding="utf-8")
+    override.write_text(
+        "default_profile: alexa\nselected_profile: henry\n", encoding="utf-8"
+    )
 
-    assert Settings.load_from_files(default, override).default_profile == "alexa"
+    settings = Settings.load_from_files(default, override)
+    assert settings.default_profile == "alexa"
+    assert settings.selected_profile == "henry"
 
 
 def test_settings_override_merges_nested_sections(tmp_path: Path) -> None:
@@ -290,3 +295,4 @@ def test_versioned_settings_list_all_defaults() -> None:
     path = Path(__file__).parents[3] / ".helomi" / "settings.yml"
 
     assert Settings.load_from_file(path).default_profile == "alexa"
+    assert Settings.load_from_file(path).selected_profile == ""

@@ -149,9 +149,60 @@ def test_runtime_profiles_progress_and_adapter_validation() -> None:
         )
         async with runtime:
             assert runtime.default_profile_id == "agent"
+            assert runtime.selected_profile is None
+            assert runtime.startup_profile is runtime.profiles[0].profile
             assert isinstance(runtime.progress, ProgressStore)
             with pytest.raises(RuntimeError, match="not running"):
                 await runtime.wait()
+
+    asyncio.run(scenario())
+
+
+def test_runtime_resolves_explicit_selected_profile_without_fallback() -> None:
+    async def scenario() -> None:
+        agent = make_profile()
+        other = make_profile()
+        other = other.model_copy(update={"id": "other"})
+        runtime = ApplicationRuntime(
+            SimpleNamespace(
+                load_settings=lambda: Settings.model_validate(
+                    {"default_profile": "agent", "selected_profile": "other"}
+                ),
+                inspect_profiles=lambda: [
+                    ProfileEntry("agent", "Agent", agent),
+                    ProfileEntry("other", "Other", other),
+                    ProfileEntry("broken", "Broken", error="bad profile"),
+                ],
+            )
+        )
+        async with runtime:
+            assert runtime.selected_profile is other
+            assert runtime.startup_profile is other
+
+        missing = ApplicationRuntime(
+            SimpleNamespace(
+                load_settings=lambda: Settings.model_validate(
+                    {"selected_profile": "missing"}
+                ),
+                inspect_profiles=lambda: [ProfileEntry("agent", "Agent", agent)],
+            )
+        )
+        async with missing:
+            with pytest.raises(
+                ValueError, match="Selected profile does not exist: missing"
+            ):
+                _ = missing.startup_profile
+
+        fallback = ApplicationRuntime(
+            SimpleNamespace(
+                load_settings=lambda: Settings.model_validate(
+                    {"default_profile": "missing"}
+                ),
+                inspect_profiles=lambda: [ProfileEntry("agent", "Agent", agent)],
+            )
+        )
+        async with fallback:
+            assert fallback.startup_profile is agent
 
     asyncio.run(scenario())
 

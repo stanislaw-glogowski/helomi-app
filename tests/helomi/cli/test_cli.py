@@ -157,6 +157,91 @@ def test_run_uses_the_application_runtime(
     asyncio.run(scenario())
 
 
+def test_run_uses_selected_profile_without_opening_picker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        calls: list[str] = []
+        event_bus = EventBus()
+        profile = SimpleNamespace(id="agent", name="Agent")
+
+        class Runtime:
+            profiles = (ProfileEntry("agent", "Agent", profile),)
+            settings = Settings.model_validate({"selected_profile": "agent"})
+            progress = object()
+            default_profile_id = None
+            selected_profile = profile
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args) -> None:
+                pass
+
+            async def start(self, profile_id: str) -> None:
+                calls.append(f"start:{profile_id}")
+
+            async def wait(self) -> None:
+                return
+
+            async def shutdown(self) -> None:
+                calls.append("shutdown")
+                event_bus.publish(ShutdownEvent())
+
+        Runtime.event_bus = event_bus
+
+        class App:
+            def __init__(self, *_args) -> None:
+                self.exited = asyncio.Event()
+
+            async def run_async(self) -> None:
+                await self.exited.wait()
+
+            async def wait_mounted(self) -> None:
+                pass
+
+            async def select_profile(self):
+                raise AssertionError("selected profile must bypass the picker")
+
+            def configure_runtime(self, selected, _settings) -> None:
+                assert selected is profile
+                calls.append("configure")
+
+            async def show_startup(self) -> None:
+                calls.append("show")
+
+            async def finish_startup(self) -> None:
+                calls.append("finish")
+
+            async def wait_quit_requested(self) -> None:
+                return
+
+            def exit(self) -> None:
+                self.exited.set()
+
+        class Bridge:
+            async def wait_ready(self) -> None:
+                pass
+
+            async def run(self, bus: EventBus) -> None:
+                with bus.subscribe(ShutdownEvent) as events:
+                    await events.__anext__()
+                    events.task_done()
+
+        monkeypatch.setattr(main_module, "ApplicationRuntime", Runtime)
+        monkeypatch.setattr(main_module, "TerminalApp", App)
+        monkeypatch.setattr(main_module, "UiEventBridge", Bridge)
+        monkeypatch.setattr(
+            main_module, "run_event_logger", lambda _bus: asyncio.sleep(0)
+        )
+        monkeypatch.setattr(main_module, "configure_ui_logger", lambda _: None)
+        monkeypatch.setattr(main_module, "configure_shutdown", lambda _: None)
+        await main_module.run()
+        assert calls[:4] == ["configure", "show", "start:agent", "finish"]
+
+    asyncio.run(scenario())
+
+
 def test_main_runs_async_entrypoint(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[object] = []
 

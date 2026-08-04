@@ -1,5 +1,6 @@
 # Technical runtime settings. Profile-specific model parameters live in profile.yml.
 default_profile: "alexa"
+selected_profile: ""
 
 conversation:
   language_model:
