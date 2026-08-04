@@ -2,7 +2,7 @@ import asyncio
 import sys
 from collections.abc import AsyncIterator
 from types import ModuleType, SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from langchain.messages import HumanMessage
@@ -55,7 +55,10 @@ from helomi.conversation.profile import (
     ProfilePreparation,
 )
 from helomi.conversation.reply import ConversationTextChunk, ReplySegmenter
+from helomi.conversation.tools.domain import ToolCall, ToolDefinition
+from helomi.conversation.tools.service import ToolService
 from helomi.conversation.worker import Worker
+from helomi.resources import TextFileCatalog
 from tests.support import FakeLanguageModel
 
 
@@ -270,6 +273,91 @@ def test_profile_preparation_generates_shuffled_rotating_reactions(
             for operation, _ in model.operations
         )
 
+    asyncio.run(scenario())
+
+
+def test_tool_service_executes_and_deduplicates_builtin_file_calls(tmp_path) -> None:
+    async def scenario() -> None:
+        service = ToolService(TextFileCatalog(tmp_path / "data"))
+        await service.start()
+        try:
+            write = ToolCall(
+                "write-1",
+                "file_write",
+                {"path": "note.txt", "content": "hello", "mode": "create"},
+            )
+            assert not (await service.execute(write)).is_error
+            assert (await service.execute(write)).content == "Text file saved."
+            read = await service.execute(
+                ToolCall("read-1", "file_read", {"path": "note.txt"})
+            )
+            assert read.content == "hello"
+            quit_result = await service.execute(ToolCall("quit-1", "app_quit", {}))
+            assert quit_result.quit_requested
+        finally:
+            await service.stop()
+
+    asyncio.run(scenario())
+
+
+def test_tool_service_covers_remote_background_and_error_paths(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Text:
+        text = "remote text"
+
+    class Response:
+        content = (Text(),)
+        structuredContent: ClassVar[dict[str, int]] = {"answer": 1}
+        isError = False
+
+    class Session:
+        async def call_tool(self, name: str, *, arguments: dict):
+            assert name == "remote"
+            assert arguments == {"value": 1}
+            return Response()
+
+    async def scenario() -> None:
+        completed: list[tuple[ToolCall, object]] = []
+
+        async def on_completed(call: ToolCall, result: object) -> None:
+            completed.append((call, result))
+
+        service = ToolService(
+            TextFileCatalog(tmp_path / "data"), on_background_result=on_completed
+        )
+        await service.start()
+        try:
+            service._tools["mcp__demo__remote"] = (
+                ToolDefinition(
+                    "mcp__demo__remote",
+                    "Remote",
+                    {"type": "object"},
+                    mode="background",
+                ),
+                "demo",
+                "remote",
+            )
+            service._sessions["demo"] = Session()
+            call = ToolCall("remote-1", "mcp__demo__remote", {"value": 1})
+            result = await service.execute(call)
+            assert result.content == 'remote text\n{"answer": 1}'
+            await service.enqueue(call)
+            await asyncio.wait_for(service._background.join(), 1)
+            assert completed and completed[0][0] == call
+            with pytest.raises(ValueError, match="background"):
+                await service.enqueue(ToolCall("x", "files_list", {}))
+            assert (await service.execute(ToolCall("bad", "missing", {}))).is_error
+            assert service._format_mcp_result(
+                SimpleNamespace(content=(), structuredContent=None)
+            ).startswith("Tool returned")
+        finally:
+            await service.stop()
+
+    monkeypatch.setenv("HELOMI_TOKEN", "secret")
+    assert ToolService._environment_mapping({"Authorization": "HELOMI_TOKEN"}) == {
+        "Authorization": "secret"
+    }
     asyncio.run(scenario())
 
 
@@ -1063,6 +1151,7 @@ def test_studio_uses_default_profile_and_settings(
                 "opening",
                 "reply",
                 "summarize",
+                "background_result",
             }
 
     asyncio.run(scenario())

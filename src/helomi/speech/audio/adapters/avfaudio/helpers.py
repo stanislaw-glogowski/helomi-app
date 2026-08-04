@@ -15,13 +15,7 @@ def resolve_helper_executable() -> Path:
 
     repository_root = adapter_dir.parents[4]
     development = (
-        repository_root
-        / "native"
-        / "macos"
-        / "audio"
-        / ".build"
-        / "release"
-        / "audio"
+        repository_root / "native" / "macos" / "audio" / ".build" / "release" / "audio"
     )
     if development.is_file() and os.access(development, os.X_OK):
         return development

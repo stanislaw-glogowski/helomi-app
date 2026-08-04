@@ -145,6 +145,7 @@ class Worker(Component):
         self._listening = False
         self._active_reply_id: ReplyId | None = None
         self._reply_active = False
+        self._protected_reply = False
         self._accept_reply_phrases = False
         self._synthesis_active = False
         self._playback_active = False
@@ -207,6 +208,8 @@ class Worker(Component):
             self._publish_capture_telemetry(chunk)
 
             if not self._listening:
+                if self._protected_reply:
+                    continue
                 self._observe_pending_turn(chunk)
                 self._capture_queue.put_nowait(chunk)
                 self._observe_barge_in(chunk)
@@ -253,9 +256,10 @@ class Worker(Component):
             async for event in events:
                 try:
                     match event:
-                        case ReplyGenerationStarted(reply_id):
+                        case ReplyGenerationStarted(reply_id, protected_delivery):
                             if not self._interrupting:
                                 self._prepare_for_reply(reply_id)
+                                self._protected_reply = protected_delivery
                                 self._observe_timing("reply_started")
                         case ReplyPhrase(reply_id, phrase_id, text):
                             if (
@@ -386,6 +390,14 @@ class Worker(Component):
                         self._event_bus.publish(
                             ReplyPhraseDelivered(reply_id, phrase_id)
                         )
+                        if (
+                            self._protected_reply
+                            and not self._reply_active
+                            and not self._synthesis_active
+                            and self._synthesis_queue.empty()
+                            and self._playback_queue.empty()
+                        ):
+                            self._protected_reply = False
             finally:
                 self._playback_active = False
                 self._playback_queue.task_done()
@@ -430,7 +442,7 @@ class Worker(Component):
         self._playback_started_phrases.clear()
 
     def _observe_barge_in(self, chunk: SpeechChunk) -> None:
-        if not self._assistant_active or self._interrupting:
+        if self._protected_reply or not self._assistant_active or self._interrupting:
             self._barge_in_speech_frames = 0
             if self._barge_in_reply_id is not None:
                 self._clear_barge_in_candidate(restore=True)

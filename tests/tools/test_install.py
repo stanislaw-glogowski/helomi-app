@@ -36,13 +36,7 @@ def test_install_prepares_default_data_and_models(
         REPOSITORY_ROOT / ".helomi" / "settings.yml"
     ).read_text()
     assert (
-        data_root
-        / "locales"
-        / "en-US"
-        / "profiles"
-        / "alexa"
-        / "prompts"
-        / "system.md"
+        data_root / "locales" / "en-US" / "profiles" / "alexa" / "prompts" / "system.md"
     ).is_file()
     assert {path.name for path in (data_root / "models").iterdir()} == {
         "alexa_v0.1.onnx",
@@ -85,13 +79,7 @@ def test_install_preserves_existing_local_files(
 
     data_root = install_module.install(REPOSITORY_ROOT, tmp_path / ".helomi")
     system_prompt = (
-        data_root
-        / "locales"
-        / "en-US"
-        / "profiles"
-        / "alexa"
-        / "prompts"
-        / "system.md"
+        data_root / "locales" / "en-US" / "profiles" / "alexa" / "prompts" / "system.md"
     )
     wakeword = data_root / "models" / "alexa_v0.1.onnx"
     system_prompt.write_text("Local prompt", encoding="utf-8")

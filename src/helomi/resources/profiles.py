@@ -5,7 +5,7 @@ from typing import ClassVar
 
 from pydantic import ConfigDict, Field
 
-from helomi.conversation.profile import ConversationProfile
+from helomi.conversation.profile import ConversationProfile, McpConfiguration
 from helomi.speech.config import SpeechProfile
 
 from .configuration import load_mapping, merge_mappings
@@ -26,6 +26,7 @@ class Profile(SpeechProfile):
     path: Path = Field(exclude=True)
     name: str = Field(min_length=1)
     conversation: ConversationProfile
+    mcp: McpConfiguration = McpConfiguration()
 
     @staticmethod
     def load_from_directory(path: Path) -> Profile:
@@ -57,6 +58,8 @@ class Profile(SpeechProfile):
                     "reactions": {
                         "wait": Profile._read_reaction(path, "wait.txt"),
                         "wake": Profile._read_reaction(path, "wake.txt"),
+                        "background": Profile._read_reaction(path, "background.txt"),
+                        "quit": Profile._read_reaction(path, "quit.txt"),
                     },
                 },
                 "id": path.name,

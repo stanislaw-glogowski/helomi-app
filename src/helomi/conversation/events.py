@@ -16,12 +16,20 @@ class UserTurn:
     text: str
 
 
-type ConversationInput = ConversationActivated | UserTurn
+@dataclass(frozen=True, slots=True)
+class BackgroundResult:
+    tool_name: str
+    content: str
+    failed: bool = False
+
+
+type ConversationInput = ConversationActivated | UserTurn | BackgroundResult
 
 
 @dataclass(frozen=True, slots=True)
 class GenerateReply(Event):
     input: ConversationInput
+    protected_delivery: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +50,7 @@ class ReplyGenerationStarted(Event):
     """Signal that a finite conversation graph run started generating."""
 
     reply_id: ReplyId
+    protected_delivery: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +58,12 @@ class ReplyGenerationCompleted(Event):
     """Signal that generation ended; audio delivery may still be active."""
 
     reply_id: ReplyId
+
+
+@dataclass(frozen=True, slots=True)
+class QuitRequested(Event):
+    reply_id: ReplyId
+    final_phrase_id: PhraseId
 
 
 @dataclass(frozen=True, slots=True)

@@ -17,8 +17,8 @@ class WhisperModel(MLXBaseModel[MLXWhisperProfile, MLXWhisperSettings]):
             "task": "transcribe",
             "verbose": None,
         }
-        if self._settings.language is not None:
-            options["language"] = self._settings.language
+        if self._profile.language is not None:
+            options["language"] = self._profile.language
 
         result = model.generate(
             frame.samples,

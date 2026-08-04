@@ -6,10 +6,17 @@ from types import TracebackType
 from typing import Self
 
 from helomi.common.events import Event, EventBus, EventSubscription, ShutdownEvent
-from helomi.conversation import ConversationReady, run_conversation_worker
+from helomi.conversation import (
+    BackgroundResult,
+    ConversationReady,
+    GenerateReply,
+    QuitRequested,
+    run_conversation_worker,
+)
+from helomi.conversation.tools.service import ToolService
 from helomi.resources import LocalStore, Profile, ProfileEntry, Settings
 from helomi.speech import run_speech_worker
-from helomi.speech.events import SpeechReady
+from helomi.speech.events import ReplyPhraseDelivered, SpeechReady
 from helomi.speech.synthesis.config import MLXChatterboxSettings, PiperSettings
 
 from .progress import HuggingFaceProgress, ProgressStore
@@ -174,24 +181,92 @@ async def _run_workers(
     store: LocalStore,
     start_event: asyncio.Event,
 ) -> None:
-    async with asyncio.TaskGroup() as tasks:
-        tasks.create_task(
-            run_conversation_worker(
-                event_bus,
-                profile.conversation,
-                settings.conversation,
-                start_event,
+    async def background_completed(call: object, result: object) -> None:
+        from helomi.conversation.tools.domain import ToolCall, ToolResult
+
+        if isinstance(call, ToolCall) and isinstance(result, ToolResult):
+            event_bus.publish(
+                GenerateReply(
+                    BackgroundResult(call.name, result.content, result.is_error),
+                    protected_delivery=True,
+                )
             )
+
+    tools = (
+        ToolService(
+            store.text_files(),
+            profile.mcp.endpoints,
+            on_background_result=background_completed,
         )
-        tasks.create_task(
-            run_speech_worker(
-                profile,
-                settings.speech,
-                store,
-                event_bus,
-                start_event,
+        if hasattr(store, "text_files")
+        else None
+    )
+    if tools is not None:
+        await tools.start()
+    quit_ready = asyncio.Event()
+    quit_coordinator = asyncio.create_task(
+        _shutdown_after_quit(event_bus, quit_ready),
+        name="helomi-quit-coordinator",
+    )
+    try:
+        await quit_ready.wait()
+        async with asyncio.TaskGroup() as tasks:
+            tasks.create_task(
+                run_conversation_worker(
+                    event_bus,
+                    profile.conversation,
+                    settings.conversation,
+                    start_event,
+                    tools,
+                )
             )
-        )
+            tasks.create_task(
+                run_speech_worker(
+                    profile,
+                    settings.speech,
+                    store,
+                    event_bus,
+                    start_event,
+                )
+            )
+    finally:
+        quit_coordinator.cancel()
+        with suppress(asyncio.CancelledError):
+            await quit_coordinator
+        if tools is not None:
+            await tools.stop()
+
+
+async def _shutdown_after_quit(event_bus: EventBus, ready: asyncio.Event) -> None:
+    with event_bus.subscribe(
+        QuitRequested, ReplyPhraseDelivered, ShutdownEvent
+    ) as events:
+        ready.set()
+        async for event in events:
+            try:
+                if isinstance(event, ShutdownEvent):
+                    return
+                if not isinstance(event, QuitRequested):
+                    continue
+                while True:
+                    delivered = await asyncio.wait_for(events.__anext__(), timeout=10)
+                    try:
+                        if isinstance(delivered, ShutdownEvent):
+                            return
+                        if (
+                            isinstance(delivered, ReplyPhraseDelivered)
+                            and delivered.reply_id == event.reply_id
+                            and delivered.phrase_id == event.final_phrase_id
+                        ):
+                            event_bus.publish(ShutdownEvent())
+                            return
+                    finally:
+                        events.task_done()
+            except TimeoutError:
+                event_bus.publish(ShutdownEvent())
+                return
+            finally:
+                events.task_done()
 
 
 async def _wait_until_ready(events: EventSubscription) -> None:

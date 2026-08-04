@@ -6,6 +6,7 @@ from typing import Any
 
 from huggingface_hub.utils import disable_progress_bars
 
+from ...tools.domain import ToolCall
 from ..config import MLXModelProfile, MLXModelsProfile
 from ..domain import LanguageModelChunk, LanguageModelRequest, LanguageModelRole
 from ..ports import LanguageModel
@@ -63,14 +64,27 @@ class MLXLanguageModel(LanguageModel):
     def generate(self, request: LanguageModelRequest) -> Iterator[LanguageModelChunk]:
         loaded = self._model(request.role)
         profile = self._profile(request.role)
+        messages = [
+            {"role": message.role.value, "content": message.content}
+            for message in request.messages
+        ]
+        tool_schemas = [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.input_schema,
+                },
+            }
+            for tool in request.tools
+        ]
         prompt = loaded.tokenizer.apply_chat_template(
-            [
-                {"role": message.role.value, "content": message.content}
-                for message in request.messages
-            ],
+            messages,
             tokenize=False,
             add_generation_prompt=True,
             enable_thinking=profile.thinking,
+            **({"tools": tool_schemas} if tool_schemas else {}),
         )
         if self._stream_generate is None or self._make_sampler is None:
             raise RuntimeError("MLX language model adapter is not open")
@@ -85,6 +99,40 @@ class MLXLanguageModel(LanguageModel):
             prompt,
             profile.thinking,
         )
+        if request.tools:
+            content = "".join(
+                response.text
+                for response in self._stream_generate(
+                    loaded.model,
+                    loaded.tokenizer,
+                    prompt=prompt_value,
+                    max_tokens=profile.max_tokens,
+                    sampler=sampler,
+                    prompt_cache=prompt_cache,
+                )
+                if response.text
+            )
+            parser = getattr(loaded.tokenizer, "tool_parser", None)
+            if parser is not None:
+                try:
+                    parsed = parser(content, tool_schemas)
+                    parsed_calls = parsed if isinstance(parsed, list) else [parsed]
+                    yield LanguageModelChunk(
+                        tool_calls=tuple(
+                            ToolCall(
+                                id=str(call.get("id", index)),
+                                name=str(call["name"]),
+                                arguments=dict(call["arguments"]),
+                            )
+                            for index, call in enumerate(parsed_calls)
+                        )
+                    )
+                    return
+                except KeyError, TypeError, ValueError:
+                    pass
+            if content:
+                yield LanguageModelChunk(content)
+            return
         for response in self._stream_generate(
             loaded.model,
             loaded.tokenizer,

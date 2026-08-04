@@ -1,3 +1,6 @@
 *
 !.gitignore
 !alexa/
+!alexa/reactions/
+!alexa/reactions/background.txt
+!alexa/reactions/quit.txt

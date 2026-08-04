@@ -76,20 +76,14 @@ class CaptureService(AbstractAsyncService):
             while not self._capture_cancel.is_set():
                 audio = self._audio_input.read()
 
-                if (
-                    self._wakeword_model is not None
-                    and self._wakeword_reset.is_set()
-                ):
+                if self._wakeword_model is not None and self._wakeword_reset.is_set():
                     self._wakeword_model.reset()
                     self._wakeword_reset.clear()
 
                 vad = self._vad_model.detect(audio)
                 wakeword: DetectionResult | None = None
 
-                if (
-                    self._wakeword_model is not None
-                    and self._wakeword_enabled.is_set()
-                ):
+                if self._wakeword_model is not None and self._wakeword_enabled.is_set():
                     wakeword = self._wakeword_model.detect(audio)
 
                 loop.call_soon_threadsafe(

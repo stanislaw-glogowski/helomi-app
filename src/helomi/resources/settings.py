@@ -43,6 +43,7 @@ class Settings(ConfigModel):
             )
         return Settings.from_mapping(data)
 
+
 def _normalize_legacy_settings(data: dict) -> dict:
     """Ignore the removed classifier toggle in existing local overrides."""
     normalized = dict(data)

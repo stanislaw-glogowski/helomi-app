@@ -1,10 +1,12 @@
+import asyncio
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 import helomi.resources.local as local_module
-from helomi.resources import LocalStore, Settings
+from helomi.conversation.profile import McpConfiguration
+from helomi.resources import LocalStore, Settings, TextFileCatalog
 from helomi.resources.profiles import Profile
 
 
@@ -53,6 +55,8 @@ stt:
     (reactions / "wait.txt").write_text(
         "Chwileczkę.\nJuż sprawdzam.\n", encoding="utf-8"
     )
+    (reactions / "background.txt").write_text("Sprawdzam.\n", encoding="utf-8")
+    (reactions / "quit.txt").write_text("Do usłyszenia.\n", encoding="utf-8")
     return profile
 
 
@@ -208,9 +212,7 @@ def test_local_store_reports_missing_or_unsafe_locale_configuration(
 
 def test_local_store_reports_missing_resources(tmp_path: Path) -> None:
     (tmp_path / "settings.yml").write_text("language: en-US\n", encoding="utf-8")
-    (tmp_path / "locales" / "en-US" / "settings.yml").parent.mkdir(
-        parents=True
-    )
+    (tmp_path / "locales" / "en-US" / "settings.yml").parent.mkdir(parents=True)
     (tmp_path / "locales" / "en-US" / "settings.yml").write_text(
         "{}\n", encoding="utf-8"
     )
@@ -339,9 +341,7 @@ def test_default_profile_falls_back_to_first_valid_profile(tmp_path: Path) -> No
 
 def test_default_profile_requires_a_valid_profile(tmp_path: Path) -> None:
     (tmp_path / "settings.yml").write_text("language: en-US\n", encoding="utf-8")
-    (tmp_path / "locales" / "en-US" / "settings.yml").parent.mkdir(
-        parents=True
-    )
+    (tmp_path / "locales" / "en-US" / "settings.yml").parent.mkdir(parents=True)
     (tmp_path / "locales" / "en-US" / "settings.yml").write_text(
         "{}\n", encoding="utf-8"
     )
@@ -448,3 +448,67 @@ def test_versioned_reactions_are_short_and_complete() -> None:
         assert len(set(lines)) == len(lines), reaction_path
         if reaction_path.name == "wait.txt":
             assert all(len(line.replace(",", "").split()) <= 4 for line in lines)
+
+
+def test_mcp_profile_configuration_discriminates_transports() -> None:
+    configuration = McpConfiguration.model_validate(
+        {
+            "endpoints": [
+                {
+                    "id": "remote",
+                    "transport": "streamable_http",
+                    "url": "https://example.test/mcp",
+                    "headers_from_env": {"Authorization": "HELOMI_TOKEN"},
+                },
+                {
+                    "id": "local",
+                    "transport": "stdio",
+                    "command": "uvx",
+                    "args": ["example"],
+                    "mode": "background",
+                },
+            ]
+        }
+    )
+    assert [endpoint.id for endpoint in configuration.endpoints] == ["remote", "local"]
+    with pytest.raises(ValidationError, match="unique"):
+        McpConfiguration.model_validate(
+            {
+                "endpoints": [
+                    {
+                        "id": "same",
+                        "transport": "stdio",
+                        "command": "one",
+                    },
+                    {
+                        "id": "same",
+                        "transport": "stdio",
+                        "command": "two",
+                    },
+                ]
+            }
+        )
+
+
+def test_text_file_catalog_contains_paths_and_enforces_write_modes(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        catalog = TextFileCatalog(tmp_path / "data")
+        await catalog.start()
+        try:
+            catalog.write("notes/today.txt", "hello", mode="create")
+            assert catalog.list() == ("notes/today.txt",)
+            assert catalog.read("notes/today.txt") == "hello"
+            with pytest.raises(FileExistsError):
+                catalog.write("notes/today.txt", "again", mode="create")
+            catalog.write("notes/today.txt", "again", mode="replace")
+            assert catalog.read("notes/today.txt") == "again"
+            with pytest.raises(ValueError, match=r"relative .txt"):
+                catalog.read("/tmp/outside.txt")
+            with pytest.raises(ValueError, match="stay inside"):
+                catalog.read("../outside.txt")
+        finally:
+            await catalog.stop()
+
+    asyncio.run(scenario())

@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from typing import Any
 
+from ...tools.domain import ToolCall
 from ..config import (
     LangChainModelProfile,
     LangChainModelsProfile,
@@ -55,9 +56,36 @@ class LangChainLanguageModel(LanguageModel):
             message_types[message.role](content=message.content)
             for message in request.messages
         ]
-        for chunk in self._model(request.role).stream(messages):
+        model = self._model(request.role)
+        if request.tools:
+            model = model.bind_tools(
+                [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": tool.input_schema,
+                        },
+                    }
+                    for tool in request.tools
+                ]
+            )
+        calls: list[ToolCall] = []
+        for chunk in model.stream(messages):
             if chunk.text:
                 yield LanguageModelChunk(chunk.text)
+            for call in getattr(chunk, "tool_calls", ()):
+                if call.get("name") and call.get("id"):
+                    calls.append(
+                        ToolCall(
+                            id=str(call["id"]),
+                            name=str(call["name"]),
+                            arguments=dict(call.get("args", {})),
+                        )
+                    )
+        if calls:
+            yield LanguageModelChunk(tool_calls=tuple(calls))
 
     def _model(self, role: LanguageModelRole) -> Any:
         if model := self._models.get(role):

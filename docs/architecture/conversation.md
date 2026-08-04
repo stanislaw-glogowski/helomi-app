@@ -41,6 +41,15 @@ acknowledgement delay for its first model chunk. It emits one prepared wait
 reaction only when that threshold expires; no reaction is generated for silence or
 cancellation, and reactions are not persisted in conversation history.
 
+When a model selects a tool, the conversation graph routes the request through
+the tool service. Immediate results return to the model in the same finite run.
+Background tools enqueue one in-memory job, emit a prepared background
+reaction, and later re-enter the graph as a result input. MCP sessions,
+subprocesses, filesystem watching, and job execution remain outside graph state;
+only the conversational result is checkpointed.
+Completed background summaries use protected delivery: Helomi waits for the
+current reply to finish and does not let barge-in interrupt the summary.
+
 When speech detects barge-in, `CancelReply` cancels the active task, drains
 queued inputs, and records the actually delivered prefix as context for the next
 run. The reply ID prevents a stale cancellation from affecting newer generation.

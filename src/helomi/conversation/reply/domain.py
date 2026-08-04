@@ -5,3 +5,8 @@ from dataclasses import dataclass
 class ConversationTextChunk:
     content: str
     acknowledgement: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationQuit:
+    pass

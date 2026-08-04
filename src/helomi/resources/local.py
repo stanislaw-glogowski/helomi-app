@@ -8,6 +8,7 @@ from .configuration import load_mapping, merge_mappings
 from .models import ModelCatalog
 from .profiles import Profile, ProfileCatalog, ProfileEntry
 from .settings import Settings, SettingsStore
+from .text_files import TextFileCatalog
 
 
 class LocalStore(ModelCatalog, ProfileCatalog, SettingsStore):
@@ -34,6 +35,9 @@ class LocalStore(ModelCatalog, ProfileCatalog, SettingsStore):
         if not path.is_file():
             raise FileNotFoundError(f"Model file does not exist: {path}")
         return path
+
+    def text_files(self) -> TextFileCatalog:
+        return TextFileCatalog(self._root_path / "data")
 
     def load_profile(self, name: str) -> Profile:
         path = self._profiles_path / name

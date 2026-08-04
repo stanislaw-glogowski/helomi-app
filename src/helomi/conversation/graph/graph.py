@@ -27,6 +27,7 @@ class ConversationGraph:
         builder.add_node(nodes.OPENING, nodes.opening)
         builder.add_node(nodes.REPLY, nodes.reply)
         builder.add_node(nodes.SUMMARIZE, nodes.summarize)
+        builder.add_node(nodes.BACKGROUND_RESULT, nodes.background_result)
         builder.add_conditional_edges(
             START,
             self._route,
@@ -34,11 +35,13 @@ class ConversationGraph:
                 "activation": nodes.OPENING,
                 "user_turn": nodes.REPLY,
                 "maintenance": nodes.SUMMARIZE,
+                "background_result": nodes.BACKGROUND_RESULT,
             },
         )
         builder.add_edge(nodes.OPENING, END)
         builder.add_edge(nodes.REPLY, END)
         builder.add_edge(nodes.SUMMARIZE, END)
+        builder.add_edge(nodes.BACKGROUND_RESULT, END)
         self._compiled = builder.compile(checkpointer=checkpointer)
 
     @staticmethod

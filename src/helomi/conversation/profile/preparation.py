@@ -16,10 +16,16 @@ class ProfilePreparation:
         self._language_model = language_model
         wake_reactions = list(reactions.wake)
         wait_reactions = list(reactions.wait)
+        background_reactions = list(reactions.background)
+        quit_reactions = list(reactions.quit)
         shuffle(wake_reactions)
         shuffle(wait_reactions)
+        shuffle(background_reactions)
+        shuffle(quit_reactions)
         self._wake_reactions = cycle(wake_reactions)
         self._wait_reactions = cycle(wait_reactions)
+        self._background_reactions = cycle(background_reactions)
+        self._quit_reactions = cycle(quit_reactions)
 
     async def prepare(self) -> None:
         await self._language_model.prepare(LanguageModelRole.FAST)
@@ -29,3 +35,9 @@ class ProfilePreparation:
 
     def next_reaction(self) -> str | None:
         return next(self._wait_reactions, None)
+
+    def next_background_reaction(self) -> str | None:
+        return next(self._background_reactions, None)
+
+    def next_quit_reaction(self) -> str | None:
+        return next(self._quit_reactions, None)

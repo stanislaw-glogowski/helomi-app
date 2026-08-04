@@ -1,14 +1,17 @@
 import asyncio
+from typing import TYPE_CHECKING
 
 from helomi.common.events import EventBus
 
 from .config import ConversationSettings
 from .events import (
+    BackgroundResult,
     CancelReply,
     ConversationActivated,
     ConversationReady,
     GenerateReply,
     PhraseId,
+    QuitRequested,
     ReplyChunk,
     ReplyDraftUpdated,
     ReplyGenerationCompleted,
@@ -28,7 +31,11 @@ from .model import (
 from .profile import ConversationProfile, ConversationReactions
 from .reply import ConversationTextChunk
 
+if TYPE_CHECKING:
+    from .tools.service import ToolService
+
 __all__ = [
+    "BackgroundResult",
     "CancelReply",
     "ConversationActivated",
     "ConversationMessage",
@@ -43,6 +50,7 @@ __all__ = [
     "LanguageModelRequest",
     "LanguageModelRole",
     "PhraseId",
+    "QuitRequested",
     "ReplyChunk",
     "ReplyDraftUpdated",
     "ReplyGenerationCompleted",
@@ -63,6 +71,7 @@ async def run_conversation_worker(
     profile: ConversationProfile,
     settings: ConversationSettings,
     start_event: asyncio.Event | None = None,
+    tools: ToolService | None = None,
 ) -> None:
     from langgraph.checkpoint.memory import InMemorySaver
 
@@ -76,7 +85,7 @@ async def run_conversation_worker(
         settings.language_model,
         require_classifier=True,
     )
-    context = ConversationContext.from_profile(profile, settings)
+    context = ConversationContext.from_profile(profile, settings, tools)
     async with LanguageModelService(language_model) as service:
         preparation = ProfilePreparation(service, profile.reactions)
         graph = ConversationGraph(

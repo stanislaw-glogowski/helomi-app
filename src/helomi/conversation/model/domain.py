@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from helomi.conversation.tools.domain import ToolCall, ToolDefinition
+
 
 class ConversationRole(StrEnum):
     SYSTEM = "system"
@@ -25,8 +27,10 @@ class LanguageModelRequest:
     role: LanguageModelRole
     messages: tuple[ConversationMessage, ...]
     cache_prefix: str | None = None
+    tools: tuple[ToolDefinition, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class LanguageModelChunk:
-    content: str
+    content: str = ""
+    tool_calls: tuple[ToolCall, ...] = ()

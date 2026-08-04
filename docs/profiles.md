@@ -15,10 +15,12 @@ locales/<language>/profiles/<profile-id>/
 │   └── summary.md
 └── reactions/
     ├── wake.txt
-    └── wait.txt
+    ├── wait.txt
+    ├── background.txt
+    └── quit.txt
 ```
 
-All six content files are required. Prompt paths are fixed and reaction files
+All eight content files are required. Prompt paths are fixed and reaction files
 contain one non-empty phrase per line. Profile id is the directory name; `name`
 is the displayed name.
 
@@ -53,6 +55,16 @@ wakeword:
 
 tts:
   model_path: pl/pl_PL/gosia/medium/pl_PL-gosia-medium.onnx
+
+mcp:
+  endpoints:
+    - id: calendar
+      transport: streamable_http
+      url: https://example.test/mcp
+      mode: background
+      require_confirmation: true
+      headers_from_env:
+        Authorization: HELOMI_CALENDAR_AUTHORIZATION
 ```
 
 The optional wake-word model must be an `.onnx` filename that exists under
@@ -74,3 +86,18 @@ load an OpenWakeWord model.
 Do not commit personal prompts, local model paths, recordings, or private
 endpoints unless they are intentionally versioned defaults. Add an override to
 `settings.override.yml` for machine-specific technical choices.
+
+## Tools and MCP
+
+Helomi always exposes only local text-file tools and a quit action. Files are
+limited to `<data-root>/data/**/*.txt`; writing requires an explicit `create`
+or `replace` request. The directory is watched so external changes appear in
+the file catalog without restarting the app.
+
+`mcp.endpoints` is optional. An endpoint is either `streamable_http` with a URL
+and optional request headers read from environment variables, or `stdio` with a
+literal executable and argument list. Stdio never invokes a shell and receives
+only a minimal environment plus explicitly mapped values. `mode` is
+`immediate` or `background`; background calls run one at a time and later add a
+spoken summary to the current conversation. An unavailable endpoint disables
+only its own tools.

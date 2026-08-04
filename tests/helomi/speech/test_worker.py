@@ -763,9 +763,7 @@ def test_public_speech_runner_skips_wakeword_for_always_listening_profile(
             lambda *_: pytest.fail("wakeword model must not be created"),
         )
         monkeypatch.setattr(synthesis_package, "get_tts_model", lambda *_: object())
-        monkeypatch.setattr(
-            transcription_package, "get_stt_model", lambda *_: object()
-        )
+        monkeypatch.setattr(transcription_package, "get_stt_model", lambda *_: object())
 
         async def fake_run(self: Worker) -> None:
             captured.update(self.__dict__)

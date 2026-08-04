@@ -8,11 +8,13 @@ from helomi.common.components import Component
 from helomi.common.events import EventBus, ShutdownEvent
 
 from .events import (
+    BackgroundResult,
     CancelReply,
     ConversationActivated,
     ConversationInput,
     ConversationReady,
     GenerateReply,
+    QuitRequested,
     ReplyChunk,
     ReplyDraftUpdated,
     ReplyGenerationCompleted,
@@ -23,7 +25,7 @@ from .events import (
 )
 from .graph import ConversationContext, ConversationGraph
 from .profile import ProfilePreparation
-from .reply import ConversationTextChunk, ReplySegmenter
+from .reply import ConversationQuit, ConversationTextChunk, ReplySegmenter
 
 
 class Worker(Component):
@@ -42,7 +44,9 @@ class Worker(Component):
         self._graph = graph
         self._context = context
         self._profile_preparation = profile_preparation
-        self._graph_queue: asyncio.Queue[ConversationInput] = asyncio.Queue()
+        self._graph_queue: asyncio.Queue[tuple[ConversationInput, bool]] = (
+            asyncio.Queue()
+        )
         self._active_reply: asyncio.Task[None] | None = None
         self._active_reply_id: ReplyId | None = None
         self._last_reply_id: ReplyId | None = None
@@ -92,9 +96,9 @@ class Worker(Component):
             async for event in events:
                 try:
                     match event:
-                        case GenerateReply(input):
+                        case GenerateReply(input, protected_delivery):
                             await self._preempt_maintenance()
-                            self._graph_queue.put_nowait(input)
+                            self._graph_queue.put_nowait((input, protected_delivery))
                         case CancelReply(spoken_text, reply_id):
                             await self._cancel_reply(spoken_text, reply_id)
                         case ShutdownEvent():
@@ -105,12 +109,14 @@ class Worker(Component):
 
     async def _graph_loop(self) -> None:
         while not self._shutdown_event.is_set():
-            conversation_input = await self._graph_queue.get()
+            conversation_input, protected_delivery = await self._graph_queue.get()
             reply_id = self._next_reply_id()
             completed = False
 
             try:
-                self._event_bus.publish(ReplyGenerationStarted(reply_id))
+                self._event_bus.publish(
+                    ReplyGenerationStarted(reply_id, protected_delivery)
+                )
                 self._active_reply_id = reply_id
                 self._active_reply = asyncio.create_task(
                     self._stream(reply_id, conversation_input)
@@ -205,12 +211,26 @@ class Worker(Component):
                     "input_kind": "user_turn",
                     "messages": [HumanMessage(content=text)],
                 }
+            case BackgroundResult(tool_name, content, failed):
+                graph_input = {
+                    "delivery_context": delivery_context,
+                    "input_kind": "background_result",
+                    "messages": [
+                        HumanMessage(
+                            content=(
+                                f"Background tool {'failed' if failed else 'result'} "
+                                f"from {tool_name}: {content}"
+                            )
+                        )
+                    ],
+                }
 
         config: RunnableConfig = {
             "configurable": {"thread_id": self.THREAD_ID},
         }
         segmenter = ReplySegmenter()
         phrase_id = 0
+        quit_requested = False
 
         async for event in self._graph.compiled.astream(
             input=graph_input,
@@ -218,6 +238,9 @@ class Worker(Component):
             context=self._context,
             stream_mode="custom",
         ):
+            if isinstance(event, ConversationQuit):
+                quit_requested = True
+                continue
             if not isinstance(event, ConversationTextChunk):
                 continue
 
@@ -249,6 +272,8 @@ class Worker(Component):
                 )
             )
         self._event_bus.publish(ReplyDraftUpdated(reply_id=reply_id, text=""))
+        if quit_requested:
+            self._event_bus.publish(QuitRequested(reply_id, phrase_id))
 
     def _next_reply_id(self) -> ReplyId:
         self._reply_sequence += 1
