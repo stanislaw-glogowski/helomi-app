@@ -4,13 +4,15 @@ import signal
 
 import loguru
 
-from helomi_cli.print import run_print_cmd
+from helomi_cli.install import run_install_cmd
+from helomi_cli.profiles import run_profiles_cmd
 from helomi_cli.say import run_say_cmd
+from helomi_cli.settings import run_settings_cmd
 from helomi_cli.widgets import Spinner
 from helomi_common import LogLevel, configure_logger
-from helomi_core import Runtime
+from helomi_core.resources import LocalStore
 
-_DEFAULT_CMD = "say"
+_DEFAULT_CMD = "install"
 
 
 def main():
@@ -31,53 +33,45 @@ def _parse_args() -> argparse.Namespace:
         help="Enable debug mode",
     )
 
-    # Top-level commands (live, print)
+    # Top-level commands
     cmd_parsers = parser.add_subparsers(
         dest="command",
         required=False,
         help="Supported commands:",
     )
 
-    # 1. cli live
+    # cli install
+    cmd_parsers.add_parser(
+        "install",
+        help="(TODO: add description)",
+    )
+
+    # cli say
     cmd_parsers.add_parser(
         "say",
         help="Live speech-to-text with hybrid voice/text input",
     ).add_argument(
         "profile_id",
-        nargs="?",  # Optional positional argument
+        nargs="?",
         default=None,
         help="Optional profile ID to activate",
     )
 
-    # 2. cli print ...
-    print_parser = cmd_parsers.add_parser(
-        "print",
-        help="Print configuration, settings, or profiles",
-    )
-
-    # Nested subparsers under 'print' (settings, profiles)
-    print_subparsers = print_parser.add_subparsers(
-        dest="print_target",
-        required=False,  # Allows running bare `cli print`
-        help="Print specific section:",
-    )
-
-    # 2a. cli print settings
-    print_subparsers.add_parser(
-        "settings",
-        help="Print settings only",
-    )
-
-    # 2b. cli print profiles [profile_id]
-    profiles_parser = print_subparsers.add_parser(
+    # cli profiles
+    cmd_parsers.add_parser(
         "profiles",
-        help="Print profiles",
-    )
-    profiles_parser.add_argument(
+        help="Print profile(s)",
+    ).add_argument(
         "profile_id",
-        nargs="?",  # Optional positional argument
+        nargs="?",
         default=None,
-        help="Optional profile ID to print a specific profile",
+        help="Optional profile ID to print",
+    )
+
+    # cli settings
+    cmd_parsers.add_parser(
+        "settings",
+        help="Print settings",
     )
 
     parser.set_defaults(
@@ -120,27 +114,31 @@ async def _run(args: argparse.Namespace) -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, shutdown.set)
 
-    runtime = Runtime()
+    local_store = LocalStore()
     spinner = Spinner(args.debug)
 
     match args.command:
+        case "install":
+            await run_install_cmd(
+                local_catalog=local_store,
+                spinner=spinner,
+            )
         case "say":
             await run_say_cmd(
-                runtime=runtime,
+                local_catalog=local_store,
                 spinner=spinner,
                 shutdown=shutdown,
                 profile_id=args.profile_id,
             )
-        case "print":
-            match target := args.print_target:
-                case "settings" | "profiles":
-                    run_print_cmd(
-                        runtime=runtime,
-                        target=target,
-                        profile_id=args.profile_id,
-                    )
-                case _:
-                    run_print_cmd(runtime)
+        case "profiles":
+            run_profiles_cmd(
+                local_catalog=local_store,
+                profile_id=args.profile_id,
+            )
+        case "settings":
+            run_settings_cmd(
+                local_catalog=local_store,
+            )
 
 
 if __name__ == "__main__":

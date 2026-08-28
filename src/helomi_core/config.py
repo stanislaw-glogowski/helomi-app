@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import ClassVar
 
 from pydantic import Field
 
@@ -12,22 +13,9 @@ from .vad import VADSettings
 from .wakeword import WakeWordProfile, WakeWordSettings
 
 
-class ProfileSettings(BaseConfig):
-    default: str = "default"
-
-
-class Settings(BaseConfig):
-    profile: ProfileSettings
-    audio: AudioSettings
-    stt: STTSettings
-    tts: TTSSettings
-    turn: TurnSettings
-    vad: VADSettings
-    wakeword: WakeWordSettings
-    root_path: Path = Field(exclude=True)
-
-
 class Profile(BaseConfig):
+    DEFAULT_ID: ClassVar[str] = "default"
+
     id: str = Field(exclude=True)
     name: str
     disabled: bool = Field(exclude=True, default=False)
@@ -39,3 +27,18 @@ class Profile(BaseConfig):
     @property
     def label(self) -> str:
         return f"{self.name}({self.id})"
+
+
+class ProfileSettings(BaseConfig):
+    default: str = Profile.DEFAULT_ID
+
+
+class Settings(BaseConfig):
+    profile: ProfileSettings
+    audio: AudioSettings
+    stt: STTSettings
+    tts: TTSSettings
+    turn: TurnSettings
+    vad: VADSettings
+    wakeword: WakeWordSettings
+    root_path: Path = Field(exclude=True)

@@ -62,19 +62,24 @@ You can run the CLI directly via `make run-cli` (which passes arguments to `helo
 make run-cli -- -h
 # or: uv run helomi-cli -h
 
-# 1. Start a live speech-to-text / voice session (default command)
-make run-cli
+# 1. Install required acoustic models (OpenWakeWord, VAD)
+make run-cli install
+# or directly via uv:
+uv run helomi-cli install
+
+# 2. Start a live speech-to-text / voice session
+make run-cli say
 # or specify an active profile:
 make run-cli say default
 # or directly via uv:
 uv run helomi-cli say [profile_id]
 
-# 2. Print loaded settings or profile configurations (formatted JSON)
-make run-cli print settings
-make run-cli print profiles
-make run-cli print profiles default
+# 3. View profiles and settings configuration (formatted JSON)
+make run-cli profiles
+make run-cli profiles default
+make run-cli settings
 
-# 3. Enable debug logging with -d
+# 4. Enable debug logging with -d
 make run-cli -- -d say
 # or: uv run helomi-cli -d say
 ```

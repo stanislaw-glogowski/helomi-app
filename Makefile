@@ -7,6 +7,7 @@ endif
 
 init:
 	uv sync
+	uv run helomi-cli install
 
 run-cli:
 	uv run helomi-cli $(CLI_ARGS)

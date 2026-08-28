@@ -7,6 +7,7 @@ from prompt_toolkit.styles import Style
 
 from helomi_common import TaskManager
 from helomi_core import Runtime
+from helomi_core.resources import LocalCatalog
 from helomi_speech import (
     ProfileActivated,
     ProfileDeactivated,
@@ -29,11 +30,12 @@ STYLE = Style.from_dict(
 
 
 async def run_say_cmd(
-    runtime: Runtime,
+    local_catalog: LocalCatalog,
     spinner: Spinner,
     shutdown: asyncio.Event,
     profile_id: str | None = None,
 ):
+    runtime = Runtime(local_catalog)
     session = PromptSession(
         style=STYLE,
         completer=SayCompleter(runtime),
@@ -50,7 +52,7 @@ async def run_say_cmd(
                 await pipeline.activate_profile(profile_id)
 
             tasks.add_task(_input_loop(session, pipeline, shutdown))
-            tasks.add_task(pipeline_loop(session, pipeline))
+            tasks.add_task(_pipeline_loop(session, pipeline))
 
             await shutdown.wait()
 
@@ -98,7 +100,7 @@ async def _input_loop(
                 break
 
 
-async def pipeline_loop(session: PromptSession, pipeline: SpeechPipeline) -> None:
+async def _pipeline_loop(session: PromptSession, pipeline: SpeechPipeline) -> None:
     async for event in pipeline.subscribe():
         match event:
             case ProfileActivated() | ProfileDeactivated():

@@ -5,7 +5,7 @@ import pytest
 from prompt_toolkit import PromptSession
 from prompt_toolkit.buffer import Buffer
 
-from helomi_cli.say.cmd import _input_loop, pipeline_loop
+from helomi_cli.say.cmd import _input_loop, _pipeline_loop
 from helomi_core.config import Profile
 from helomi_speech.domain import (
     ProfileActivated,
@@ -70,7 +70,7 @@ async def test_cli_say_pipeline_loop_event_handling():
     mock_session = MagicMock(spec=PromptSession)
     mock_session.app = mock_app
 
-    await pipeline_loop(mock_session, mock_pipeline)
+    await _pipeline_loop(mock_session, mock_pipeline)
 
     # Verify that TranscriptionReady populated buffer text
     assert mock_buffer.text == "transcribed speech"

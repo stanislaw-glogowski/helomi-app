@@ -13,7 +13,6 @@ class LocalStore(LocalCatalog):
     _HOME_ENV_VAR: ClassVar[str] = "HELOMI_HOME"
     _USER_DIR: ClassVar[str] = "Helomi"
     _SETTINGS_FILE: ClassVar[str] = "settings"
-    _PROFILE_DIR: ClassVar[str] = "profiles"
     _PROFILE_FILE: ClassVar[str] = "profile"
     _DEFAULTS_FILE: ClassVar[str] = "defaults"
 
@@ -37,7 +36,7 @@ class LocalStore(LocalCatalog):
 
     def read_profiles_data(self) -> dict[str, ConfigData]:
         result: dict[str, ConfigData] = {}
-        root_path = self._root_path / self._PROFILE_DIR
+        root_path = self._root_path / self.PROFILES_DIR
 
         if not root_path.is_dir():
             raise FileNotFoundError(f"Profiles directory does not exist: {root_path}")
