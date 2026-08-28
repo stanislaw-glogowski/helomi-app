@@ -8,7 +8,7 @@ from prompt_toolkit.styles import Style
 from helomi_common import TaskManager
 from helomi_core import Runtime
 from helomi_core.resources import LocalCatalog
-from helomi_speech import (
+from helomi_core.speech import (
     ProfileActivated,
     ProfileDeactivated,
     SpeechPipeline,
@@ -45,7 +45,7 @@ async def run_say_cmd(
     await spinner.start("Initializing speech pipeline & audio drivers...")
 
     async with TaskManager() as tasks:
-        async with SpeechPipeline(runtime) as pipeline:
+        async with runtime.get_speech_pipeline() as pipeline:
             await spinner.stop()
 
             if profile_id:

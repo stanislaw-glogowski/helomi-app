@@ -91,10 +91,10 @@ make run-cli -- -d say
 ```text
 helomi-app/
 ├── src/
-│   ├── helomi_common/   # Shared domain models & utilities
-│   ├── helomi_core/     # Audio orchestrator, VAD, state machine
-│   ├── helomi_speech/   # MLX / Whisper / VoxCPM engine integrations
-│   └── helomi_cli/      # Command-line interface & terminal UI
+│   ├── helomi_common/   # Shared domain models & foundation utilities
+│   ├── helomi_core/     # Audio orchestrator, detection, STT/TTS, speech pipeline, FastAPI server
+│   ├── helomi_cli/      # Command-line interface & terminal UI
+│   └── helomi_tray/     # macOS system tray application (rumps)
 ├── native/
 │   └── macos/avfaudio/  # Swift package for macOS CoreAudio/AVFAudio bridge
 └── tests/               # Unit, integration, and architecture test suite

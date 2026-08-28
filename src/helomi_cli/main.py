@@ -7,6 +7,7 @@ import loguru
 from helomi_cli.install import run_install_cmd
 from helomi_cli.profiles import run_profiles_cmd
 from helomi_cli.say import run_say_cmd
+from helomi_cli.serve import run_serve_cmd
 from helomi_cli.settings import run_settings_cmd
 from helomi_cli.widgets import Spinner
 from helomi_common import LogLevel, configure_logger
@@ -57,6 +58,12 @@ def _parse_args() -> argparse.Namespace:
         help="Optional profile ID to activate",
     )
 
+    # cli serve
+    cmd_parsers.add_parser(
+        "serve",
+        help="Start local FastAPI server for speech pipeline",
+    )
+
     # cli profiles
     cmd_parsers.add_parser(
         "profiles",
@@ -78,6 +85,8 @@ def _parse_args() -> argparse.Namespace:
         command=_DEFAULT_CMD,
         print_target=None,
         profile_id=None,
+        host="127.0.0.1",
+        port=8000,
     )
 
     return parser.parse_args()
@@ -129,6 +138,12 @@ async def _run(args: argparse.Namespace) -> None:
                 spinner=spinner,
                 shutdown=shutdown,
                 profile_id=args.profile_id,
+            )
+        case "serve":
+            await run_serve_cmd(
+                local_catalog=local_store,
+                spinner=spinner,
+                shutdown=shutdown,
             )
         case "profiles":
             run_profiles_cmd(

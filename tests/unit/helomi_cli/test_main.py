@@ -37,7 +37,12 @@ def test_cli_parse_args_commands():
         assert args.profile_id == "custom_profile"
         assert args.debug
 
-    # 3. profiles
+    # 3. serve
+    with patch.object(sys, "argv", ["helomi-cli", "serve"]):
+        args = _parse_args()
+        assert args.command == "serve"
+
+    # 4. profiles
     with patch.object(sys, "argv", ["helomi-cli", "profiles"]):
         args = _parse_args()
         assert args.command == "profiles"
@@ -48,7 +53,7 @@ def test_cli_parse_args_commands():
         assert args.command == "profiles"
         assert args.profile_id == "prof_1"
 
-    # 4. settings
+    # 5. settings
     with patch.object(sys, "argv", ["helomi-cli", "settings"]):
         args = _parse_args()
         assert args.command == "settings"
@@ -84,6 +89,7 @@ async def test_cli_run_invokes_commands():
         patch("helomi_cli.main.LocalStore"),
         patch("helomi_cli.main.run_install_cmd", new_callable=AsyncMock) as mock_inst,
         patch("helomi_cli.main.run_say_cmd", new_callable=AsyncMock) as mock_say,
+        patch("helomi_cli.main.run_serve_cmd", new_callable=AsyncMock) as mock_serve,
         patch("helomi_cli.main.run_profiles_cmd") as mock_prof,
         patch("helomi_cli.main.run_settings_cmd") as mock_sett,
     ):
@@ -101,14 +107,19 @@ async def test_cli_run_invokes_commands():
         assert mock_say.called
         assert mock_say.call_args.kwargs["profile_id"] == "p1"
 
-        # 3. profiles
+        # 3. serve
+        args.command = "serve"
+        await _run(args)
+        assert mock_serve.called
+
+        # 4. profiles
         args.command = "profiles"
         args.profile_id = "p2"
         await _run(args)
         assert mock_prof.called
         assert mock_prof.call_args.kwargs["profile_id"] == "p2"
 
-        # 4. settings
+        # 5. settings
         args.command = "settings"
         await _run(args)
         assert mock_sett.called
@@ -148,14 +159,15 @@ async def test_run_say_cmd():
     catalog = MagicMock(spec=LocalCatalog)
 
     with (
-        patch("helomi_cli.say.cmd.Runtime"),
-        patch("helomi_cli.say.cmd.SpeechPipeline") as mock_pipe_cls,
+        patch("helomi_cli.say.cmd.Runtime") as mock_runtime_cls,
         patch("helomi_cli.say.cmd.PromptSession"),
     ):
-        mock_pipe = mock_pipe_cls.return_value
+        mock_runtime = mock_runtime_cls.return_value
+        mock_pipe = MagicMock()
         mock_pipe.__aenter__.return_value = mock_pipe
         mock_pipe.__aexit__.return_value = None
         mock_pipe.activate_profile = AsyncMock()
+        mock_runtime.get_speech_pipeline.return_value = mock_pipe
 
         shutdown.set()
         await run_say_cmd(catalog, spinner, shutdown, profile_id="test_profile")

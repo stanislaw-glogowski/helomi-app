@@ -44,6 +44,9 @@ class DetectionWorker(AbstractWorker):
     async def change_mode(self, mode: DetectionMode | None) -> None:
         if self._current_mode == mode:
             return
+        if self._executor is None:
+            self._reset(mode)
+            return
         await self._run_sync(self._reset, mode)
 
     async def detect(self, raw: RawAudio) -> AsyncIterator[DetectionResult]:

@@ -4,13 +4,14 @@ from unittest.mock import patch
 import pytest
 
 from helomi_core.runtime import Runtime
-from helomi_speech.domain import (
+from helomi_core.speech.domain import (
     ActivateProfile,
     DeactivateProfile,
     ProfileActivated,
     SayText,
+    SpeechRequest,
 )
-from helomi_speech.pipeline import SpeechPipeline
+from helomi_core.speech.pipeline import SpeechPipeline
 from tests.fixtures.mocks import (
     MockAudioDriver,
     MockLocalCatalog,
@@ -41,7 +42,7 @@ def test_pipeline(mock_catalog: MockLocalCatalog) -> SpeechPipeline:
         mock_get_tts.return_value = MockTTSAdapter()
 
         runtime = Runtime(mock_catalog)
-        pipeline = SpeechPipeline(runtime)
+        pipeline = runtime.get_speech_pipeline()
         return pipeline
 
 
@@ -58,6 +59,7 @@ async def test_speech_pipeline_profile_activation_lifecycle(
     assert activated is True
     assert pipeline.active_profile is not None
     assert pipeline.active_profile.id == "default"
+    assert pipeline._audio_driver.room_voice_started is True
 
     # Activating same profile again should return False
     re_activated = await pipeline.activate_profile("default")
@@ -67,10 +69,59 @@ async def test_speech_pipeline_profile_activation_lifecycle(
     deactivated = await pipeline.deactivate_profile()
     assert deactivated is True
     assert pipeline.active_profile is None
+    assert pipeline._audio_driver.room_voice_started is False
 
     # Deactivating when already None returns False
     re_deactivated = await pipeline.deactivate_profile()
     assert re_deactivated is False
+
+
+@pytest.mark.asyncio
+async def test_speech_pipeline_profile_switching(test_pipeline: SpeechPipeline):
+    """Verify switching profiles emits deactivation of previous profile."""
+    from helomi_core.config import Profile
+
+    pipeline = test_pipeline
+    second_profile = Profile(
+        name="Second",
+        id="second",
+        root_path=pipeline.runtime.profiles["default"].root_path,
+    )
+    pipeline.runtime.profiles["second"] = second_profile
+
+    events = []
+
+    async def collect():
+        async for ev in pipeline.subscribe():
+            events.append(ev)
+
+    task = asyncio.create_task(collect())
+    await asyncio.sleep(0.01)
+
+    await pipeline.activate_profile("default")
+    await asyncio.sleep(0.01)
+    assert len(events) == 1
+    assert events[-1].profile_id == "default"
+
+    # Switch to second profile
+    await pipeline.activate_profile("second")
+    await asyncio.sleep(0.01)
+
+    assert len(events) == 3
+    # First should be ProfileDeactivated of 'default'
+    assert events[1].type == "profile_deactivated"
+    assert events[1].profile_id == "default"
+    # Second should be ProfileActivated of 'second'
+    assert events[2].type == "profile_activated"
+    assert events[2].profile_id == "second"
+
+    await pipeline.deactivate_profile()
+    await asyncio.sleep(0.01)
+    assert events[-1].type == "profile_deactivated"
+    assert events[-1].profile_id == "second"
+
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
 
 
 @pytest.mark.asyncio
@@ -126,7 +177,6 @@ async def test_speech_pipeline_loops(test_pipeline: SpeechPipeline):
 
     from helomi_core.stt import STTRequest
     from helomi_core.tts import TTSRequest
-    from helomi_speech.domain import SpeechRequest
     from tests.fixtures.audio import create_audio_chunk
 
     sub_events = []

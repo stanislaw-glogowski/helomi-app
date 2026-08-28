@@ -75,3 +75,19 @@ def test_runtime_worker_creation(mock_catalog: MockLocalCatalog):
 
         tts_worker = runtime.get_tts_worker()
         assert tts_worker is not None
+
+        with (
+            patch("helomi_core.speech.SpeechPipeline") as mock_pipeline_cls,
+            patch("helomi_core.server.Server") as mock_server_cls,
+        ):
+            pipeline = runtime.get_speech_pipeline()
+            mock_pipeline_cls.assert_called_once_with(runtime)
+            assert pipeline is not None
+
+            server = runtime.get_server()
+            mock_server_cls.assert_called_once_with(
+                runtime=runtime,
+                config=runtime.settings.server,
+                auto_server=True,
+            )
+            assert server is not None

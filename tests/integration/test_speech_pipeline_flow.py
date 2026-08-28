@@ -4,14 +4,14 @@ from unittest.mock import patch
 import pytest
 
 from helomi_core.runtime import Runtime
-from helomi_core.stt import STTChunk
-from helomi_core.tts import TTSChunk
-from helomi_speech.domain import (
+from helomi_core.speech import (
     ProfileActivated,
     ProfileDeactivated,
     SayText,
+    SpeechPipeline,
 )
-from helomi_speech.pipeline import SpeechPipeline
+from helomi_core.stt import STTChunk
+from helomi_core.tts import TTSChunk
 from tests.fixtures.audio import create_audio_chunk, create_raw_audio
 from tests.fixtures.mocks import (
     MockAudioDriver,

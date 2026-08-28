@@ -64,3 +64,5 @@ def test_settings_model_validation(sample_settings_dict: dict):
     assert settings.turn.adapter == "smart_turn"
     assert settings.vad.adapter == "silero_vad"
     assert settings.wakeword.adapter == "openwakeword"
+    assert settings.server.host == "127.0.0.1"
+    assert settings.server.port == 4356

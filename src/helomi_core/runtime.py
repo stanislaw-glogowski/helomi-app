@@ -1,4 +1,4 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .audio import AudioDriver, AudioMode, get_audio_driver
 from .config import Profile, Settings
@@ -9,6 +9,10 @@ from .tts import TTSWorker, get_tts_adapter
 from .turn import get_turn_adapter
 from .vad import get_vad_adapter
 from .wakeword import get_wakeword_adapter
+
+if TYPE_CHECKING:
+    from .server import Server, ServerSettings
+    from .speech import SpeechPipeline
 
 
 class Runtime:
@@ -89,4 +93,22 @@ class Runtime:
     def get_tts_worker(self) -> TTSWorker:
         return TTSWorker(
             adapter=get_tts_adapter(self._settings.tts),
+        )
+
+    def get_speech_pipeline(self) -> SpeechPipeline:
+        from .speech import SpeechPipeline
+
+        return SpeechPipeline(self)
+
+    def get_server(
+        self,
+        config: ServerSettings | None = None,
+        auto_server: bool = True,
+    ) -> Server:
+        from .server import Server
+
+        return Server(
+            runtime=self,
+            config=config or self._settings.server,
+            auto_server=auto_server,
         )

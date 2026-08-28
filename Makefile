@@ -1,16 +1,19 @@
-ifeq (run-cli,$(firstword $(MAKECMDGOALS)))
-  CLI_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(eval $(CLI_ARGS):;@:)
+ifneq ($(filter run-cli run-tray,$(firstword $(MAKECMDGOALS))),)
+  RUN_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(eval $(RUN_ARGS):;@:)
 endif
 
-.PHONY: init run-cli test lint format typecheck verify
+.PHONY: init run-cli run-tray test lint format typecheck verify
 
 init:
 	uv sync
 	uv run helomi-cli install
 
 run-cli:
-	uv run helomi-cli $(CLI_ARGS)
+	uv run helomi-cli $(RUN_ARGS)
+
+run-tray:
+	uv run helomi-tray $(RUN_ARGS)
 
 test:
 	UV_CACHE_DIR=/private/tmp/uv-cache uv run pytest -q

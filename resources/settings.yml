@@ -1,6 +1,10 @@
 profile:
   default: "default"
 
+server:
+  host: "127.0.0.1"
+  port: 4356
+
 audio:
   adapter: "avfaudio"
   avfaudio:

@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-from helomi_core import Profile
+if TYPE_CHECKING:
+    from ..config import Profile
 
 type SpeechCmd = Annotated[
     ActivateProfile | DeactivateProfile | SayText,

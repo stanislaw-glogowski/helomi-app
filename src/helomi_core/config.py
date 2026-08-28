@@ -6,6 +6,7 @@ from pydantic import Field
 from helomi_common import BaseConfig
 
 from .audio import AudioSettings
+from .server.config import ServerSettings
 from .stt import STTProfile, STTSettings
 from .tts import TTSProfile, TTSSettings
 from .turn import TurnSettings
@@ -34,11 +35,12 @@ class ProfileSettings(BaseConfig):
 
 
 class Settings(BaseConfig):
-    profile: ProfileSettings
-    audio: AudioSettings
-    stt: STTSettings
-    tts: TTSSettings
-    turn: TurnSettings
-    vad: VADSettings
-    wakeword: WakeWordSettings
+    profile: ProfileSettings = Field(default_factory=ProfileSettings)
+    audio: AudioSettings = Field(default_factory=AudioSettings)
+    stt: STTSettings = Field(default_factory=STTSettings)
+    tts: TTSSettings = Field(default_factory=TTSSettings)
+    turn: TurnSettings = Field(default_factory=TurnSettings)
+    vad: VADSettings = Field(default_factory=VADSettings)
+    wakeword: WakeWordSettings = Field(default_factory=WakeWordSettings)
+    server: ServerSettings = Field(default_factory=ServerSettings)
     root_path: Path = Field(exclude=True)

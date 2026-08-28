@@ -27,15 +27,15 @@ src/**/bin/
 !.env.example
 
 # Resources
-.helomi/assets/*
-.helomi/logs/*
-.helomi/models/*
-.helomi/profiles/*
-!.helomi/profiles/defaults.yml
-!.helomi/profiles/default
-.helomi/profiles/default/models/*
-.helomi/profiles/default/profile.override.yml
-.helomi/settings.override.yml
+/resources/assets/*
+/resources/logs/*
+/resources/models/*
+/resources/profiles/*
+!/resources/profiles/defaults.yml
+!/resources/profiles/default
+/resources/profiles/default/models/*
+/resources/profiles/default/profile.override.yml
+/resources/settings.override.yml
 
 
 # Development

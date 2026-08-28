@@ -1,18 +1,18 @@
 import asyncio
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from helomi_common import AbstractAsyncComponent, TaskManager
-from helomi_core import Profile, Runtime
-from helomi_core.audio import AudioMode, RawAudio
-from helomi_core.detection import (
+
+from ..audio import AudioMode, RawAudio
+from ..detection import (
     ConversationEnded,
     DetectionMode,
     ProfileDetected,
     UtteranceDetected,
 )
-from helomi_core.stt import STTRequest, STTResponse
-from helomi_core.tts import TTSChunk, TTSRequest
-
+from ..stt import STTRequest, STTResponse
+from ..tts import TTSChunk, TTSRequest
 from .domain import (
     ActivateProfile,
     DeactivateProfile,
@@ -24,6 +24,10 @@ from .domain import (
     SpeechRequest,
     TranscriptionReady,
 )
+
+if TYPE_CHECKING:
+    from ..config import Profile
+    from ..runtime import Runtime
 
 
 class SpeechPipeline(AbstractAsyncComponent):
@@ -48,6 +52,10 @@ class SpeechPipeline(AbstractAsyncComponent):
         self._subscriptions: set[asyncio.Queue[SpeechEvent | None]] = set()
 
     @property
+    def runtime(self) -> Runtime:
+        return self._runtime
+
+    @property
     def active_profile(self) -> Profile | None:
         return self._current_profile
 
@@ -66,11 +74,13 @@ class SpeechPipeline(AbstractAsyncComponent):
             self._send_event(
                 ProfileDeactivated(
                     trace_id=trace_id,
-                    profile_id=profile.id,
+                    profile_id=active_profile.id,
                 )
             )
 
         self._current_profile = profile
+        await self._detection_worker.change_mode(DetectionMode.UTTERANCE)
+        await self._audio_driver.start_room_voice()
         self._send_event(
             ProfileActivated(
                 trace_id=trace_id,
@@ -87,8 +97,7 @@ class SpeechPipeline(AbstractAsyncComponent):
         if profile is None:
             return False
 
-        self._current_profile = None
-
+        await self._audio_driver.stop_room_voice()
         await self._detection_worker.change_mode(DetectionMode.PROFILE)
 
         self._send_event(
@@ -164,6 +173,7 @@ class SpeechPipeline(AbstractAsyncComponent):
         )
 
     async def _do_close(self) -> None:
+        await self._audio_driver.stop_room_voice()
         for subscription in self._subscriptions:
             subscription.put_nowait(None)
 
@@ -174,8 +184,6 @@ class SpeechPipeline(AbstractAsyncComponent):
             self._detection_queue.put_nowait(raw)
 
     async def _detection_loop(self) -> None:
-        await self._audio_driver.start_room_voice()
-
         while True:
             audio = await self._detection_queue.get()
 
@@ -186,6 +194,7 @@ class SpeechPipeline(AbstractAsyncComponent):
                             self._current_profile = self._runtime.get_profile(
                                 profile_id
                             )
+                            await self._audio_driver.start_room_voice()
                             self._send_event(
                                 ProfileActivated(
                                     profile_id=profile_id,
@@ -204,12 +213,14 @@ class SpeechPipeline(AbstractAsyncComponent):
 
                         case ConversationEnded():
                             if self._current_profile:
+                                old_profile = self._current_profile
+                                self._current_profile = None
+                                await self._audio_driver.stop_room_voice()
                                 self._send_event(
                                     ProfileDeactivated(
-                                        profile_id=self._current_profile.id,
+                                        profile_id=old_profile.id,
                                     ),
                                 )
-                                self._current_profile = None
             finally:
                 self._detection_queue.task_done()
 

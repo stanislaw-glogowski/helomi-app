@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from helomi_core.config import Profile
-from helomi_speech.domain import (
+from helomi_core.speech.domain import (
     ActivateProfile,
     DeactivateProfile,
     ProfileActivated,

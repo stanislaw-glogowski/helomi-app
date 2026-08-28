@@ -7,7 +7,7 @@ from prompt_toolkit.buffer import Buffer
 
 from helomi_cli.say.cmd import _input_loop, _pipeline_loop
 from helomi_core.config import Profile
-from helomi_speech.domain import (
+from helomi_core.speech import (
     ProfileActivated,
     ProfileDeactivated,
     TranscriptionReady,

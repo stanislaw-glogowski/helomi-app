@@ -9,7 +9,7 @@ from .ports import LocalCatalog
 
 
 class LocalStore(LocalCatalog):
-    _LOCAL_DIR: ClassVar[str] = ".helomi"
+    _LOCAL_DIR: ClassVar[str] = "resources"
     _HOME_ENV_VAR: ClassVar[str] = "HELOMI_HOME"
     _USER_DIR: ClassVar[str] = "Helomi"
     _SETTINGS_FILE: ClassVar[str] = "settings"

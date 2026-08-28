@@ -21,26 +21,41 @@ def test_helomi_common_has_no_inward_dependencies() -> None:
     for py_file in common_dir.rglob("*.py"):
         imports = _get_imports_from_file(py_file)
         for imp in imports:
-            assert not imp.startswith(("helomi_core", "helomi_speech", "helomi_cli")), (
-                f"Architecture violation: {py_file} illegally imports {imp}"
-            )
+            assert not imp.startswith(
+                (
+                    "helomi_core",
+                    "helomi_cli",
+                    "helomi_tray",
+                )
+            ), f"Architecture violation: {py_file} illegally imports {imp}"
 
 
-def test_helomi_core_does_not_import_cli_or_speech() -> None:
-    """helomi_core must not import from helomi_cli or helomi_speech."""
+def test_helomi_core_does_not_import_ui_layers() -> None:
+    """helomi_core must not import from cli or tray."""
     core_dir = Path("src/helomi_core")
     for py_file in core_dir.rglob("*.py"):
         imports = _get_imports_from_file(py_file)
         for imp in imports:
-            assert not imp.startswith(("helomi_cli", "helomi_speech")), (
+            assert not imp.startswith(("helomi_cli", "helomi_tray")), (
                 f"Architecture violation: {py_file} illegally imports {imp}"
             )
 
 
-def test_helomi_speech_does_not_import_cli() -> None:
-    """helomi_speech must not import from helomi_cli."""
-    speech_dir = Path("src/helomi_speech")
-    for py_file in speech_dir.rglob("*.py"):
+def test_helomi_cli_does_not_import_tray() -> None:
+    """helomi_cli must not import from helomi_tray."""
+    cli_dir = Path("src/helomi_cli")
+    for py_file in cli_dir.rglob("*.py"):
+        imports = _get_imports_from_file(py_file)
+        for imp in imports:
+            assert not imp.startswith("helomi_tray"), (
+                f"Architecture violation: {py_file} illegally imports {imp}"
+            )
+
+
+def test_helomi_tray_does_not_import_cli() -> None:
+    """helomi_tray must not import from helomi_cli."""
+    tray_dir = Path("src/helomi_tray")
+    for py_file in tray_dir.rglob("*.py"):
         imports = _get_imports_from_file(py_file)
         for imp in imports:
             assert not imp.startswith("helomi_cli"), (
