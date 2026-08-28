@@ -28,7 +28,8 @@ memory. Zero telemetry, zero cloud audio streaming.
     - **Wake-Word**: OpenWakeWord engine
     - **VAD & Turn-Taking**: Silero VAD (MLX and ONNX backends) + Smart Turn detection
     - **STT (Speech-to-Text)**: Fast inference with Parakeet and MLX-Whisper
-    - **TTS (Text-to-Speech)**: Streaming neural voice synthesis via VoxCPM2 and Supertonic (with voice style cloning & presets)
+    - **TTS (Text-to-Speech)**: Streaming neural voice synthesis via VoxCPM2 and Supertonic (with voice style cloning &
+      presets)
     - **Model Management**: Automatic local Hugging Face model cache resolution (`HFModel`)
 - **Modular Architecture**: Clean separation between core audio orchestration, speech engines, and interfaces.
 
@@ -83,6 +84,20 @@ make run-cli settings
 make run-cli -- -d say
 # or: uv run helomi-cli -d say
 ```
+
+---
+
+## Documentation
+
+For more detailed information on configuring and extending Helomi, please refer to the documentation:
+
+- [Settings Configuration](docs/settings.md)
+- [Profiles Configuration](docs/profiles.md)
+- [Models & Adapters](docs/models.md)
+- [Reference Audio (Voice Cloning)](docs/audio.md)
+- [Server API Specification](docs/api.md)
+- [CLI & Tray Applications](docs/apps.md)
+- [Configuration Examples](docs/examples.md)
 
 ---
 
