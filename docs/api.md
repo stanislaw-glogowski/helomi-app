@@ -25,4 +25,4 @@ Sends a command to the speech pipeline.
     - `SayText`: Request the TTS engine to synthesize speech from the provided text.
     - `ActivateProfile`: Change the active profile in the current session.
 
-By default, all API routes are served on `http://127.0.0.1:8000`.
+By default, all API routes are served on `http://127.0.0.1:4356`.

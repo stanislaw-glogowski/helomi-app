@@ -1,4 +1,4 @@
-# 🏛️ Yes, Minister! – Helomi Speech Translator
+# Yes, Minister! – Helomi Speech Translator
 
 > *"To say nothing, especially when speaking, is the half-mark of a statesman."* — *Yes, Minister*
 
@@ -6,7 +6,7 @@ A lightweight TypeScript example demonstrating how to integrate with the **Helom
 
 ---
 
-## 🔄 How It Works
+## How It Works
 
 ```
   ┌─────────────────┐       SSE (transcription_ready)      ┌─────────────────────────┐
@@ -28,7 +28,7 @@ A lightweight TypeScript example demonstrating how to integrate with the **Helom
 
 ---
 
-## 🎭 Example Transformation
+## Example Transformation
 
 | User Speaks (Polish) | Helomi Speaks Back (Political English) |
 | --- | --- |
@@ -38,7 +38,7 @@ A lightweight TypeScript example demonstrating how to integrate with the **Helom
 
 ---
 
-## 📋 Prerequisites
+## Prerequisites
 
 - **Node.js**: `>= 18.0.0`
 - **Helomi Server**: Running locally (`uv run helomi-cli serve`)
@@ -48,7 +48,7 @@ A lightweight TypeScript example demonstrating how to integrate with the **Helom
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Install Dependencies
 
@@ -108,7 +108,7 @@ npm run dev
 
 ---
 
-## ⚙️ Configuration Reference
+## Configuration Reference
 
 All settings can be configured via environment variables or rely on built-in constants:
 
@@ -125,7 +125,7 @@ All settings can be configured via environment variables or rely on built-in con
 
 ---
 
-## 🛠️ Project Structure
+## Project Structure
 
 ```
 examples/yes-minister-typescript/

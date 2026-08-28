@@ -8,9 +8,9 @@ All notable changes to Helomi are documented in this file.
 
 - **Complete Architectural Refactoring**: Redesigned the entire codebase into strict layered packages:
   - `helomi_common`: Core base models, validation schemas (`BaseConfig`, `AdapterConfig`, `AdapterExtractor`), `HFModel` model resolver, and logging proxy.
-  - `helomi_core`: Framework-agnostic audio orchestration, worker lifecycles, VAD/wake-word/STT/TTS adapters, and catalog/store configuration.
-  - `helomi_speech`: Unified event-driven `SpeechPipeline` with reactive pub/sub architecture connecting capture, detection, STT, and streaming TTS.
-  - `helomi_cli`: Terminal UI powered by `prompt_toolkit` and `rich`, featuring subcommands (`say`, `install`, `profiles`, `settings`).
+  - `helomi_core`: Audio orchestration, worker lifecycles, VAD/wake-word/STT/TTS adapters, unified event-driven `SpeechPipeline`, local FastAPI server, and catalog/store configuration.
+  - `helomi_cli`: Terminal UI powered by `rich`, featuring subcommands (`say`, `serve`, `install`, `profiles`, `settings`).
+  - `helomi_tray`: macOS system tray application built with `rumps`.
   - `native/macos/avfaudio`: Native Swift helper for macOS CoreAudio/AVFAudio with Apple Voice Processing (Echo Cancellation).
 - **Voice Cloning & Advanced Neural TTS**:
   - Supertonic TTS engine supporting both built-in voice styles (F1–F5, M1–M5) and custom voice style cloning from audio files (`voice_path`), with configurable inter/intra thread parallelism.
@@ -30,6 +30,10 @@ All notable changes to Helomi are documented in this file.
 - **Hierarchical Profile Configuration**:
   - Default profile properties inheritance via `defaults.yml`.
   - Profile exclusion support via `disabled: true`.
+- **Documentation Expansion**:
+  - Structured `./docs` directory covering settings overrides, profile creation, recommended Hugging Face models, reference audio cloning, and FastAPI specification.
+  - Formatted and aligned the `yes-minister-typescript` example application documentation to match the project's consistent styling.
+  - Linked all documentation sections with a clean Table of Contents in the main `README.md`.
 - **Quality & Developer Experience**:
   - Strict type checking with `pyrefly`.
   - Automated test suite with $\ge 90\%$ branch coverage enforcement (`make verify`).

@@ -21,6 +21,13 @@ same directory:
 
 The application will automatically merge the override file with the base settings.
 
+## Relative Paths (`path://` prefix)
+
+When defining paths in your configuration files (e.g., paths to local ONNX models or reference audio files), you can use the `path://` prefix. This tells the application to resolve the path relative to the directory where the configuration file itself is located.
+
+**Example:**
+`path://models/silero_vad.onnx` will resolve to the `models/` directory next to your `settings.yml` file.
+
 ## Example Configuration
 
 `settings.yml`:
@@ -32,5 +39,5 @@ audio:
 
 server:
   host: "127.0.0.1"
-  port: 8000
+  port: 4356
 ```
