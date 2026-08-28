@@ -1,4 +1,0 @@
-# Locale settings extend root settings.yml. Do not add language here: it is
-# selected at the root or with --language. Use settings.override.yml locally.
-profiles:
-  default: "alexa"

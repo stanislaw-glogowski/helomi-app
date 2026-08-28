@@ -1,1 +1,1 @@
-"""Henry test suite."""
+"""Helomi test suite."""

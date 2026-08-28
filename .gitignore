@@ -26,12 +26,20 @@ src/**/bin/
 .env.*
 !.env.example
 
-# Benchmarks
-benchmarks/*/reports/
-
 # Resources
+.helomi/assets/*
+.helomi/logs/*
 .helomi/models/*
-.helomi/**/settings.override.yml
+.helomi/profiles/*
+!.helomi/profiles/defaults.yml
+!.helomi/profiles/default
+.helomi/profiles/default/models/*
+.helomi/profiles/default/profile.override.yml
+.helomi/settings.override.yml
+
+
+# Development
+/sandbox
 
 # Ignore
 !.gitkeep

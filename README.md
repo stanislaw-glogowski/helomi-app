@@ -1,130 +1,116 @@
+<div align="center">
+
 # Helomi
 
-[![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)](https://support.apple.com/guide/mac-help/about-this-mac-system-information-mchlp1171/mac)
+**Local, privacy-first voice assistant optimized for Apple Silicon Macs.**
+
+[![Python 3.14+](https://img.shields.io/badge/Python-3.14+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)](https://support.apple.com/)
+[![Built with MLX](https://img.shields.io/badge/ML-Apple%20MLX-F56300?logo=apple)](https://github.com/ml-explore/mlx)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Type checked by pyrefly](https://img.shields.io/badge/type%20checker-pyrefly-blueviolet)](https://github.com/facebook/pyrefly)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**A local, privacy-first voice assistant for Apple Silicon Macs.**
+</div>
 
-> **Project status: early preview.** Helomi is under active development and
-> will not receive a public release until the preview stage is complete.
+---
 
-Helomi listens for a local wake word, transcribes speech, generates a streamed
-reply, synthesizes it, and plays it back. The supplied configuration uses local
-MLX models and a native macOS audio helper with Apple Voice Processing.
+## Overview
 
-## What it does
+Helomi runs entirely on-device, processing audio streams locally with hardware acceleration on Apple Silicon unified
+memory. Zero telemetry, zero cloud audio streaming.
 
-- Runs a full voice turn locally: wake word, VAD, segmentation, STT, response,
-  phrase streaming, TTS, and playback.
-- Supports multiple local assistant profiles with their own prompts, wake word,
-  model parameters, and voice configuration.
-- Uses Apple Voice Processing in the default `avfaudio` driver to support
-  full-duplex playback and interruption. `pyaudio` is a fallback, not an
-  equivalent echo-cancellation implementation.
-- Keeps settings, profiles, downloaded assets, recordings, and benchmark output
-  in a local Helomi data directory.
+### Key Capabilities
 
-## Requirements
+- **Native Audio Pipeline**: Low-latency capture and playback powered by Swift (`AVAudioEngine` + Apple Voice
+  Processing / Echo Cancellation).
+- **On-Device Speech Stack**:
+    - **Wake-Word**: OpenWakeWord engine
+    - **VAD & Turn-Taking**: Silero VAD (MLX and ONNX backends) + Smart Turn detection
+    - **STT (Speech-to-Text)**: Fast inference with Parakeet and MLX-Whisper
+    - **TTS (Text-to-Speech)**: Streaming neural voice synthesis via VoxCPM2 and Supertonic (with voice style cloning & presets)
+    - **Model Management**: Automatic local Hugging Face model cache resolution (`HFModel`)
+- **Modular Architecture**: Clean separation between core audio orchestration, speech engines, and interfaces.
 
-- macOS on Apple Silicon.
-- Python 3.14 and [uv](https://docs.astral.sh/uv/).
-- Xcode command-line tools and Swift for the native audio helper.
-- Microphone permission for a real voice session, network access for the first
-  model installation, and sufficient memory for the selected local models.
+---
 
-## Quick start
+## Quickstart
 
-From a checkout:
+### Prerequisites
+
+- macOS running on Apple Silicon
+- [uv](https://docs.astral.sh/uv/) package manager
+- Xcode Command Line Tools (`xcode-select --install`)
+
+### Installation & Setup
 
 ```bash
+# 1. Clone repository
+git clone https://github.com/stanislaw-glogowski/helomi-app.git
+cd helomi-app
+
+# 2. Build native Swift audio helper and sync environment
 make init
+```
+
+### Running the CLI
+
+You can run the CLI directly via `make run-cli` (which passes arguments to `helomi-cli`) or with `uv run helomi-cli`:
+
+```bash
+# List all available commands and options
+make run-cli -- -h
+# or: uv run helomi-cli -h
+
+# 1. Start a live speech-to-text / voice session (default command)
 make run-cli
+# or specify an active profile:
+make run-cli say default
+# or directly via uv:
+uv run helomi-cli say [profile_id]
+
+# 2. Print loaded settings or profile configurations (formatted JSON)
+make run-cli print settings
+make run-cli print profiles
+make run-cli print profiles default
+
+# 3. Enable debug logging with -d
+make run-cli -- -d say
+# or: uv run helomi-cli -d say
 ```
 
-Or launch the macOS menu-bar frontend:
+---
+
+## Project Structure
+
+```text
+helomi-app/
+├── src/
+│   ├── helomi_common/   # Shared domain models & utilities
+│   ├── helomi_core/     # Audio orchestrator, VAD, state machine
+│   ├── helomi_speech/   # MLX / Whisper / VoxCPM engine integrations
+│   └── helomi_cli/      # Command-line interface & terminal UI
+├── native/
+│   └── macos/avfaudio/  # Swift package for macOS CoreAudio/AVFAudio bridge
+└── tests/               # Unit, integration, and architecture test suite
+```
+
+---
+
+## Development & Quality Assurance
+
+All modifications are enforced with strict typing and $\ge 90\%$ branch coverage:
 
 ```bash
-make run-desktop
+make test        # Run pytest suite with coverage check (>=90%)
+make lint        # Run ruff + pyrefly + swift format checks
+make format      # Auto-format Python and Swift code
+make verify      # Full validation pipeline (Lint + Test + Native + Build)
 ```
 
-`make init` synchronizes Python dependencies, builds the native audio helper,
-installs missing local configuration, and downloads the models required by the
-default Alexa profile. It may take time and download several gigabytes.
-
-Use `HELOMI_HOME` to install or run against another data directory:
-
-```bash
-HELOMI_HOME=/path/to/helomi-data make init
-HELOMI_HOME=/path/to/helomi-data make run-cli
-```
-
-The CLI asks you to select a valid profile unless `profiles.selected` is set in
-settings. The desktop frontend starts that explicit profile, or the configured
-locale default profile when it is empty. Use `--language` and `--profile` with
-either app for non-persistent overrides. Say the active profile's configured wake-word
-label, speak after activation, and interrupt an answer by speaking while it is
-playing.
-
-## Privacy and limits
-
-The supplied setup is local-first. Models may be downloaded from Hugging Face,
-and switching the conversation adapter to a remote or networked endpoint changes
-that privacy boundary. Voice recordings can be biometric data and must not be
-committed or shared without informed consent.
-
-Helomi is an early local system. Real microphone, device routing, Voice
-Processing, Metal inference, model quality, and voice quality require validation
-on the target Mac; automated tests do not prove those properties.
-
-## Architecture
-
-```mermaid
-flowchart LR
-  Mic["Microphone"] --> Speech["helomi.speech"]
-  Speech --> Conversation["helomi.conversation"]
-  Conversation --> Speech
-  Speech --> Speaker["Speaker"]
-  Resources["helomi.resources"] --> Speech
-  Resources --> Conversation
-  App["helomi.app"] --> Speech
-  App --> Conversation
-  CLI["helomi.cli"] --> App
-  Desktop["helomi.desktop"] --> App
-  Native["Swift AVAudioEngine helper"] <--> Speech
-```
-
-The reusable application runtime composes the workers; the terminal and
-menu-bar frontends project typed events into their own presentation. See the [architecture overview](docs/architecture/overview.md)
-for the data flow and lifecycle.
-
-## Documentation
-
-- [Getting started](docs/getting-started.md)
-- [Using Helomi](docs/usage.md)
-- [Configuration](docs/configuration.md)
-- [Creating a profile](docs/profiles.md)
-- [MCP endpoints](docs/mcp.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Changelog](CHANGELOG.md)
-- [All documentation](docs/README.md)
-- [Contributing](CONTRIBUTING.md)
-
-## Development
-
-Run the complete repository gate before submitting cross-package work:
-
-```bash
-make verify
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for focused checks, hardware validation,
-and documentation/ADR policy.
+---
 
 ## License
 
-Helomi source code is available under the [MIT License](LICENSE).
-
-Dependencies and models are separate works and retain their own licenses. In particular, voices, wake-word assets, and
-individual Hugging Face models may impose attribution, redistribution, or usage conditions. Review the relevant model
-card or download source before redistribution or commercial use.
+Helomi is licensed under the [MIT License](LICENSE). Third-party models and acoustic assets retain their respective
+licenses.

@@ -1,52 +1,33 @@
-# Helomi instructions
+# Helomi – Agent Rules
 
-Helomi is a local, privacy-first voice assistant for Apple Silicon Macs.
+Privacy-first voice assistant for Apple Silicon macOS (Python >=3.14 + Swift).
 
-## Routing
+## Commands
 
-Read this file and only the scoped `AGENTS.md` files covering changed paths.
-From the repository root, discover those files explicitly. For tests, read
-`tests/AGENTS.md` and the matching source-package file. Cross-package work
-reads each affected package file; linked documentation is opt-in and only for
-the relevant task.
+```bash
+make verify      # Full CI validation (lint + tests + swift + build)
+make test        # Fast pytest suite with >=90% branch coverage check
+make lint        # ruff + pyrefly (do NOT use mypy/pyright) + swift format
+make format      # Auto-format Python and Swift
+make typecheck   # Fast pyrefly typecheck
+make init        # Build Swift helper & sync uv
+```
 
-## Ownership
+Targeted test: `UV_CACHE_DIR=/private/tmp/uv-cache uv run pytest tests/unit/test_xxx.py`
 
-- `speech`: voice I/O and speech-domain behavior.
-- `conversation`: graph execution and conversation-domain behavior.
-- `resources`: local runtime-resource discovery and loading.
-- `common`: shared lifecycle, events, logging, and validation primitives.
-- `cli`: application composition, startup, and terminal UI integration.
-- `desktop`: thin macOS desktop shell.
+## Architecture Boundaries
 
-Keep state and policy with their owner. Use explicit contracts and package-owned
-adapters. Acquire heavy resources lazily at lifecycle boundaries. A blocking
-resource or worker has one owner; cross thread or asyncio boundaries with
-queues, futures, or loop handoff. Shutdown signals work, awaits tasks, closes
-resources, and joins workers. Each successful queue `get()` has one
-`task_done()`.
+- `helomi_common`: Shared models/utils. **Zero inward dependencies** (cannot import `helomi_core`, `helomi_speech`, `helomi_cli`).
+- `helomi_core`: Audio orchestration, VAD, state machine. Cannot import `helomi_cli` or `helomi_speech`.
+- `helomi_speech`: MLX/Whisper/VoxCPM engines. Cannot import `helomi_cli`.
+- `helomi_cli`: User interface. Interacts with `helomi_core`.
+- `native/`: Swift package. See `native/AGENTS.md`.
 
-## Workflow
+*Boundaries enforced by `tests/unit/test_architecture.py`.*
 
-Inspect staged and unstaged changes before editing; preserve unrelated work.
-Prefer targeted searches, reads, and command output. Do not delegate routine
-work. Keep code, logs, errors, and docs in English. Do not commit local data,
-models, recordings, generated artifacts, caches, or secrets.
+## Coding & Testing Standards
 
-Use the narrow check from the relevant scoped file while iterating. Run
-`make verify` for broad, cross-package, dependency, build, or final changes.
-Report required hardware or model validation separately. Run `uv sync` after
-dependency or lockfile changes.
-
-## Documentation
-
-Do not read documentation broadly for routine implementation work. Open only
-the documents directly relevant to the requested behavior or changed paths.
-Treat source code, configuration models, tests, and executable commands as the
-current contract; verify documentation against those sources before relying on
-it.
-
-When a change modifies a documented public workflow, configuration contract,
-architecture decision, or operational command, update the relevant document in
-the same change. ADRs explain durable decisions; they are not an API reference
-or a substitute for inspecting the current implementation.
+- **Python 3.14**: Use `T | None` (never legacy `Optional`/`Union`), Pydantic v2 `BaseModel`, strict types (`pyrefly`).
+- **Async**: Native `asyncio`. Offload blocking audio/C calls to threadpools.
+- **Coverage**: `>=90%` branch coverage required (`--cov-fail-under=90`). Test all branches.
+- **Mocks & Fixtures**: Never access real mic or heavy MLX models in tests. Use `tests/fixtures/audio.py` (`sample_raw_audio`, `sample_silence_raw_audio`, `sample_noise_raw_audio`) and `tests/fixtures/mocks.py`.
