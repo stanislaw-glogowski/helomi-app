@@ -1,5 +1,5 @@
 from .adapter import AbstractAdapter
-from .component import AbstractAsyncComponent, AbstractComponent
+from .component import AbstractAsyncComponent, AbstractComponent, BaseComponent
 from .worker import AbstractWorker
 
 __all__ = [
@@ -7,4 +7,5 @@ __all__ = [
     "AbstractAsyncComponent",
     "AbstractComponent",
     "AbstractWorker",
+    "BaseComponent",
 ]

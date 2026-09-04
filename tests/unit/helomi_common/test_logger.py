@@ -68,7 +68,7 @@ def test_configure_logger_with_callable():
             return f"CUSTOM | {record['message']}"
 
         logger = configure_logger(
-            formatter, LogLevel.INFO, skip_untagged=True, sink=sink
+            level=LogLevel.INFO, format=formatter, skip_untagged=True, sink=sink
         )
         assert logger is not None
         assert isinstance(sys.stderr, TaggedStreamProxy)
@@ -78,16 +78,19 @@ def test_configure_logger_with_callable():
         sys.stderr = original_stderr
 
 
-def test_configure_logger_with_string():
-    """Test logger configuration with a string format."""
+def test_configure_logger_pretty_format():
+    """Test logger configuration with default pretty log formatter."""
     original_stderr = sys.stderr
     sink = io.StringIO()
     try:
-        logger = configure_logger(
-            "<level>{message}</level>", LogLevel.DEBUG, skip_untagged=False, sink=sink
-        )
+        logger = configure_logger(level=LogLevel.DEBUG, sink=sink, skip_untagged=False)
         assert logger is not None
-        logger.debug("Debug msg")
+        logger.bind(component="TestComp", context="Ctx1").debug("Debug msg")
+        assert "TestComp.Ctx1" in sink.getvalue()
         assert "Debug msg" in sink.getvalue()
+
+        # Context as list
+        logger.bind(component="Core", context=["sub1", "sub2"]).info("Info list")
+        assert "Core.sub1.sub2" in sink.getvalue()
     finally:
         sys.stderr = original_stderr

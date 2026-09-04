@@ -9,6 +9,9 @@ class BaseConfig(BaseModel):
         frozen=True,
     )
 
+    def _set_private_attr(self, name: str, value: Any) -> None:
+        object.__setattr__(self, f"_{name}", value)
+
 
 class AdapterConfig(BaseConfig):
     ADAPTER_KEY: ClassVar[str] = "adapter"

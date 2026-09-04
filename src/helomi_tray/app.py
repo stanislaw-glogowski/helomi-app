@@ -1,274 +1,330 @@
 import asyncio
 import atexit
-import queue
 import threading
 from contextlib import suppress
-from typing import Any
+from dataclasses import dataclass, replace
+from enum import StrEnum, auto
+from typing import ClassVar, TypedDict, Unpack
 
 import rumps
 
-from helomi_core import Runtime
-from helomi_core.resources import LocalCatalog, LocalStore
-from helomi_core.server import Server, ServerSettings
-from helomi_core.speech import (
+from helomi_app import Runtime
+from helomi_app.pipeline import (
+    ActivateProfile,
+    DeactivateProfile,
+    PipelineCmd,
+    PipelineExtension,
+    PipelineService,
     ProfileActivated,
     ProfileDeactivated,
-    SpeechEvent,
-    TranscriptionReady,
 )
+from helomi_common import BaseComponent, TaskManager
 
 
-def _cleanup_external_resources() -> None:
-    """Shut down worker pools and run exit hooks before AppKit terminates."""
-    with suppress(Exception):
-        from joblib.externals.loky import get_reusable_executor
-
-        get_reusable_executor().shutdown(wait=True, kill_workers=True)
-
-    with suppress(Exception):
-        atexit._run_exitfuncs()
+class ExtensionKey(StrEnum):
+    SERVER = auto()
+    PARROT = auto()
 
 
-class HelomiTrayApp(rumps.App):
-    def __init__(
-        self,
-        local_catalog: LocalCatalog | None = None,
-        config: ServerSettings | None = None,
-        start_service: bool = True,
-    ) -> None:
-        super().__init__(name="Helomi", title="⏳ Helomi", quit_button=None)
+class TrayStatus(StrEnum):
+    STARTING = auto()
+    RUNNING = auto()
+    QUITING = auto()
 
-        if local_catalog is None:
-            local_catalog = LocalStore()
 
-        self._local_catalog = local_catalog
-        self._runtime = Runtime(local_catalog)
-        self._config = config or self._runtime.settings.server
-        self._service: Server = self._runtime.get_server(config=self._config)
+class TryIcon(StrEnum):
+    BUSY = "⌛️"
+    IDLE = "👋"
+    LISTENING = "👂"
+    PARROT = "🦜"
+    API = "🌐"
+    KILL = "☠️"
 
-        self._parrot_mode = False
-        self._interactive_menu_enabled = False
-        self._active_profile_id: str | None = None
-        self._ui_queue: queue.Queue[SpeechEvent | None] = queue.Queue()
+
+@dataclass(frozen=True, slots=True)
+class TrayState:
+    class Update(TypedDict, total=False):
+        status: TrayStatus
+        profile_id: str | None
+        extension_key: ExtensionKey
+        server_url: str | None
+
+    status: TrayStatus = TrayStatus.STARTING
+    profile_id: str | None = None
+    extension_key: ExtensionKey = ExtensionKey.SERVER
+    server_url: str | None = None
+
+
+class TrayApp(rumps.App, BaseComponent):
+    _TITLE: ClassVar[str] = "Helomi"
+
+    def __init__(self, runtime: Runtime) -> None:
+        rumps.App.__init__(
+            self,
+            name=self._TITLE,
+            title=self._render_title(),
+            quit_button=None,
+        )
+        BaseComponent.__init__(self)
+
+        self._runtime = runtime
+
+        self._pipeline: PipelineService | None = None
+        self._pipeline_extensions: dict[ExtensionKey, PipelineExtension] = {}
 
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._shutdown_event: asyncio.Event | None = None
-        self._service_ready = threading.Event()
 
-        self._profile_items: dict[str, rumps.MenuItem] = {}
-        self._deactivate_item: rumps.MenuItem | None = None
-        self._parrot_item: rumps.MenuItem | None = None
-        self._setup_menu()
+        self._ready_signal: asyncio.Event | None = None
+        self._shutdown_signal: asyncio.Event | None = None
 
-        self._timer = rumps.Timer(self._on_timer_tick, 0.2)
-        self._timer.start()
+        self._state = TrayState()
+        self._last_state = TrayState()
 
-        if start_service:
-            self._start_service_thread()
+        # menu
 
-    @property
-    def config(self) -> ServerSettings:
-        return self._config
+        self._menu_profiles: dict[str, rumps.MenuItem] = {
+            profile.id: rumps.MenuItem(title=profile.name)
+            for profile in runtime.profiles
+        }
+        self._menu_extensions: dict[ExtensionKey, rumps.MenuItem] = {
+            ExtensionKey.SERVER: rumps.MenuItem(
+                title=self._render_title("API", icon=TryIcon.API)
+            ),
+            ExtensionKey.PARROT: rumps.MenuItem(
+                title=self._render_title("Parrot Mode", icon=TryIcon.PARROT)
+            ),
+        }
 
-    @property
-    def parrot_mode(self) -> bool:
-        return self._parrot_mode
+        menu_profiles = rumps.MenuItem(title="Profiles")
+        for menu_item in self._menu_profiles.values():
+            menu_profiles.add(menu_item)
 
-    @property
-    def interactive_menu_enabled(self) -> bool:
-        return self._interactive_menu_enabled
-
-    @property
-    def active_profile_id(self) -> str | None:
-        return self._active_profile_id
-
-    @property
-    def service(self) -> Server:
-        return self._service
-
-    @property
-    def server(self) -> Server:
-        return self._service
-
-    def _setup_menu(self) -> None:
-        # 1. Profiles Submenu
-        profiles_menu = rumps.MenuItem("Profiles")
-        for p_id, profile in self._runtime.profiles.items():
-            item = rumps.MenuItem(title=profile.name, callback=self.on_select_profile)
-            self._profile_items[p_id] = item
-            profiles_menu.add(item)
-
-        profiles_menu.add(rumps.separator)
-        self._deactivate_item = rumps.MenuItem(
-            title="No profile (Listening)", callback=self.on_deactivate_profile
-        )
-        profiles_menu.add(self._deactivate_item)
-
-        # 2. Parrot mode item
-        self._parrot_item = rumps.MenuItem(
-            title="🦜 Parrot Mode", callback=self.on_toggle_parrot_mode
-        )
-
-        # 3. Server info & Quit items
-        api_info = rumps.MenuItem(
-            f"🌐 API: http://{self._config.host}:{self._config.port}"
-        )
-        quit_item = rumps.MenuItem("Quit", callback=self.on_quit)
+        menu_extensions = rumps.MenuItem(title="Extensions")
+        for menu_item in self._menu_extensions.values():
+            menu_extensions.add(menu_item)
 
         self.menu = [
-            profiles_menu,
-            self._parrot_item,
+            menu_profiles,
             rumps.separator,
-            api_info,
+            menu_extensions,
             rumps.separator,
-            quit_item,
+            rumps.MenuItem(
+                title="Quit",
+                callback=self._handle_quit,
+            ),
         ]
 
-        self._disable_interactive_menu_items()
+        self._lock = threading.Lock()
 
-    def _disable_interactive_menu_items(self) -> None:
-        self._interactive_menu_enabled = False
-        for item in self._profile_items.values():
-            item.set_callback(None)
-        if self._deactivate_item is not None:
-            self._deactivate_item.set_callback(None)
-        if self._parrot_item is not None:
-            self._parrot_item.set_callback(None)
+    def run(self, **options) -> None:
+        self._before_run()
+        super().run(**options)
 
-    def _enable_interactive_menu_items(self) -> None:
-        self._interactive_menu_enabled = True
-        for item in self._profile_items.values():
-            item.set_callback(self.on_select_profile)
-        if self._deactivate_item is not None:
-            self._deactivate_item.set_callback(self.on_deactivate_profile)
-        if self._parrot_item is not None:
-            self._parrot_item.set_callback(self.on_toggle_parrot_mode)
+    @rumps.timer(0.5)
+    def _sync_ui(self, _):
+        if self._last_state != self._state:
+            last_state, self._last_state = self._last_state, self._state
 
-    def _start_service_thread(self) -> None:
-        thread = threading.Thread(
-            target=self._run_service_loop,
-            daemon=True,
-            name="helomi-tray-speech",
-        )
-        self._thread = thread
-        thread.start()
+            match self._state.status:
+                case TrayStatus.RUNNING:
+                    if (
+                        last_state.status == TrayStatus.STARTING
+                        and self._state.server_url is not None
+                    ):
+                        self._sync_menu(True)
+                        self._sync_extension(self._state.extension_key, True)
 
-    def _run_service_loop(self) -> None:
-        loop = asyncio.new_event_loop()
+                    if last_state.server_url != self._state.server_url:
+                        title = self._render_title(
+                            f"API: {self._state.server_url}"
+                            if self._state.server_url
+                            else "API",
+                            TryIcon.API,
+                        )
+                        self._menu_extensions[ExtensionKey.SERVER].title = title
 
-        asyncio.set_event_loop(loop)
+                    if last_state.extension_key != self._state.extension_key:
+                        self._sync_extension(last_state.extension_key, False)
+                        self._sync_extension(self._state.extension_key, True)
 
-        self._loop = loop
-        self._shutdown_event = asyncio.Event()
-        self._service.add_listener(self._on_service_event)
+                    if last_state.profile_id != self._state.profile_id:
+                        self._sync_profile(last_state.profile_id, False)
+                        self._sync_profile(self._state.profile_id, True)
 
-        async def _runner() -> None:
-            async with self._service:
-                self._service_ready.set()
-                # Signal ready to UI
-                self._ui_queue.put(None)
-                if self._shutdown_event is not None:
-                    await self._shutdown_event.wait()
-
-        try:
-            loop.run_until_complete(_runner())
-        finally:
-            loop.close()
-
-    def _on_service_event(self, event: SpeechEvent) -> None:
-        self._ui_queue.put(event)
-
-    def _on_timer_tick(self, _sender: Any = None) -> None:
-        while not self._ui_queue.empty():
-            try:
-                event = self._ui_queue.get_nowait()
-                self._handle_event(event)
-            except queue.Empty:
-                break
-
-    def _handle_event(self, event: SpeechEvent | None) -> None:
-        if not self._interactive_menu_enabled:
-            self._enable_interactive_menu_items()
-
-        match event:
-            case None:
-                self._update_profile_checkmarks()
-                self._update_title()
-
-            case ProfileActivated(profile_id=pid):
-                self._active_profile_id = pid
-                self._update_profile_checkmarks()
-                self._update_title()
-
-            case ProfileDeactivated():
-                self._active_profile_id = None
-                self._update_profile_checkmarks()
-                self._update_title()
-
-            case TranscriptionReady(text=text):
-                if self._parrot_mode and text.strip():
-                    self._trigger_parrot_say(text.strip())
-
-    def _trigger_parrot_say(self, text: str) -> None:
-        if self._loop and not self._loop.is_closed():
-            profile_id = (
-                self._active_profile_id or self._runtime.settings.profile.default
-            )
-            asyncio.run_coroutine_threadsafe(
-                self._service.say_text(text, profile_id),
-                self._loop,
-            )
-
-    def _update_profile_checkmarks(self) -> None:
-        for p_id, item in self._profile_items.items():
-            item.state = 1 if p_id == self._active_profile_id else 0
-        if self._deactivate_item is not None:
-            self._deactivate_item.state = 1 if self._active_profile_id is None else 0
-
-    def _update_title(self) -> None:
-        if self._active_profile_id:
-            profile = self._runtime.profiles.get(self._active_profile_id)
-            name = profile.name if profile else self._active_profile_id
-            prefix = "🦜" if self._parrot_mode else "🟢"
-            self.title = f"{prefix} {name}"
-        else:
-            prefix = "🦜" if self._parrot_mode else "👂"
-            self.title = f"{prefix} Helomi"
-
-    def on_select_profile(self, sender: rumps.MenuItem) -> None:
-        for p_id, item in self._profile_items.items():
-            if item is sender:
-                if self._loop and not self._loop.is_closed():
-                    asyncio.run_coroutine_threadsafe(
-                        self._service.activate_profile(p_id),
-                        self._loop,
+                    label = (
+                        self._runtime.profiles.get(self._state.profile_id).name
+                        if self._state.profile_id
+                        else None
                     )
-                break
 
-    def on_deactivate_profile(self, _sender: rumps.MenuItem) -> None:
-        if self._loop and not self._loop.is_closed():
-            asyncio.run_coroutine_threadsafe(
-                self._service.deactivate_profile(),
-                self._loop,
-            )
+                    self.title = self._render_title(
+                        icon=TryIcon.LISTENING if label else TryIcon.IDLE,
+                        label=label,
+                    )
 
-    def on_toggle_parrot_mode(self, sender: rumps.MenuItem) -> None:
-        self._parrot_mode = not self._parrot_mode
-        sender.state = 1 if self._parrot_mode else 0
-        self._update_title()
+                case TrayStatus.QUITING:
+                    if last_state.status == TrayStatus.RUNNING:
+                        self._sync_menu(False)
+                    self.title = self._render_title(icon=TryIcon.KILL)
 
-    def on_quit(self, _sender: Any = None) -> None:
-        self.title = "⏳ Quitting..."
-        self._disable_interactive_menu_items()
-        if self._timer is not None:
-            self._timer.stop()
+    def _sync_extension(self, extension_key: ExtensionKey, active: bool) -> None:
+        self._menu_extensions[extension_key].state = 1 if active else 0
+        self._menu_extensions[extension_key].set_callback(
+            self._handle_toggle_extension if not active else None
+        )
 
-        if self._loop and self._shutdown_event and not self._loop.is_closed():
-            self._loop.call_soon_threadsafe(self._shutdown_event.set)
+    def _sync_profile(self, profile_id: str | None, active: bool) -> None:
+        if profile_id is None:
+            return
+        self._menu_profiles[profile_id].state = 1 if active else 0
+
+    def _sync_menu(self, enabled: bool) -> None:
+        extension_callback = self._handle_toggle_extension if enabled else None
+        profile_callback = self._handle_toggle_profile if enabled else None
+
+        for menu_item in self._menu_profiles.values():
+            menu_item.set_callback(profile_callback)
+        for menu_item in self._menu_extensions.values():
+            menu_item.set_callback(extension_callback)
+
+    def _handle_toggle_profile(self, sender: rumps.MenuItem):
+        if sender.state == 1:
+            self._execute(DeactivateProfile())
+            return
+
+        for profile_id, menu_item in self._menu_profiles.items():
+            if menu_item is sender:
+                self._execute(ActivateProfile(profile_id=profile_id))
+                return
+
+    def _handle_toggle_extension(self, sender: rumps.MenuItem):
+        if self._loop is None:
+            return
+
+        for extension_key, menu_item in self._menu_extensions.items():
+            if menu_item is sender:
+                self._loop.call_soon_threadsafe(self._select_extension, extension_key)
+                self._update_state(
+                    extension_key=extension_key,
+                )
+                return
+
+    def _handle_quit(self, sender: rumps.MenuItem) -> None:
+        sender.set_callback(None)
+        self._update_state(status=TrayStatus.QUITING, force_sync=True)
+        rumps.Timer(self._handle_exit, 0.1).start()
+
+    def _handle_exit(self, sender: rumps.Timer) -> None:
+        sender.stop()
+
+        if self._loop and self._shutdown_signal and not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._shutdown_signal.set)
 
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5.0)
 
-        _cleanup_external_resources()
+        with suppress(Exception):
+            from joblib.externals.loky import get_reusable_executor
+
+            get_reusable_executor().shutdown(wait=True, kill_workers=True)
+
+        with suppress(Exception):
+            atexit._run_exitfuncs()
         rumps.quit_application()
+
+    def _update_state(
+        self,
+        force_sync=False,
+        **kwargs: Unpack[TrayState.Update],
+    ) -> None:
+        if self._state.status == TrayStatus.QUITING:
+            return
+
+        with self._lock:
+            self._state = replace(self._state, **kwargs)
+            if force_sync:
+                self._sync_ui(None)
+
+    def _execute(self, cmd: PipelineCmd) -> None:
+        if self._pipeline is None or self._loop is None:
+            return
+
+        asyncio.run_coroutine_threadsafe(
+            self._pipeline.execute(cmd),
+            self._loop,
+        )
+
+    def _before_run(self) -> None:
+        thread = threading.Thread(
+            target=self._thread_worker,
+            daemon=True,
+            name=self.__label__,
+        )
+        self._thread = thread
+        thread.start()
+
+    def _thread_worker(self) -> None:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        self._loop = loop
+
+        try:
+            loop.run_until_complete(self._runtime_loop())
+        finally:
+            loop.close()
+
+    async def _runtime_loop(self) -> None:
+        self._shutdown_signal = (shutdown_signal := asyncio.Event())
+
+        async with self._runtime as runtime:
+            pipeline = await runtime.get_pipeline_service()
+            parrot_extension = await runtime.get_parrot_extension(
+                self._state.extension_key == ExtensionKey.PARROT
+            )
+            server_extension = await runtime.get_server_extension(
+                self._state.extension_key == ExtensionKey.SERVER
+            )
+
+            self._pipeline = pipeline
+            self._pipeline_extensions[ExtensionKey.PARROT] = parrot_extension
+            self._pipeline_extensions[ExtensionKey.SERVER] = server_extension
+
+            async with TaskManager() as tasks:
+                tasks.add_task(self._pipeline_loop())
+                self._update_state(
+                    status=TrayStatus.RUNNING,
+                    server_url=server_extension.url,
+                    profile_id=pipeline.active_profile.id
+                    if pipeline.active_profile
+                    else None,
+                )
+
+                await shutdown_signal.wait()
+
+    async def _pipeline_loop(self) -> None:
+        if self._pipeline is None:
+            return
+
+        async for event in self._pipeline.subscribe():
+            match event:
+                case ProfileActivated(profile_id=profile_id):
+                    self._update_state(profile_id=profile_id)
+                case ProfileDeactivated():
+                    self._update_state(profile_id=None)
+
+    def _select_extension(self, extension_key: ExtensionKey) -> None:
+        for key, extension in self._pipeline_extensions.items():
+            if key == extension_key:
+                extension.enable()
+            else:
+                extension.disable()
+
+    @classmethod
+    def _render_title(
+        cls,
+        label: str | None = None,
+        icon: TryIcon | None = None,
+    ) -> str:
+        return f"{icon or TryIcon.BUSY} {label or cls._TITLE}"

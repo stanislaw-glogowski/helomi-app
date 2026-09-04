@@ -1,36 +1,38 @@
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from helomi_cli.serve.cmd import run_serve_cmd
+from helomi_app import Runtime
+from helomi_app.server.extension import ServerExtension
+from helomi_cli.commands.serve import run_serve_cmd
 from helomi_cli.widgets import Spinner
-from helomi_core.resources import LocalCatalog
 
 
 @pytest.mark.asyncio
 async def test_run_serve_cmd() -> None:
-    catalog = MagicMock(spec=LocalCatalog)
-    spinner = Spinner(disabled=True)
+    spinner = MagicMock(spec=Spinner)
+    spinner.start = AsyncMock()
+    spinner.stop = AsyncMock()
+
+    prof = MagicMock()
+    prof.id = "default"
+    prof.name = "Default Profile"
+
+    runtime = MagicMock(spec=Runtime)
+    runtime.profiles = MagicMock()
+    runtime.profiles.__iter__ = MagicMock(return_value=iter([prof]))
+    runtime.profiles.get = MagicMock(return_value=prof)
+
+    server = MagicMock(spec=ServerExtension)
+    server.url = "http://127.0.0.1:8000"
+    runtime.get_server_extension = AsyncMock(return_value=server)
+
     shutdown = asyncio.Event()
+    shutdown.set()
 
-    with patch("helomi_cli.serve.cmd.Runtime") as mock_runtime_cls:
-        mock_runtime = mock_runtime_cls.return_value
-        mock_server = MagicMock()
-        mock_server.host = "127.0.0.1"
-        mock_server.port = 4356
-        mock_server.__aenter__.return_value = mock_server
-        mock_server.__aexit__.return_value = None
-        mock_runtime.get_server.return_value = mock_server
+    await run_serve_cmd(runtime, shutdown, spinner)
 
-        shutdown.set()
-
-        await run_serve_cmd(
-            local_catalog=catalog,
-            spinner=spinner,
-            shutdown=shutdown,
-        )
-
-        mock_runtime.get_server.assert_called_once()
-        mock_server.__aenter__.assert_called_once()
-        mock_server.__aexit__.assert_called_once()
+    runtime.get_server_extension.assert_called_once()
+    assert spinner.start.call_count >= 2
+    assert spinner.stop.call_count >= 2

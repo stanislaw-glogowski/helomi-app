@@ -1,249 +1,336 @@
 import asyncio
+import runpy
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import rumps
 
-from helomi_core.server import ServerSettings
-from helomi_core.speech import ProfileActivated, ProfileDeactivated, TranscriptionReady
-from helomi_tray.app import HelomiTrayApp
-from helomi_tray.main import main
-
-
-@pytest.fixture(autouse=True)
-def mock_pipeline_cls():
-    with patch("helomi_core.speech.SpeechPipeline") as mock_cls:
-        mock_pipe = mock_cls.return_value
-        mock_pipe.__aenter__.return_value = mock_pipe
-        mock_pipe.__aexit__.return_value = None
-        mock_pipe.activate_profile = AsyncMock(return_value=True)
-        mock_pipe.deactivate_profile = AsyncMock(return_value=True)
-        mock_pipe.say_text = AsyncMock(return_value=True)
-        mock_pipe.publish = AsyncMock(return_value=True)
-        mock_pipe.active_profile = None
-
-        async def empty_subscribe():
-            if False:
-                yield None
-
-        mock_pipe.subscribe = empty_subscribe
-        yield mock_cls
+from helomi_app.pipeline import (
+    ActivateProfile,
+    DeactivateProfile,
+    ProfileActivated,
+    ProfileDeactivated,
+)
+from helomi_tray.app import ExtensionKey, TrayApp, TrayState, TrayStatus, TryIcon
+from helomi_tray.main import _parse_args, _run, main
 
 
-def test_tray_app_initialization(mock_catalog) -> None:
-    custom_config = ServerSettings(host="192.168.1.5", port=8181)
-    app = HelomiTrayApp(
-        local_catalog=mock_catalog,
-        config=custom_config,
-        start_service=False,
+@pytest.fixture
+def mock_runtime():
+    runtime = MagicMock()
+
+    mock_profile1 = MagicMock()
+    mock_profile1.id = "default"
+    mock_profile1.name = "Default Assistant"
+
+    mock_profile2 = MagicMock()
+    mock_profile2.id = "gizmo"
+    mock_profile2.name = "Gizmo"
+
+    profiles = MagicMock()
+    profiles.__iter__.return_value = [mock_profile1, mock_profile2]
+
+    def _get_profile(pid: str | None):
+        return mock_profile1 if pid == "default" else mock_profile2
+
+    profiles.get.side_effect = _get_profile
+
+    runtime.profiles = profiles
+    return runtime
+
+
+def test_tray_app_initialization(mock_runtime):
+    """Verify TrayApp initializes menus, default state, and title."""
+    app = TrayApp(runtime=mock_runtime)
+
+    assert app.title == f"{TryIcon.BUSY} Helomi"
+    assert app._state.status == TrayStatus.STARTING
+    assert app._state.profile_id is None
+    assert app._state.extension_key == ExtensionKey.SERVER
+    assert app._state.server_url is None
+
+    assert "default" in app._menu_profiles
+    assert "gizmo" in app._menu_profiles
+    assert ExtensionKey.SERVER in app._menu_extensions
+    assert ExtensionKey.PARROT in app._menu_extensions
+
+
+def test_tray_app_render_title():
+    """Verify _render_title formats icons and labels correctly."""
+    assert TrayApp._render_title() == f"{TryIcon.BUSY} Helomi"
+    title = TrayApp._render_title("Custom", TryIcon.LISTENING)
+    assert title == f"{TryIcon.LISTENING} Custom"
+
+
+def test_tray_app_sync_ui_running(mock_runtime):
+    """Verify _sync_ui updates menus, title, and extension states when running."""
+    app = TrayApp(runtime=mock_runtime)
+
+    # Transition from STARTING to RUNNING with SERVER extension and active profile
+    app._state = TrayState(
+        status=TrayStatus.RUNNING,
+        profile_id="default",
+        extension_key=ExtensionKey.SERVER,
+        server_url="http://127.0.0.1:8181",
     )
-    assert app.title == "⏳ Helomi"
-    assert app.config is custom_config
-    assert app.config.host == "192.168.1.5"
-    assert app.config.port == 8181
-    assert not app.parrot_mode
-    assert not app.interactive_menu_enabled
-    assert app.active_profile_id is None
-    assert app.service is not None
-    assert app.server is not None
+    app._sync_ui(None)
 
-    # Check menu items
-    menu_keys = list(app.menu.keys())
-    assert "Profiles" in menu_keys
-    assert "🦜 Parrot Mode" in menu_keys
-    assert "Quit" in menu_keys
-    assert "🌐 API: http://192.168.1.5:8181" in menu_keys
+    assert app.title == f"{TryIcon.LISTENING} Default Assistant"
+    assert app._menu_profiles["default"].state == 1
+    assert app._menu_profiles["gizmo"].state == 0
+    assert app._menu_extensions[ExtensionKey.SERVER].state == 1
+    assert app._menu_extensions[ExtensionKey.PARROT].state == 0
+    assert "http://127.0.0.1:8181" in app._menu_extensions[ExtensionKey.SERVER].title
 
-
-def test_tray_app_profile_events_and_title(mock_catalog) -> None:
-    app = HelomiTrayApp(
-        local_catalog=mock_catalog,
-        start_service=False,
+    # Switch profile to None (idle)
+    app._state = TrayState(
+        status=TrayStatus.RUNNING,
+        profile_id=None,
+        extension_key=ExtensionKey.PARROT,
+        server_url="http://127.0.0.1:8181",
     )
+    app._sync_ui(None)
 
-    # 0. Service ready signal enables menu and updates title
-    app._handle_event(None)
-    assert app.interactive_menu_enabled
-    assert app.title == "👂 Helomi"
-
-    # 1. ProfileActivated
-    app._handle_event(ProfileActivated(profile_id="default"))
-    assert app.active_profile_id == "default"
-    assert app.title == "🟢 Default"
-    assert app._profile_items["default"].state == 1
-
-    # 2. ProfileDeactivated
-    app._handle_event(ProfileDeactivated(profile_id="default"))
-    assert app.active_profile_id is None
-    assert app.title == "👂 Helomi"
-    assert app._profile_items["default"].state == 0
+    assert app.title == f"{TryIcon.IDLE} Helomi"
+    assert app._menu_profiles["default"].state == 0
+    assert app._menu_extensions[ExtensionKey.SERVER].state == 0
+    assert app._menu_extensions[ExtensionKey.PARROT].state == 1
 
 
-def test_tray_app_parrot_mode_toggle_and_transcription(mock_catalog) -> None:
-    app = HelomiTrayApp(
-        local_catalog=mock_catalog,
-        start_service=False,
+def test_tray_app_sync_ui_quiting(mock_runtime):
+    """Verify _sync_ui sets KILL icon and clears callbacks on quiting."""
+    app = TrayApp(runtime=mock_runtime)
+    app._last_state = TrayState(status=TrayStatus.RUNNING)
+    app._state = TrayState(status=TrayStatus.QUITING)
+
+    app._sync_ui(None)
+
+    assert app.title == f"{TryIcon.KILL} Helomi"
+
+
+def test_tray_app_handle_toggle_profile(mock_runtime):
+    """Verify clicking profile menu items activates or deactivates profiles."""
+    app = TrayApp(runtime=mock_runtime)
+    app._execute = MagicMock()
+
+    # If item is currently active (state == 1), clicking deactivates
+    item = app._menu_profiles["default"]
+    item.state = 1
+    app._handle_toggle_profile(item)
+    app._execute.assert_called_once()
+    assert isinstance(app._execute.call_args[0][0], DeactivateProfile)
+
+    # If item is inactive (state == 0), clicking activates
+    item.state = 0
+    app._execute.reset_mock()
+    app._handle_toggle_profile(item)
+    app._execute.assert_called_once()
+    cmd = app._execute.call_args[0][0]
+    assert isinstance(cmd, ActivateProfile)
+    assert cmd.profile_id == "default"
+
+
+def test_tray_app_handle_toggle_extension(mock_runtime):
+    """Verify clicking extension menu item dispatches extension selection."""
+    app = TrayApp(runtime=mock_runtime)
+    mock_loop = MagicMock()
+    app._loop = mock_loop
+
+    parrot_item = app._menu_extensions[ExtensionKey.PARROT]
+    app._handle_toggle_extension(parrot_item)
+
+    mock_loop.call_soon_threadsafe.assert_called_once_with(
+        app._select_extension, ExtensionKey.PARROT
     )
+    assert app._state.extension_key == ExtensionKey.PARROT
 
-    loop = asyncio.new_event_loop()
-    app._loop = loop
-    app._service.say_text = AsyncMock()
-
-    try:
-        parrot_item = app._parrot_item
-        # Toggle on
-        app.on_toggle_parrot_mode(parrot_item)
-        assert app.parrot_mode
-        assert parrot_item.state == 1
-        assert app.title == "🦜 Helomi"
-
-        # Activate profile while parrot mode is ON
-        app._handle_event(ProfileActivated(profile_id="default"))
-        assert app.title == "🦜 Default"
-        assert app._profile_items["default"].state == 1
-        assert app._deactivate_item.state == 0
-
-        # Transcription event should trigger say_text
-        app._handle_event(TranscriptionReady(profile_id="default", text="Echo me"))
-        loop.run_until_complete(asyncio.sleep(0.01))
-        app._service.say_text.assert_called_with("Echo me", "default")
-
-        # ProfileDeactivated while parrot mode is on deactivates cleanly
-        app._handle_event(ProfileDeactivated(profile_id="default"))
-        assert app.title == "🦜 Helomi"
-        assert app._profile_items["default"].state == 0
-        assert app._deactivate_item.state == 1
-
-        # Toggle off
-        app.on_toggle_parrot_mode(parrot_item)
-        assert not app.parrot_mode
-        assert parrot_item.state == 0
-        assert app.title == "👂 Helomi"
-    finally:
-        loop.close()
+    # Without loop, does nothing
+    app._loop = None
+    app._handle_toggle_extension(parrot_item)
 
 
-def test_tray_app_select_and_deactivate_profile(mock_catalog) -> None:
-    app = HelomiTrayApp(
-        local_catalog=mock_catalog,
-        start_service=False,
-    )
+def test_tray_app_select_extension(mock_runtime):
+    """Verify _select_extension enables the chosen extension and disables others."""
+    app = TrayApp(runtime=mock_runtime)
+    ext_server = MagicMock()
+    ext_parrot = MagicMock()
+    app._pipeline_extensions = {
+        ExtensionKey.SERVER: ext_server,
+        ExtensionKey.PARROT: ext_parrot,
+    }
 
-    loop = asyncio.new_event_loop()
-    app._loop = loop
-    app._service.activate_profile = AsyncMock()
-    app._service.deactivate_profile = AsyncMock()
-
-    try:
-        # Select profile
-        item = app._profile_items["default"]
-        app.on_select_profile(item)
-        loop.run_until_complete(asyncio.sleep(0.01))
-        app._service.activate_profile.assert_called_with("default")
-
-        # Deactivate profile
-        app.on_deactivate_profile(MagicMock(spec=rumps.MenuItem))
-        loop.run_until_complete(asyncio.sleep(0.01))
-        app._service.deactivate_profile.assert_called_with()
-    finally:
-        loop.close()
+    app._select_extension(ExtensionKey.PARROT)
+    ext_parrot.enable.assert_called_once()
+    ext_server.disable.assert_called_once()
 
 
-def test_tray_app_timer_tick(mock_catalog) -> None:
-    app = HelomiTrayApp(
-        local_catalog=mock_catalog,
-        start_service=False,
-    )
+def test_tray_app_execute(mock_runtime):
+    """Verify _execute runs pipeline command on event loop."""
+    app = TrayApp(runtime=mock_runtime)
+    app._pipeline = MagicMock()
+    mock_loop = MagicMock()
+    app._loop = mock_loop
 
-    app._on_service_event(ProfileActivated(profile_id="default"))
-    assert not app._ui_queue.empty()
+    with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
+        cmd = DeactivateProfile()
+        app._execute(cmd)
+        mock_run_coro.assert_called_once()
 
-    app._on_timer_tick()
-    assert app._ui_queue.empty()
-    assert app.active_profile_id == "default"
-
-
-def test_tray_app_quit(mock_catalog) -> None:
-    app = HelomiTrayApp(
-        local_catalog=mock_catalog,
-        start_service=False,
-    )
-
-    with patch("rumps.quit_application") as mock_quit:
-        app.on_quit()
-        assert app.title == "⏳ Quitting..."
-        assert mock_quit.called
+    # Without pipeline or loop, does nothing
+    app._pipeline = None
+    app._execute(cmd)
 
 
-def test_tray_app_service_loop(mock_catalog) -> None:
-    with patch("rumps.quit_application"):
-        app = HelomiTrayApp(
-            local_catalog=mock_catalog,
-            start_service=False,
-        )
-        app._service.__aenter__ = AsyncMock(return_value=app._service)
-        app._service.__aexit__ = AsyncMock(return_value=None)
-        app._service.add_listener = MagicMock()
+def test_tray_app_handle_quit_and_exit(mock_runtime):
+    """Verify quit flow signals shutdown and exits cleanly."""
+    app = TrayApp(runtime=mock_runtime)
+    mock_timer_item = MagicMock()
 
-        app._start_service_thread()
-        app._service_ready.wait(timeout=2.0)
-        app._on_service_event(TranscriptionReady(profile_id="default", text="hi"))
-        app._on_timer_tick()
-        app.on_quit()
+    with patch("rumps.Timer") as mock_timer_cls:
+        app._handle_quit(mock_timer_item)
+        assert app._state.status == TrayStatus.QUITING
+        assert mock_timer_cls.called
 
+    # Test _handle_exit
+    timer = MagicMock()
+    mock_loop = MagicMock()
+    mock_loop.is_closed.return_value = False
+    app._loop = mock_loop
+    app._shutdown_signal = MagicMock()
+    app._thread = MagicMock()
+    app._thread.is_alive.return_value = True
 
-def test_tray_main_entrypoint(mock_catalog) -> None:
     with (
-        patch("helomi_tray.main.LocalStore", return_value=mock_catalog),
+        patch("joblib.externals.loky.get_reusable_executor") as mock_executor,
+        patch("atexit._run_exitfuncs") as mock_exitfuncs,
+        patch("rumps.quit_application") as mock_quit_app,
+    ):
+        app._handle_exit(timer)
+        timer.stop.assert_called_once()
+        mock_loop.call_soon_threadsafe.assert_called_once_with(app._shutdown_signal.set)
+        app._thread.join.assert_called_once_with(timeout=5.0)
+        mock_executor.return_value.shutdown.assert_called_once()
+        mock_exitfuncs.assert_called_once()
+        mock_quit_app.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_tray_app_pipeline_loop(mock_runtime):
+    """Verify _pipeline_loop listens to pipeline events and updates state."""
+    app = TrayApp(runtime=mock_runtime)
+
+    mock_pipeline = MagicMock()
+
+    async def mock_subscribe():
+        yield ProfileActivated(profile_id="gizmo")
+        yield ProfileDeactivated(profile_id="gizmo")
+
+    mock_pipeline.subscribe = mock_subscribe
+    app._pipeline = mock_pipeline
+
+    await app._pipeline_loop()
+
+    assert app._state.profile_id is None
+
+
+@pytest.mark.asyncio
+async def test_tray_app_runtime_loop(mock_runtime):
+    """Verify _runtime_loop initializes components and awaits shutdown."""
+    app = TrayApp(runtime=mock_runtime)
+
+    mock_pipeline = MagicMock()
+    mock_pipeline.active_profile = None
+
+    async def empty_events():
+        if False:
+            yield None
+
+    mock_pipeline.subscribe = empty_events
+
+    mock_server_ext = MagicMock()
+    mock_server_ext.url = "http://localhost:8181"
+    mock_parrot_ext = MagicMock()
+
+    mock_runtime.__aenter__.return_value = mock_runtime
+    mock_runtime.__aexit__.return_value = None
+    mock_runtime.get_pipeline_service = AsyncMock(return_value=mock_pipeline)
+    mock_runtime.get_parrot_extension = AsyncMock(return_value=mock_parrot_ext)
+    mock_runtime.get_server_extension = AsyncMock(return_value=mock_server_ext)
+
+    loop_task = asyncio.create_task(app._runtime_loop())
+    await asyncio.sleep(0.05)
+
+    assert app._pipeline is mock_pipeline
+    assert app._state.status == TrayStatus.RUNNING
+    assert app._state.server_url == "http://localhost:8181"
+
+    app._shutdown_signal.set()
+    await loop_task
+
+
+def test_tray_app_thread_worker(mock_runtime):
+    """Verify _thread_worker initializes event loop and executes runtime loop."""
+    app = TrayApp(runtime=mock_runtime)
+    with patch.object(app, "_runtime_loop", new_callable=AsyncMock) as mock_r_loop:
+        app._thread_worker()
+        assert app._loop is not None
+        mock_r_loop.assert_called_once()
+
+
+def test_tray_app_run(mock_runtime):
+    """Verify run starts worker thread and calls rumps.App.run."""
+    app = TrayApp(runtime=mock_runtime)
+    with (
+        patch.object(app, "_before_run") as mock_before_run,
+        patch("rumps.App.run") as mock_super_run,
+    ):
+        app.run()
+        mock_before_run.assert_called_once()
+        mock_super_run.assert_called_once()
+
+
+def test_tray_main_and_run():
+    """Verify helomi_tray.main entrypoints."""
+    with patch.object(sys, "argv", ["helomi-tray"]):
+        args = _parse_args()
+        assert not args.debug
+
+    with patch.object(sys, "argv", ["helomi-tray", "-d"]):
+        args = _parse_args()
+        assert args.debug
+
+    with (
+        patch("asyncio.run") as mock_asyncio_run,
         patch("helomi_tray.main.configure_logger") as mock_conf,
-        patch("helomi_tray.main.HelomiTrayApp") as mock_app_cls,
-        patch.object(
-            sys,
-            "argv",
-            ["helomi-tray", "-d"],
-        ),
+        patch.object(sys, "argv", ["helomi-tray"]),
     ):
-        mock_app = mock_app_cls.return_value
+        mock_asyncio_run.side_effect = lambda coro: coro.close()
         main()
-        assert mock_conf.called
-        log_fmt = mock_conf.call_args[0][0]
-        formatted = log_fmt({"level": "INFO", "message": "hello"})
-        assert "INFO" in formatted
-        assert "hello" in formatted
-
-        mock_app_cls.assert_called_with(local_catalog=mock_catalog)
-        assert mock_app.run.called
+        mock_conf.assert_called_once()
+        mock_asyncio_run.assert_called_once()
 
 
-def test_cleanup_external_resources() -> None:
-    from helomi_tray.app import _cleanup_external_resources
-
-    # Normal cleanup
-    _cleanup_external_resources()
-
-    # Cleanup with error
+@pytest.mark.asyncio
+async def test_tray_run_function():
+    """Verify _run instantiates Runtime and TrayApp."""
     with (
-        patch(
-            "joblib.externals.loky.get_reusable_executor",
-            side_effect=RuntimeError("loky error"),
-        ),
-        patch(
-            "atexit._run_exitfuncs",
-            side_effect=RuntimeError("atexit error"),
-        ),
+        patch("helomi_tray.main.Runtime") as mock_runtime_cls,
+        patch("helomi_tray.main.TrayApp") as mock_tray_cls,
     ):
-        _cleanup_external_resources()
+        mock_app = mock_tray_cls.return_value
+        args = MagicMock()
+        args.debug = False
+        await _run(args)
+        mock_runtime_cls.assert_called_once()
+        mock_tray_cls.assert_called_once_with(runtime=mock_runtime_cls.return_value)
+        mock_app.run.assert_called_once()
 
 
-def test_tray_app_disable_enable_menu_items_none(mock_catalog) -> None:
-    app = HelomiTrayApp(
-        local_catalog=mock_catalog,
-        start_service=False,
-    )
-    app._deactivate_item = None
-    app._parrot_item = None
-    app._disable_interactive_menu_items()
-    assert not app.interactive_menu_enabled
-    app._enable_interactive_menu_items()
-    assert app.interactive_menu_enabled
+def test_tray_package_main_execution():
+    """Verify running helomi_tray __main__."""
+    with (
+        patch("asyncio.run") as mock_asyncio_run,
+        patch.object(sys, "argv", ["helomi-tray"]),
+    ):
+        mock_asyncio_run.side_effect = lambda coro: coro.close()
+        runpy.run_module("helomi_tray", run_name="__main__")

@@ -1,3 +1,4 @@
+import wave
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum, auto
@@ -5,6 +6,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 import numpy as np
 from numpy.typing import NDArray
+
+from helomi_common import AbstractFile
 
 if TYPE_CHECKING:
     import mlx.core
@@ -144,3 +147,30 @@ class AudioChunk:
             format=chunks[0].format,
             samples=np.concatenate([c.samples for c in chunks], axis=0),
         )
+
+
+class AudioFile(AbstractFile):
+    _SUFFIXES: ClassVar[list[str]] = [".wav", ".wave"]
+
+    def read(self) -> RawAudio:
+        with wave.open(str(self.path), "rb") as f:
+            return RawAudio(
+                format=AudioFormat(
+                    sample_rate=f.getframerate(),
+                    channels=f.getnchannels(),
+                ),
+                data=f.readframes(f.getnframes()),
+            )
+
+    def write(self, audio: RawAudio | AudioChunk, normalize=False) -> None:
+        with wave.open(str(self.path), "wb") as f:
+            chunk = (
+                audio if isinstance(audio, AudioChunk) else AudioChunk.from_raw(audio)
+            )
+
+            sample_width, frame = chunk.to_pcm(normalize)
+
+            f.setnchannels(chunk.format.channels)
+            f.setframerate(chunk.format.sample_rate)
+            f.setsampwidth(sample_width)
+            f.writeframes(frame)

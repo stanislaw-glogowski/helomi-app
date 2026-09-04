@@ -1,5 +1,5 @@
 from .config import AudioSettings
-from .domain import AudioChunk, AudioFormat, AudioMode, RawAudio
+from .domain import AudioChunk, AudioFile, AudioFormat, AudioMode, RawAudio
 from .ports import AudioDriver
 from .resampler import AudioResampler
 
@@ -20,6 +20,7 @@ def get_audio_driver(
 __all__ = [
     "AudioChunk",
     "AudioDriver",
+    "AudioFile",
     "AudioFormat",
     "AudioMode",
     "AudioResampler",

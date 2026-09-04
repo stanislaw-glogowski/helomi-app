@@ -5,8 +5,8 @@ from typing import Any
 
 import numpy as np
 
+from helomi_app.resources import ResourceCatalog
 from helomi_core.audio import AudioChunk, AudioDriver, AudioFormat, AudioMode, RawAudio
-from helomi_core.resources import ConfigData, LocalCatalog
 from helomi_core.stt import STTAdapter, STTChunk, STTRequest
 from helomi_core.tts import TTSAdapter, TTSChunk, TTSRequest
 from helomi_core.turn import TurnAdapter, TurnPrediction
@@ -176,23 +176,20 @@ class MockTTSAdapter(TTSAdapter[Any, Any]):
         yield StopIteration()
 
 
-class MockLocalCatalog(LocalCatalog):
+class MockResourceCatalog(ResourceCatalog):
     def __init__(
         self,
         root_path: Path,
-        settings_data: dict[str, Any],
-        profiles_data: dict[str, dict[str, Any]],
+        settings_data: dict[str, Any] | None = None,
+        profiles_data: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self._root = root_path
-        self._settings = ConfigData(settings_data)
-        self._profiles = {k: ConfigData(v) for k, v in profiles_data.items()}
+        self._settings_data = settings_data or {}
+        self._profiles_data = profiles_data or {}
 
     @property
     def root_path(self) -> Path:
         return self._root
 
-    def read_settings_data(self) -> ConfigData:
-        return self._settings
 
-    def read_profiles_data(self) -> dict[str, ConfigData]:
-        return self._profiles
+MockLocalCatalog = MockResourceCatalog

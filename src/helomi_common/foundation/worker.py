@@ -18,7 +18,7 @@ class AbstractWorker(AbstractAsyncComponent, ABC):
     async def _pre_open(self) -> None:
         self._executor = ThreadPoolExecutor(
             max_workers=self._max_workers,
-            thread_name_prefix=f"{self.__component__}/executor",
+            thread_name_prefix=self.__label__,
         )
 
     @final

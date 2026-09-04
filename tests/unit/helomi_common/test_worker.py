@@ -43,7 +43,7 @@ async def test_worker_lifecycle_and_execution():
         assert result == 30
 
         thread_name = await worker._run_sync(worker.get_thread_name)
-        assert "ConcreteWorker/executor" in thread_name
+        assert worker.__label__ in thread_name
 
     assert worker.sync_closed
     assert worker._executor is None

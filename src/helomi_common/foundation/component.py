@@ -4,19 +4,36 @@ from contextlib import (
     AbstractAsyncContextManager,
     AbstractContextManager,
     AsyncExitStack,
+    suppress,
 )
 from types import TracebackType
-from typing import Final, Self, final
+from typing import ClassVar, Self, final
 
 import loguru
 
+from ..conversion import to_snake_case
+
 
 class BaseComponent:
+    _LABEL_PREFIX: ClassVar[str] = "helomi"
+
+    __label__: ClassVar[str] = ""
+    __component__: ClassVar[str] = ""
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+
+        label = cls.__dict__.get("__label__") or to_snake_case(cls.__name__)
+        prefix = f"{cls._LABEL_PREFIX}/"
+        if not label.startswith(prefix):
+            label = f"{prefix}{label}"
+
+        cls.__label__ = label
+        cls.__component__ = cls.__name__
+
     def __init__(self):
-        component = self.__class__.__name__
-        self.__component__: Final[str] = component
         self._logger = loguru.logger.bind(
-            component=component,
+            component=self.__component__,
             context=None,
         )
 
@@ -149,10 +166,13 @@ class AbstractAsyncComponent(AbstractAsyncContextManager, BaseComponent, ABC):
             self._exit_stack.aclose,
         ):
             try:
-                await fn()
+                with suppress(
+                    asyncio.CancelledError,
+                    asyncio.TimeoutError,
+                ):
+                    await fn()
             except BaseException as err:
-                if not isinstance(err, asyncio.CancelledError):
-                    errors.append(err)
+                errors.append(err)
 
         self._exit_signal.clear()
 

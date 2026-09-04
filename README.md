@@ -68,21 +68,21 @@ make run-cli install
 # or directly via uv:
 uv run helomi-cli install
 
-# 2. Start a live speech-to-text / voice session
-make run-cli say
+# 2. Start parrot mode (live speech recognition and spoken echo)
+make run-cli parrot
 # or specify an active profile:
-make run-cli say default
+make run-cli parrot default
 # or directly via uv:
-uv run helomi-cli say [profile_id]
+uv run helomi-cli parrot [profile_id]
 
-# 3. View profiles and settings configuration (formatted JSON)
-make run-cli profiles
-make run-cli profiles default
-make run-cli settings
+# 3. Start local FastAPI server for speech pipeline
+make run-cli serve
+# or directly via uv:
+uv run helomi-cli serve
 
 # 4. Enable debug logging with -d
-make run-cli -- -d say
-# or: uv run helomi-cli -d say
+make run-cli -- -d parrot
+# or: uv run helomi-cli -d parrot
 ```
 
 ---
@@ -106,9 +106,10 @@ For more detailed information on configuring and extending Helomi, please refer 
 ```text
 helomi-app/
 ├── src/
-│   ├── helomi_common/   # Shared domain models & foundation utilities
-│   ├── helomi_core/     # Audio orchestrator, detection, STT/TTS, speech pipeline, FastAPI server
-│   ├── helomi_cli/      # Command-line interface & terminal UI
+│   ├── helomi_common/   # Shared domain models, foundation components & utilities
+│   ├── helomi_core/     # Audio orchestration, VAD, STT, TTS, turn, wakeword adapters & workers
+│   ├── helomi_app/      # Application orchestration, runtime, pipeline service, extensions, server API
+│   ├── helomi_cli/      # Command-line interface & terminal UI (install, parrot, serve)
 │   └── helomi_tray/     # macOS system tray application (rumps)
 ├── native/
 │   └── macos/avfaudio/  # Swift package for macOS CoreAudio/AVFAudio bridge

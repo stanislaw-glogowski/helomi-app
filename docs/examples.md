@@ -7,12 +7,12 @@ Here are some common usage examples for configuring and running Helomi.
 To run the CLI with a custom profile named `my_assistant`:
 
 ```bash
-uv run helomi-cli say my_assistant
+uv run helomi-cli parrot my_assistant
 ```
 
 ## Overriding the Server Port
 
-Create `settings.override.yml` in your resources directory:
+Create `settings.override.yml` in your `.helomi` directory:
 
 ```yaml
 server:
@@ -28,8 +28,7 @@ uv run helomi-cli serve
 
 ## Disabling Wake-Word
 
-If you want to use push-to-talk or continuous listening without a wake-word, you can modify your `profile.yml` to remove
-the adapter:
+If you want to disable wake-word detection globally, update your `settings.override.yml`:
 
 ```yaml
 wakeword:

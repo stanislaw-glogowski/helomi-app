@@ -17,13 +17,14 @@ uv run helomi-cli [command]
 **Key Commands:**
 
 - `install`: Install required acoustic models (e.g., OpenWakeWord onnx models).
-- `say [profile_id]`: Start a live interactive speech-to-text and voice session in the terminal.
-- `serve`: Start the local FastAPI server.
-- `profiles`: List and format available profiles.
-- `settings`: View current application settings.
+- `parrot [profile_id]`: Start live speech recognition with real-time spoken repetition, rich model status, and live event monitoring.
+- `serve` (alias `server`): Start the local FastAPI server for speech pipeline orchestration and REST/SSE clients.
 
 ## System Tray (`helomi_tray`)
 
-A native macOS menu bar application built using `rumps`. It provides quick access to the assistant, allowing you to
-monitor status, switch profiles, and toggle listening mode without opening a terminal window. It interacts with the core
-engine via the local FastAPI server.
+A native macOS menu bar application built using `rumps` and `BaseComponent`. It embeds the `Runtime` directly, allowing you to:
+- Monitor speech assistant status with dynamic status bar icons.
+- Switch and toggle active voice profiles from the menu bar.
+- Dynamically toggle between running extensions: **API Server** mode and **Parrot Mode**.
+- Gracefully shut down all background workers and processes upon exit.
+

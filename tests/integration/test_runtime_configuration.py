@@ -2,12 +2,12 @@ from pathlib import Path
 
 import yaml
 
-from helomi_core.resources.store import LocalStore
-from helomi_core.runtime import Runtime
+from helomi_app.resources import UserData
+from helomi_app.runtime import Runtime
 
 
 def test_runtime_configuration_with_local_store(tmp_path: Path):
-    """Integration test: LocalStore directory structure -> Runtime initialization."""
+    """Integration test: UserData directory structure -> Runtime initialization."""
     store_dir = tmp_path / ".helomi"
     store_dir.mkdir(parents=True)
 
@@ -102,19 +102,18 @@ def test_runtime_configuration_with_local_store(tmp_path: Path):
     }
     (gizmo_dir / "profile.yml").write_text(yaml.safe_dump(gizmo_data), encoding="utf-8")
 
-    # 4. Initialize LocalStore and Runtime
-    store = LocalStore(root_path=store_dir)
-    runtime = Runtime(store)
+    # 4. Initialize UserData and Runtime
+    user_data = UserData(root_path=store_dir)
+    runtime = Runtime(user_data)
 
     assert runtime.settings.profile.default == "gizmo"
 
     # Default profile lookup without argument resolves to default "gizmo"
-    resolved_profile = runtime.get_profile()
+    resolved_profile = runtime.profiles.get(None)
     assert resolved_profile.id == "gizmo"
     assert resolved_profile.name == "Gizmo Robot"
-    assert resolved_profile.label == "Gizmo Robot(gizmo)"
 
     # Explicit lookup of default profile
-    default_prof = runtime.get_profile("default")
+    default_prof = runtime.profiles.get("default")
     assert default_prof.id == "default"
     assert default_prof.name == "Default Assistant"

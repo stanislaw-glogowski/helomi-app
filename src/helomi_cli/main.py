@@ -2,23 +2,17 @@ import argparse
 import asyncio
 import signal
 
-import loguru
-
-from helomi_cli.install import run_install_cmd
-from helomi_cli.profiles import run_profiles_cmd
-from helomi_cli.say import run_say_cmd
-from helomi_cli.serve import run_serve_cmd
-from helomi_cli.settings import run_settings_cmd
+from helomi_app import Runtime
+from helomi_cli.commands import run_install_cmd, run_parrot_cmd, run_serve_cmd
 from helomi_cli.widgets import Spinner
 from helomi_common import LogLevel, configure_logger
-from helomi_core.resources import LocalStore
 
 _DEFAULT_CMD = "install"
 
 
 def main():
     args = _parse_args()
-    configure_logger(_format_log, LogLevel.DEBUG if args.debug else LogLevel.INFO)
+    configure_logger(LogLevel.DEBUG if args.debug else LogLevel.INFO)
     asyncio.run(_run(args))
 
 
@@ -47,9 +41,9 @@ def _parse_args() -> argparse.Namespace:
         help="(TODO: add description)",
     )
 
-    # cli say
+    # cli parrot
     cmd_parsers.add_parser(
-        "say",
+        "parrot",
         help="Live speech-to-text with hybrid voice/text input",
     ).add_argument(
         "profile_id",
@@ -61,99 +55,37 @@ def _parse_args() -> argparse.Namespace:
     # cli serve
     cmd_parsers.add_parser(
         "serve",
+        aliases=["server"],
         help="Start local FastAPI server for speech pipeline",
-    )
-
-    # cli profiles
-    cmd_parsers.add_parser(
-        "profiles",
-        help="Print profile(s)",
-    ).add_argument(
-        "profile_id",
-        nargs="?",
-        default=None,
-        help="Optional profile ID to print",
-    )
-
-    # cli settings
-    cmd_parsers.add_parser(
-        "settings",
-        help="Print settings",
     )
 
     parser.set_defaults(
         command=_DEFAULT_CMD,
-        print_target=None,
         profile_id=None,
-        host="127.0.0.1",
-        port=8000,
     )
 
     return parser.parse_args()
 
 
-def _format_log(record: loguru.Record) -> str:
-    extra = record["extra"]
-    path: list[str] = []
-
-    if (comp := extra.get("component")) and isinstance(comp, str) and comp:
-        path.append(comp)
-
-    match extra.get("context"):
-        case str(ctx) if ctx:
-            path.append(ctx)
-        case list(items):
-            path.extend(c for c in items if isinstance(c, str) and c)
-
-    parts = filter(
-        None,
-        [
-            "<level>{level: <8}</level>",
-            f"<cyan>{'.'.join(path)}</cyan>" if path else None,
-            "<level>{message}</level>",
-        ],
-    )
-    return " | ".join(parts)
-
-
 async def _run(args: argparse.Namespace) -> None:
-    loop = asyncio.get_running_loop()
+    runtime = Runtime()
+    spinner = Spinner(args.debug)
     shutdown = asyncio.Event()
+    loop = asyncio.get_running_loop()
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, shutdown.set)
 
-    local_store = LocalStore()
-    spinner = Spinner(args.debug)
+    profile_id = args.profile_id if isinstance(args.profile_id, str) else None
 
-    match args.command:
-        case "install":
-            await run_install_cmd(
-                local_catalog=local_store,
-                spinner=spinner,
-            )
-        case "say":
-            await run_say_cmd(
-                local_catalog=local_store,
-                spinner=spinner,
-                shutdown=shutdown,
-                profile_id=args.profile_id,
-            )
-        case "serve":
-            await run_serve_cmd(
-                local_catalog=local_store,
-                spinner=spinner,
-                shutdown=shutdown,
-            )
-        case "profiles":
-            run_profiles_cmd(
-                local_catalog=local_store,
-                profile_id=args.profile_id,
-            )
-        case "settings":
-            run_settings_cmd(
-                local_catalog=local_store,
-            )
+    async with runtime:
+        match args.command:
+            case "install":
+                await run_install_cmd(runtime, spinner)
+            case "parrot":
+                await run_parrot_cmd(runtime, shutdown, profile_id, spinner)
+            case "serve" | "server":
+                await run_serve_cmd(runtime, shutdown, spinner)
 
 
 if __name__ == "__main__":

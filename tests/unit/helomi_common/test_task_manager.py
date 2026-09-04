@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from helomi_common.task.manager import TaskManager
+from helomi_common import TaskManager
 
 
 @pytest.mark.asyncio

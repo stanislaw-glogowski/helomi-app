@@ -13,7 +13,7 @@ from tests.fixtures.audio import (
 )
 from tests.fixtures.mocks import (
     MockAudioDriver,
-    MockLocalCatalog,
+    MockResourceCatalog,
     MockSTTAdapter,
     MockTTSAdapter,
     MockTurnAdapter,
@@ -126,15 +126,11 @@ def sample_profiles_dict(tmp_path: Path) -> dict[str, dict[str, Any]]:
 
 @pytest.fixture
 def mock_catalog(
-    tmp_path: Path,
-    sample_settings_dict: dict[str, Any],
-    sample_profiles_dict: dict[str, dict[str, Any]],
-) -> MockLocalCatalog:
-    """Mock local catalog populated with sample settings and profiles."""
-    return MockLocalCatalog(
-        root_path=tmp_path,
-        settings_data=sample_settings_dict,
-        profiles_data=sample_profiles_dict,
+    temp_helomi_store: Path,
+) -> MockResourceCatalog:
+    """Mock resource catalog populated with sample settings and profiles."""
+    return MockResourceCatalog(
+        root_path=temp_helomi_store,
     )
 
 

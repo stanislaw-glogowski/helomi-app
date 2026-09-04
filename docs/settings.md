@@ -1,11 +1,10 @@
 # Settings Configuration
 
-Helomi uses a hierarchical configuration system. The main settings file is located in the application's resources
-directory:
+Helomi uses a hierarchical configuration system. The application locates its configuration and resources directory (`.helomi/`) using the following precedence:
 
-- **macOS (default):** `~/Library/Application Support/Helomi/resources/settings.yml`
-- **Explicit location:** `$HELOMI_HOME/resources/settings.yml`
-- **Local workspace:** `./resources/settings.yml`
+1. **Environment Variable:** `$HELOMI_HOME` (if set)
+2. **Local Workspace:** `.helomi/` in the current working directory or parent directories (e.g. `./.helomi/settings.yml`)
+3. **macOS System Default:** `~/Library/Application Support/HelomiApp/settings.yml`
 
 ## File Format
 
@@ -28,16 +27,62 @@ When defining paths in your configuration files (e.g., paths to local ONNX model
 **Example:**
 `path://models/silero_vad.onnx` will resolve to the `models/` directory next to your `settings.yml` file.
 
+## Adapter Configuration
+
+Adapters for speech components (`stt`, `tts`, `turn`, `vad`, `wakeword`) are configured **only in `settings.yml`** (or `settings.override.yml`), never in individual `profile.yml` files:
+
+- `stt.adapter`: `parakeet` or `whisper`
+- `tts.adapter`: `supertonic` or `voxcpm2`
+- `turn.adapter`: `smart_turn`
+- `vad.adapter`: `silero_vad`
+- `wakeword.adapter`: `openwakeword`
+
+> [!IMPORTANT]
+> The active adapter configured here dictates which profiles can be loaded. When Helomi starts, it inspects every profile in `.helomi/profiles/`. If a profile lacks configuration for the currently active STT or TTS adapter, that profile is **automatically skipped**.
+
 ## Example Configuration
 
-`settings.yml`:
+`.helomi/settings.yml`:
 
 ```yaml
-audio:
-  sample_rate: 16000
-  channels: 1
+profile:
+  default: "default"
 
 server:
   host: "127.0.0.1"
   port: 4356
+
+audio:
+  adapter: "avfaudio"
+
+stt:
+  adapter: "parakeet"
+  parakeet:
+    model_id: "mlx-community/parakeet-tdt-0.6b-v3"
+    language: "en"
+
+tts:
+  adapter: "supertonic"
+  supertonic:
+    model_id: "Supertone/supertonic-3"
+    language: "en"
+
+turn:
+  adapter: "smart_turn"
+  smart_turn:
+    model_id: "mlx-community/smart-turn-v3"
+    threshold: 0.5
+
+vad:
+  adapter: "silero_vad"
+  silero_vad:
+    engine: "mlx"
+    model_id: "mlx-community/silero-vad"
+
+wakeword:
+  adapter: "openwakeword"
+  openwakeword:
+    embedding_path: "path://models/embedding_model.onnx"
+    melspec_path: "path://models/melspectrogram.onnx"
 ```
+

@@ -1,10 +1,10 @@
 import argparse
+import asyncio
 import warnings
 
+from helomi_app import Runtime
 from helomi_common import LogLevel, configure_logger
-from helomi_core.resources import LocalStore
-
-from .app import HelomiTrayApp
+from helomi_tray.app import TrayApp
 
 warnings.filterwarnings(
     "ignore",
@@ -15,29 +15,34 @@ warnings.filterwarnings(
 
 
 def main() -> None:
+    args = _parse_args()
+    configure_logger(
+        LogLevel.DEBUG if args.debug else LogLevel.INFO,
+    )
+    asyncio.run(_run(args))
+
+
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="helomi-tray",
-        description="Helomi System Tray App",
+        description="helomi System Tray App",
     )
+
     parser.add_argument(
         "-d",
         "--debug",
         action="store_true",
         help="Enable debug mode",
     )
-    args = parser.parse_args()
 
-    def _log_format(record) -> str:
-        level = f"<level>{record['level']: <8}</level>"
-        msg = f"<level>{record['message']}</level>"
-        return f"{level} | {msg}"
+    return parser.parse_args()
 
-    configure_logger(
-        _log_format,
-        LogLevel.DEBUG if args.debug else LogLevel.INFO,
-    )
 
-    app = HelomiTrayApp(local_catalog=LocalStore())
+async def _run(_: argparse.Namespace) -> None:
+
+    runtime = Runtime()
+
+    app = TrayApp(runtime=runtime)
     app.run()
 
 
