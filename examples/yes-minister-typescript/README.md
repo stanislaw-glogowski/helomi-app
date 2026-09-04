@@ -68,15 +68,15 @@ cp .env.example .env
 Edit `.env` to select your preferred provider and language options:
 
 ```env
-# --- LLM Provider Selection ("ollama" | "openai") ---
-LLM_PROVIDER=ollama
-LLM_MODEL=gemma4:e4b-mlx
-OLLAMA_BASE_URL=http://127.0.0.1:11434/api
+# --- LLM Settings (Ollama OpenAI-compatible mode, note /v1 at the end) ---
+LLM_MODEL=llama3.2
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_API_KEY=ollama
 
 # --- For OpenAI: ---
-# LLM_PROVIDER=openai
-# OPENAI_API_KEY=sk-...
 # LLM_MODEL=gpt-4o-mini
+# OPENAI_API_KEY=sk-...
+# OPENAI_BASE_URL=https://api.openai.com/v1
 
 # --- Languages & Helomi Settings ---
 SOURCE_LANGUAGE=Polish
@@ -114,10 +114,9 @@ All settings can be configured via environment variables or rely on built-in con
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `LLM_PROVIDER` | LLM service provider: `openai` or `ollama` | `openai` |
-| `LLM_MODEL` | Model name to query | `gpt-4o-mini` (OpenAI) / `llama3.2` (Ollama) |
-| `OPENAI_API_KEY` | OpenAI API key (required if `LLM_PROVIDER=openai`) | *(empty)* |
-| `OLLAMA_BASE_URL` | Ollama API endpoint | `http://127.0.0.1:11434/api` |
+| `LLM_MODEL` | Model name to query (e.g. `llama3.2`, `gpt-4o-mini`) | `gpt-4o-mini` |
+| `OPENAI_BASE_URL` | Custom OpenAI-compatible endpoint (e.g. `http://localhost:11434/v1` for Ollama) | `https://api.openai.com/v1` |
+| `OPENAI_API_KEY` | API key (`ollama` for local Ollama, or OpenAI secret key) | `ollama` |
 | `HELOMI_SERVER_URL` | Base URL of the Helomi server | `http://127.0.0.1:4356` |
 | `HELOMI_PROFILE_ID` | Voice profile ID registered on the Helomi server | `default` |
 | `SOURCE_LANGUAGE` | Language spoken by the user into the microphone | `Polish` |

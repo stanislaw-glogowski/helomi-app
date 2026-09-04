@@ -11,8 +11,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^1.1.9",
     "ai": "^4.1.17",
-    "dotenv": "^16.4.7",
-    "ollama-ai-provider": "^1.2.0"
+    "dotenv": "^16.4.7"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
