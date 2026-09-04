@@ -29,6 +29,10 @@ src/**/bin/
 .env.*
 !.env.example
 
+# Examples
+/examples/*/prompts/*
+!/examples/*/prompts/default.md
+
 # Resources
 /.helomi/assets/*
 /.helomi/logs/*

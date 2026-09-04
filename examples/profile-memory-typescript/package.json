@@ -1,0 +1,22 @@
+{
+  "name": "profile-memory-typescript",
+  "version": "1.0.0",
+  "description": "Helomi TypeScript assistant with dynamic profile prompts and per-profile conversation memory",
+  "type": "module",
+  "scripts": {
+    "start": "tsx main.ts",
+    "dev": "tsx watch main.ts",
+    "test": "tsx test.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^1.1.9",
+    "ai": "^4.1.17",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}
