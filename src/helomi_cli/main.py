@@ -2,21 +2,13 @@ import argparse
 import asyncio
 import signal
 
-from helomi_app import Runtime
 from helomi_cli.commands import run_install_cmd, run_parrot_cmd, run_serve_cmd
 from helomi_cli.widgets import Spinner
 from helomi_common import LogLevel, configure_logger
-
-_DEFAULT_CMD = "install"
-
-
-def main():
-    args = _parse_args()
-    configure_logger(LogLevel.DEBUG if args.debug else LogLevel.INFO)
-    asyncio.run(_run(args))
+from helomi_core import Runtime
 
 
-def _parse_args() -> argparse.Namespace:
+def parse_args(default_cmd="install") -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="helomi-cli",
         description="Helomi CLI",
@@ -38,7 +30,7 @@ def _parse_args() -> argparse.Namespace:
     # cli install
     cmd_parsers.add_parser(
         "install",
-        help="(TODO: add description)",
+        help="Installs models and dependencies",
     )
 
     # cli parrot
@@ -60,14 +52,14 @@ def _parse_args() -> argparse.Namespace:
     )
 
     parser.set_defaults(
-        command=_DEFAULT_CMD,
+        command=default_cmd,
         profile_id=None,
     )
 
     return parser.parse_args()
 
 
-async def _run(args: argparse.Namespace) -> None:
+async def run(args: argparse.Namespace) -> None:
     runtime = Runtime()
     spinner = Spinner(args.debug)
     shutdown = asyncio.Event()
@@ -86,6 +78,12 @@ async def _run(args: argparse.Namespace) -> None:
                 await run_parrot_cmd(runtime, shutdown, profile_id, spinner)
             case "serve" | "server":
                 await run_serve_cmd(runtime, shutdown, spinner)
+
+
+def main():
+    args = parse_args()
+    configure_logger(LogLevel.TRACE if args.debug else LogLevel.INFO)
+    asyncio.run(run(args))
 
 
 if __name__ == "__main__":

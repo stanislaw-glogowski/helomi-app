@@ -32,6 +32,7 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
         self._proc_task: asyncio.Task | None = None
 
         self._pending_requests: dict[int, asyncio.Future[Any]] = {}
+        self._playback_counter = 0
         self._capture_queues: set[asyncio.Queue[RawAudio | None]] = set()
         self._ready_signal = asyncio.Event()
 
@@ -52,11 +53,15 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
 
     def play(self, audio: RawAudio) -> None:
         self._require_ready(AudioMode.OUTPUT)
-
+        self._playback_counter += 1
         self._send(MessageKind.PLAY, AudioPacked.encode(audio))
 
-    async def interrupt(self) -> None:
+    async def interrupt(self) -> bool:
         self._require_ready(AudioMode.DUPLEX)
+        if self._playback_counter > 0:
+            await self._send_wait(MessageKind.STOP_PLAYBACK)
+            return True
+        return False
 
     async def start_room_voice(self):
         self._require_ready(AudioMode.OUTPUT)
@@ -173,15 +178,15 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
             if frame is None:
                 break
 
+            result: Any = None
+
             match frame.kind:
                 case MessageKind.READY:
                     frame.unpack_msg(HandshakePacked).verify()
                     self._ready_signal.set()
 
                 case MessageKind.DEVICES:
-                    self._resolve_request(
-                        frame.request_id, frame.unpack_msg(AudioDevicesPacket)
-                    )
+                    result = frame.unpack_msg(AudioDevicesPacket)
 
                 case MessageKind.CAPTURE:
                     if not self._capture_queues:
@@ -191,9 +196,21 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
                         sub.put_nowait(raw)
 
                 case MessageKind.AUDIO_STARTED:
-                    self._resolve_request(
-                        frame.request_id, frame.unpack_msg(AudioStartedPacked)
-                    )
+                    result = frame.unpack_msg(AudioStartedPacked)
+
+                case (
+                    MessageKind.ROOM_VOICE_START_RESULT
+                    | MessageKind.ROOM_VOICE_STOP_RESULT
+                ):
+                    pass
+
+                case MessageKind.PLAYBACK_FINISHED:
+                    self._playback_counter = (
+                        self._playback_counter > 0 and self._playback_counter - 1
+                    ) or 0
+
+                case MessageKind.PLAYBACK_STOPPED:
+                    self._playback_counter = 0
 
                 case MessageKind.ERROR:
                     self._logger.warning(frame.unpack_msg(ErrorPacket))
@@ -201,8 +218,9 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
                         return
 
                 case _:
-                    self._resolve_request(frame.request_id, None)
                     self._logger.trace("Unhandled frame kind: {}", frame.kind.name)
+
+            self._resolve_request(frame.request_id, result)
 
     def _resolve_request(self, request_id, result: Any) -> None:
         if request_id in self._pending_requests:

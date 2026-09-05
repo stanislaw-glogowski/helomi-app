@@ -4,13 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from helomi_cli.main import _parse_args, _run, main
+from helomi_cli.main import main, parse_args, run
 
 
 def test_cli_parse_args_defaults():
     """Verify CLI argument parser defaults to install command with no profile."""
     with patch.object(sys, "argv", ["helomi-cli"]):
-        args = _parse_args()
+        args = parse_args()
         assert args.command == "install"
         assert args.profile_id is None
         assert not args.debug
@@ -20,28 +20,28 @@ def test_cli_parse_args_commands():
     """Verify CLI argument parser parses all supported commands and options."""
     # 1. install
     with patch.object(sys, "argv", ["helomi-cli", "install"]):
-        args = _parse_args()
+        args = parse_args()
         assert args.command == "install"
 
     # 2. parrot
     with patch.object(sys, "argv", ["helomi-cli", "parrot"]):
-        args = _parse_args()
+        args = parse_args()
         assert args.command == "parrot"
         assert args.profile_id is None
 
     with patch.object(sys, "argv", ["helomi-cli", "-d", "parrot", "custom_profile"]):
-        args = _parse_args()
+        args = parse_args()
         assert args.command == "parrot"
         assert args.profile_id == "custom_profile"
         assert args.debug
 
     # 3. serve & server alias
     with patch.object(sys, "argv", ["helomi-cli", "serve"]):
-        args = _parse_args()
+        args = parse_args()
         assert args.command == "serve"
 
     with patch.object(sys, "argv", ["helomi-cli", "server"]):
-        args = _parse_args()
+        args = parse_args()
         assert args.command == "server"
 
 
@@ -63,24 +63,24 @@ async def test_cli_run_invokes_commands():
         args.command = "install"
         args.debug = False
         args.profile_id = None
-        await _run(args)
+        await run(args)
         assert mock_inst.called
 
         # 2. parrot
         args.command = "parrot"
         args.profile_id = "p1"
-        await _run(args)
+        await run(args)
         assert mock_parrot.called
         assert mock_parrot.call_args.args[2] == "p1"
 
         # 3. serve
         args.command = "serve"
-        await _run(args)
+        await run(args)
         assert mock_serve.called
 
         # 4. server alias
         args.command = "server"
-        await _run(args)
+        await run(args)
         assert mock_serve.call_count == 2
 
 

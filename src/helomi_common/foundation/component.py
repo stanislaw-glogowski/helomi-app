@@ -15,20 +15,13 @@ from ..conversion import to_snake_case
 
 
 class BaseComponent:
-    _LABEL_PREFIX: ClassVar[str] = "helomi"
-
     __label__: ClassVar[str] = ""
     __component__: ClassVar[str] = ""
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
 
-        label = cls.__dict__.get("__label__") or to_snake_case(cls.__name__)
-        prefix = f"{cls._LABEL_PREFIX}/"
-        if not label.startswith(prefix):
-            label = f"{prefix}{label}"
-
-        cls.__label__ = label
+        cls.__label__ = cls.__dict__.get("__label__") or to_snake_case(cls.__name__)
         cls.__component__ = cls.__name__
 
     def __init__(self):

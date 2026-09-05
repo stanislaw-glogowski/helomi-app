@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from helomi_app import Runtime
 from helomi_cli.commands.install import (
     _OWW_ROOT_MODELS,
     _download_oww_model,
@@ -11,6 +10,7 @@ from helomi_cli.commands.install import (
     run_install_cmd,
 )
 from helomi_cli.widgets import Spinner
+from helomi_core import Runtime
 
 
 def test_download_oww_model(tmp_path: Path) -> None:

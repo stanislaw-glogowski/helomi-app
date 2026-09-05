@@ -8,17 +8,15 @@ license-files = ["LICENSE"]
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.141.0",
-    "huggingface-hub>=1.29.0",
+    "huggingface-hub>=1.30.0",
     "loguru>=0.7.3",
-    "mlx-audio>=0.5.0",
+    "mlx-audio>=0.5.1",
     "mlx-whisper>=0.4.3",
     "mlx>=0.32.2",
     "numpy>=2.5.2",
     "onnxruntime>=1.29.0,<2",
     "openwakeword==0.6.0",
-    "platformdirs>=4.11.5",
-    "prompt_toolkit>=3.0.53",
-    "pyaudio>=0.2.14",
+    "platformdirs>=4.11.7",
     "pydantic>=2.13.5",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
@@ -41,7 +39,6 @@ dev = [
     "pyrefly>=1.2.0",
     "ruff>=0.15.22",
     "types-pyyaml>=6.0.12.20260724",
-    "types-pyaudio>=0.2.16.20260508",
     "pytest-asyncio>=1.4.0",
 ]
 
@@ -56,7 +53,6 @@ exclude-dependencies = [
 
 [tool.hatch.build.targets.wheel]
 packages = [
-    "src/helomi_app",
     "src/helomi_cli",
     "src/helomi_common",
     "src/helomi_core",

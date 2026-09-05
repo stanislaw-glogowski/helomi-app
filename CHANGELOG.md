@@ -8,34 +8,49 @@ All notable changes to Helomi are documented in this file.
 
 - **Application Layer (`helomi_app`)**:
     - Introduced `Runtime` context manager managing lifecycle and lazy component acquisition.
-    - Added `PipelineService` orchestrating the event-driven speech processing loop (`_capture_loop`, `_detection_loop`, `_stt_loop`, `_tts_loop`).
+    - Added `PipelineService` orchestrating the event-driven speech processing loop (`_capture_loop`, `_detection_loop`,
+      `_stt_loop`, `_tts_loop`).
     - Added `UserData` resource catalog supporting local storage paths (`.helomi/`).
     - Added modular extensions: `ParrotExtension` for speech echo and `ServerExtension` for FastAPI server hosting.
 - **Enhanced CLI Commands & Interactive UX**:
-    - `helomi-cli parrot [profile_id]`: Live speech-to-text with spoken echoing, rich status indicators, active profile overview, and asynchronous event streaming.
-    - `helomi-cli serve` (alias `server`): Enhanced server startup with spinner animation, formatted banner, available profiles list, and REST/SSE endpoint table.
+    - `helomi-cli parrot [profile_id]`: Live speech-to-text with spoken echoing, rich status indicators, active profile
+      overview, and asynchronous event streaming.
+    - `helomi-cli serve` (alias `server`): Enhanced server startup with spinner animation, formatted banner, available
+      profiles list, and REST/SSE endpoint table.
     - Reusable `Spinner` widget integrated with logger proxy for non-intrusive CLI status indicators.
 - **Extended REST & SSE Endpoints**:
     - Added `GET /api/v1/health` for service health checks.
     - Added `GET /api/v1/profile` and `GET /api/v1/profile/{id}` for querying profile configurations.
-    - Extended `GET /api/v1/speech` SSE streaming and `POST /api/v1/speech` command execution (`ActivateProfile`, `DeactivateProfile`, `SayText`).
+    - Extended `GET /api/v1/speech` SSE streaming and `POST /api/v1/speech` command execution (`ActivateProfile`,
+      `DeactivateProfile`, `SayText`).
 - **Modernized macOS System Tray (`helomi_tray`)**:
-    - Rewrote `TrayApp` to embed `Runtime` directly, enabling real-time switching between API Server mode and Parrot mode from the menu bar.
+    - Rewrote `TrayApp` to embed `Runtime` directly, enabling real-time switching between API Server mode and Parrot
+      mode from the menu bar.
     - Implemented threaded asynchronous worker lifecycle with automatic UI synchronization and signal handling.
 - **Coding & Documentation Standards**:
-    - Explicit rule added to `AGENTS.md` requiring all code, docstrings, comments, log/error messages, and CLI/tray output to strictly be in English.
+    - Explicit rule added to `AGENTS.md` requiring all code, docstrings, comments, log/error messages, and CLI/tray
+      output to strictly be in English.
 
 ### Changed
 
+- Consolidated application runtime, pipeline service, and server extensions (`helomi_app`) directly into `helomi_core`,
+  streamlining the architecture to three primary layers (`helomi_common`, `helomi_core`, and UI layers `helomi_cli` / `helomi_tray`).
+- Enhanced speech pipeline orchestration in `PipelineService`:
+    - Introduced generation tracking (`PipelineRequest`) to invalidate outdated audio synthesis tasks on speech interruption.
+    - Decoupled audio playback into dedicated `_playback_queue` and `_playback_loop`.
+    - Added `SpeechInterrupted` event dispatched when user speech interrupts ongoing playback.
+    - Added extension lifecycle management (`register_extension`, `set_active_extension`) with extension-scoped command and event filtering.
 - Migrated user resources directory from `resources/` to `.helomi/` (`.helomi/settings.yml`, `.helomi/profiles/`).
-- Modularized CLI command handlers into `helomi_cli/commands/` (`install.py`, `parrot.py`, `serve.py`).
-- Removed deprecated CLI commands (`say`, `profiles`, `settings`).
+- Modularized CLI command handlers into `helomi_cli/commands/` (`install.py`, `parrot.py`, `serve.py`) with rich banner widgets (`prints.py`).
+- Removed deprecated CLI commands (`say`, `settings`).
 - Standardized component lifecycle inheritance across the codebase (`BaseComponent`, `PipelineComponent`).
 
 ### Fixed
 
-- Fixed PEP 479 `RuntimeError` by returning cleanly from async generators (`Session.subscribe` and `PipelineService.subscribe`).
-- Fixed file suffix checking in `AbstractFile` and `ConfigFile` by replacing invalid identity checks with membership tests.
+- Fixed PEP 479 `RuntimeError` by returning cleanly from async generators (`Session.subscribe_event` and
+  `PipelineService.subscribe_event`).
+- Fixed file suffix checking in `AbstractFile` and `ConfigFile` by replacing invalid identity checks with membership
+  tests.
 - Added `exist_ok=True` to `AbstractFile.as_dir` to prevent race conditions during directory creation.
 - Fixed string identity comparison in FastAPI router session profile validation.
 - Prevented recursive label prefix accumulation in `BaseComponent.__init_subclass__`.

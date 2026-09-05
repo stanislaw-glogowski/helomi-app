@@ -17,11 +17,10 @@ Targeted test: `UV_CACHE_DIR=/private/tmp/uv-cache uv run pytest tests/unit/test
 
 ## Architecture Boundaries
 
-- `helomi_common`: Shared models/utils. **Zero inward dependencies** (cannot import `helomi_core`, `helomi_app`, `helomi_cli`, `helomi_tray`).
-- `helomi_core`: Audio orchestration, VAD, STT, TTS, turn, wakeword adapters/workers. Cannot import `helomi_app`, `helomi_cli`, or `helomi_tray`.
-- `helomi_app`: Application orchestration, pipeline service, runtime, config, resources, server API/extension, parrot extension. Cannot import `helomi_cli` or `helomi_tray`.
-- `helomi_cli`: Terminal user interface. Interacts with `helomi_app`. Cannot import `helomi_tray`.
-- `helomi_tray`: macOS system tray interface. Interacts with `helomi_app`. Cannot import `helomi_cli`.
+- `helomi_common`: Shared models/utils. **Zero inward dependencies** (cannot import `helomi_core`, `helomi_cli`, `helomi_tray`).
+- `helomi_core`: Audio orchestration, VAD, STT, TTS, turn, wakeword adapters/workers, application runtime, pipeline service, config, resources, server API/extension, parrot extension. Cannot import `helomi_cli` or `helomi_tray`.
+- `helomi_cli`: Terminal user interface. Interacts with `helomi_core`. Cannot import `helomi_tray`.
+- `helomi_tray`: macOS system tray interface. Interacts with `helomi_core`. Cannot import `helomi_cli`.
 - `native/`: Swift package. See `native/AGENTS.md`.
 
 *Boundaries enforced by `tests/unit/test_architecture.py`.*

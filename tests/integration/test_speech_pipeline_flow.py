@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from helomi_app.pipeline import (
+from helomi_core.pipeline import (
     ActivateProfile,
     DeactivateProfile,
     PipelineEvent,
@@ -12,8 +12,8 @@ from helomi_app.pipeline import (
     SayText,
     TranscriptionReady,
 )
-from helomi_app.pipeline.service import _Request
-from helomi_app.runtime import Runtime
+from helomi_core.pipeline.service import PipelineRequest
+from helomi_core.runtime import Runtime
 from helomi_core.stt import STTChunk, STTRequest
 from helomi_core.tts import TTSChunk
 from tests.fixtures.audio import create_audio_chunk, create_raw_audio
@@ -40,12 +40,15 @@ async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockLocalCatalog):
     tts_adapter = MockTTSAdapter(chunks=[TTSChunk(audio=synth_raw)])
 
     with (
-        patch("helomi_app.runtime.get_audio_driver", return_value=audio_driver),
-        patch("helomi_app.runtime.get_turn_adapter", return_value=turn_adapter),
-        patch("helomi_app.runtime.get_vad_adapter", return_value=vad_adapter),
-        patch("helomi_app.runtime.get_wakeword_adapter", return_value=wakeword_adapter),
-        patch("helomi_app.runtime.get_stt_adapter", return_value=stt_adapter),
-        patch("helomi_app.runtime.get_tts_adapter", return_value=tts_adapter),
+        patch("helomi_core.runtime.get_audio_driver", return_value=audio_driver),
+        patch("helomi_core.runtime.get_turn_adapter", return_value=turn_adapter),
+        patch("helomi_core.runtime.get_vad_adapter", return_value=vad_adapter),
+        patch(
+            "helomi_core.runtime.get_wakeword_adapter",
+            return_value=wakeword_adapter,
+        ),
+        patch("helomi_core.runtime.get_stt_adapter", return_value=stt_adapter),
+        patch("helomi_core.runtime.get_tts_adapter", return_value=tts_adapter),
     ):
         runtime = Runtime(mock_catalog)
 
@@ -55,14 +58,14 @@ async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockLocalCatalog):
             received_events: list[PipelineEvent] = []
 
             async def collect_events():
-                async for event in pipeline.subscribe():
+                async for event in pipeline.subscribe_event():
                     received_events.append(event)
 
             sub_task = asyncio.create_task(collect_events())
             await asyncio.sleep(0.02)
 
             # 1. Simulate Profile Activation
-            await pipeline.execute(ActivateProfile(profile_id="default"))
+            await pipeline.execute_command(ActivateProfile(profile_id="default"))
             await asyncio.sleep(0.05)
 
             assert len(received_events) >= 1
@@ -72,8 +75,7 @@ async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockLocalCatalog):
             # 2. Simulate Speech-to-Text input directly through queue
             speech_chunk = create_audio_chunk(sample_rate=16000, num_samples=512)
             pipeline._stt_queue.put_nowait(
-                _Request(
-                    profile_id="default",
+                PipelineRequest(
                     data=STTRequest(audio=speech_chunk.to_raw()),
                 )
             )
@@ -86,7 +88,7 @@ async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockLocalCatalog):
             assert transcription_events[-1].text == "turn on the light"
 
             # 3. Publish SayText command to trigger TTS & Audio playback
-            await pipeline.execute(SayText(text="I have turned on the light"))
+            await pipeline.execute_command(SayText(text="I have turned on the light"))
             await asyncio.sleep(0.05)
 
             # Verify TTS playback occurred
@@ -94,7 +96,7 @@ async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockLocalCatalog):
             assert audio_driver.played_audio[0] == synth_raw
 
             # 4. Deactivate Profile
-            await pipeline.execute(DeactivateProfile())
+            await pipeline.execute_command(DeactivateProfile())
             await asyncio.sleep(0.05)
 
             assert isinstance(received_events[-1], ProfileDeactivated)

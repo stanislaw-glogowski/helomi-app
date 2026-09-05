@@ -5,8 +5,8 @@ from typing import Any
 
 import numpy as np
 
-from helomi_app.resources import ResourceCatalog
 from helomi_core.audio import AudioChunk, AudioDriver, AudioFormat, AudioMode, RawAudio
+from helomi_core.resources import ResourceCatalog
 from helomi_core.stt import STTAdapter, STTChunk, STTRequest
 from helomi_core.tts import TTSAdapter, TTSChunk, TTSRequest
 from helomi_core.turn import TurnAdapter, TurnPrediction
@@ -55,8 +55,9 @@ class MockAudioDriver(AudioDriver[Any]):
     def play(self, audio: RawAudio) -> None:
         self.played_audio.append(audio)
 
-    async def interrupt(self) -> None:
+    async def interrupt(self) -> bool:
         self.interrupt_count += 1
+        return True
 
     async def start_room_voice(self) -> None:
         self.room_voice_started = True

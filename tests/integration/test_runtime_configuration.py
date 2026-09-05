@@ -2,8 +2,8 @@ from pathlib import Path
 
 import yaml
 
-from helomi_app.resources import UserData
-from helomi_app.runtime import Runtime
+from helomi_core.resources import UserData
+from helomi_core.runtime import Runtime
 
 
 def test_runtime_configuration_with_local_store(tmp_path: Path):

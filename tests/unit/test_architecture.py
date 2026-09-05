@@ -24,7 +24,6 @@ def test_helomi_common_has_no_inward_dependencies() -> None:
             assert not imp.startswith(
                 (
                     "helomi_core",
-                    "helomi_app",
                     "helomi_cli",
                     "helomi_tray",
                 )
@@ -32,20 +31,9 @@ def test_helomi_common_has_no_inward_dependencies() -> None:
 
 
 def test_helomi_core_does_not_import_higher_layers() -> None:
-    """helomi_core must not import from app, cli, or tray."""
+    """helomi_core must not import from cli or tray."""
     core_dir = Path("src/helomi_core")
     for py_file in core_dir.rglob("*.py"):
-        imports = _get_imports_from_file(py_file)
-        for imp in imports:
-            assert not imp.startswith(("helomi_app", "helomi_cli", "helomi_tray")), (
-                f"Architecture violation: {py_file} illegally imports {imp}"
-            )
-
-
-def test_helomi_app_does_not_import_ui_layers() -> None:
-    """helomi_app must not import from cli or tray."""
-    app_dir = Path("src/helomi_app")
-    for py_file in app_dir.rglob("*.py"):
         imports = _get_imports_from_file(py_file)
         for imp in imports:
             assert not imp.startswith(("helomi_cli", "helomi_tray")), (

@@ -1,12 +1,15 @@
 # Profiles Configuration
 
-Profiles define the persona and voice configuration for an assistant profile, such as wake-word model assets, TTS voice styles, reference audio, and STT language prompts.
+Profiles define the persona and voice configuration for an assistant profile, such as wake-word model assets, TTS voice
+styles, reference audio, and STT language prompts.
 
 > [!IMPORTANT]
 > **Adapters are configured exclusively in `settings.yml`**, never in `profile.yml`.
 >
-> In `profile.yml`, you only provide the configuration parameters for the adapters (e.g. `wakeword.openwakeword`, `tts.voxcpm2`, `stt.parakeet`).
-> If a profile does not include a configuration section for the currently active STT or TTS adapter specified in `settings.yml`, that profile is **automatically skipped** and will not be loaded into the catalog.
+> In `profile.yml`, you only provide the configuration parameters for the adapters (e.g. `wakeword.openwakeword`,
+`tts.voxcpm2`, `stt.parakeet`).
+> If a profile does not include a configuration section for the currently active STT or TTS adapter specified in
+`settings.yml`, that profile is **automatically skipped** and will not be loaded into the catalog.
 
 ## Creating a Profile
 
@@ -29,7 +32,8 @@ The profile ID is derived automatically from the directory name (e.g., `default`
 
 ## Default Profile Values (`defaults.yml`)
 
-You can define base configuration values inherited by all profiles in `.helomi/profiles/defaults.yml`. Specific profile definitions will automatically extend and override these defaults.
+You can define base configuration values inherited by all profiles in `.helomi/profiles/defaults.yml`. Specific profile
+definitions will automatically extend and override these defaults.
 
 ## Example `profile.yml`
 

@@ -1,6 +1,7 @@
 # Server API Specification
 
-Helomi features a local FastAPI server to orchestrate the speech pipeline and interact with external interfaces and applications.
+Helomi features a local FastAPI server to orchestrate the speech pipeline and interact with external interfaces and
+applications.
 
 By default, the server runs on `http://127.0.0.1:4356` (configurable via `settings.yml`).
 
@@ -54,7 +55,8 @@ Retrieves detailed information for a specific profile ID.
 Subscribes to the Server-Sent Events (SSE) stream for real-time speech pipeline events.
 
 - **Query Parameters:**
-    - `profile_id` (string, optional): ID of the profile to lock and use for the session (defaults to configured default profile).
+    - `profile_id` (string, optional): ID of the profile to lock and use for the session (defaults to configured default
+      profile).
 - **Response Headers:**
     - `X-Session-ID`: Unique session ID required for sending authenticated commands.
 - **Events Streamed:**
@@ -62,6 +64,7 @@ Subscribes to the Server-Sent Events (SSE) stream for real-time speech pipeline 
     - `profile_activated`: Profile activation notification (`profile_id`, `trace_id`).
     - `profile_deactivated`: Profile deactivation notification (`profile_id`, `trace_id`).
     - `transcription_ready`: Transcribed user utterance (`profile_id`, `text`, `trace_id`).
+    - `speech_interrupted`: Playback interruption notification (`profile_id`).
 
 ---
 

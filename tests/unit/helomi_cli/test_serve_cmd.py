@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from helomi_app import Runtime
-from helomi_app.server.extension import ServerExtension
 from helomi_cli.commands.serve import run_serve_cmd
 from helomi_cli.widgets import Spinner
+from helomi_core import Runtime
+from helomi_core.server.extension import ServerExtension
 
 
 @pytest.mark.asyncio
@@ -19,7 +19,16 @@ async def test_run_serve_cmd() -> None:
     prof.id = "default"
     prof.name = "Default Profile"
 
+    settings = MagicMock()
+    settings.audio.adapter = "avfaudio"
+    settings.wakeword.adapter = "openwakeword"
+    settings.vad.adapter = "silero_vad"
+    settings.turn.adapter = "smart_turn"
+    settings.stt.adapter = "parakeet"
+    settings.tts.adapter = "voxcpm2"
+
     runtime = MagicMock(spec=Runtime)
+    runtime.settings = settings
     runtime.profiles = MagicMock()
     runtime.profiles.__iter__ = MagicMock(return_value=iter([prof]))
     runtime.profiles.get = MagicMock(return_value=prof)
@@ -33,6 +42,6 @@ async def test_run_serve_cmd() -> None:
 
     await run_serve_cmd(runtime, shutdown, spinner)
 
-    runtime.get_server_extension.assert_called_once()
-    assert spinner.start.call_count >= 2
-    assert spinner.stop.call_count >= 2
+    runtime.get_server_extension.assert_called_once_with(True)
+    assert spinner.start.call_count == 2
+    assert spinner.stop.call_count == 2

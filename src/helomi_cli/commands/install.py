@@ -4,7 +4,7 @@ from urllib.request import urlretrieve
 
 from rich import print
 
-from helomi_app import Profile, Runtime
+from helomi_core import Profile, Runtime
 
 from ..widgets import Spinner
 
@@ -21,7 +21,6 @@ async def run_install_cmd(
     runtime: Runtime,
     spinner: Spinner,
 ):
-    print()
     models_root = runtime.resources.build_path("models")
 
     print(
