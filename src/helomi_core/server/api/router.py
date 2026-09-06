@@ -11,7 +11,7 @@ from ...pipeline import (
     SayText,
 )
 from ..session import Session
-from .params import Pipeline, ProfileId, SessionId, Sessions
+from .params import Pipeline, SessionId, Sessions
 
 
 def create_router() -> APIRouter:
@@ -51,9 +51,9 @@ def create_router() -> APIRouter:
             "is_active": profile is pipeline.active_profile,
         }
 
-    @router.get("/speech")
-    async def get_speech_stream(
-        profile_id: ProfileId,
+    @router.get("/profile/{profile_id}/stream")
+    async def create_profile_stream(
+        profile_id: str,
         pipeline: Pipeline,
         sessions: Sessions,
     ) -> StreamingResponse:
@@ -94,9 +94,8 @@ def create_router() -> APIRouter:
             },
         )
 
-    # POST /speech
-    @router.post("/speech")
-    async def post_speech_cmd(
+    @router.post("/command")
+    async def post_command(
         cmd: PipelineCmd,
         session_id: SessionId,
         sessions: Sessions,

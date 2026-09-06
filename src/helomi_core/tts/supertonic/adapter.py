@@ -36,7 +36,7 @@ class SupertonicAdapter(TTSAdapter[SupertonicConfig, SupertonicOptions]):
                 self._styles[options.voice_name] = style
 
             samples, _ = model.synthesize(
-                text=request.text,
+                text=request.raw_text,
                 voice_style=style,
                 total_steps=options.quality,
                 speed=options.speed,

@@ -16,22 +16,13 @@ wheels/
 *.egg-info
 .venv
 
-# Node
+# Nodejs
 node_modules
 
-# Native
-native/**/.build/
-native/**/.swiftpm/
-src/**/bin/
-
-# Envs
+# Dotenv
 .env
 .env.*
 !.env.example
-
-# Examples
-/examples/*/prompts/*
-!/examples/*/prompts/default.md
 
 # Resources
 /.helomi/assets/*
@@ -44,6 +35,14 @@ src/**/bin/
 /.helomi/profiles/default/profile.override.yml
 /.helomi/settings.override.yml
 
+# Demo
+/demo/prompts/profiles/*
+!/demo/prompts/profiles/default.md
+
+# Native
+native/**/.build/
+native/**/.swiftpm/
+src/**/bin/
 
 # Development
 /sandbox

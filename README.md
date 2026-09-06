@@ -97,6 +97,7 @@ For more detailed information on configuring and extending Helomi, please refer 
 - [Reference Audio (Voice Cloning)](docs/audio.md)
 - [Server API Specification](docs/api.md)
 - [CLI & Tray Applications](docs/apps.md)
+- [TypeScript Demo Application](demo/README.md)
 - [Configuration Examples](docs/examples.md)
 
 ---
@@ -112,8 +113,10 @@ helomi-app/
 │   └── helomi_tray/     # macOS system tray application (rumps)
 ├── native/
 │   └── macos/avfaudio/  # Swift package for macOS CoreAudio/AVFAudio bridge
+├── demo/                # Interactive TypeScript & Bun voice assistant demo client
 └── tests/               # Unit, integration, and architecture test suite
 ```
+
 
 ---
 

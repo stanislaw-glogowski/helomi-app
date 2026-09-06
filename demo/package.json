@@ -1,0 +1,25 @@
+{
+  "name": "helomi-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "test": "bun test",
+    "coverage": "bun run test --coverage",
+    "lint": "biome check",
+    "format": "biome format",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^4.0.0",
+    "ai": "^7.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.12",
+    "@types/bun": "^1.4.0",
+    "typescript": "^7.0.0"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  }
+}

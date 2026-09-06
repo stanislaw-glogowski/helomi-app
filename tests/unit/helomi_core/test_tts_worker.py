@@ -36,3 +36,15 @@ async def test_tts_worker_error_handling():
         with pytest.raises(RuntimeError, match="Synthesis failure"):
             async for _ in worker.synthesize(request, profile):
                 pass
+
+
+def test_tts_request_raw_text() -> None:
+    """Verify TTSRequest.raw_text strips vocal delivery tags."""
+    request = TTSRequest(text="Hello, world! [laughter] How are you? [breath]")
+    assert request.raw_text == "Hello, world! How are you?"
+
+    request_clean = TTSRequest(text="Just normal text.")
+    assert request_clean.raw_text == "Just normal text."
+
+    request_only_tags = TTSRequest(text="[sigh]")
+    assert request_only_tags.raw_text == ""

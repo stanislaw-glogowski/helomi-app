@@ -50,25 +50,25 @@ Retrieves detailed information for a specific profile ID.
 
 ---
 
-### `GET /api/v1/speech`
+### `GET /api/v1/profile/{profile_id}/stream`
 
-Subscribes to the Server-Sent Events (SSE) stream for real-time speech pipeline events.
+Subscribes to the Server-Sent Events (SSE) stream for real-time speech pipeline events bound to a specific profile.
 
-- **Query Parameters:**
-    - `profile_id` (string, optional): ID of the profile to lock and use for the session (defaults to configured default
-      profile).
+- **Path Parameters:**
+    - `profile_id` (string): ID of the profile to lock and stream events for.
 - **Response Headers:**
     - `X-Session-ID`: Unique session ID required for sending authenticated commands.
 - **Events Streamed:**
     - `session`: Initial event providing `session_id` and locked `profile_id`.
     - `profile_activated`: Profile activation notification (`profile_id`, `trace_id`).
-    - `profile_deactivated`: Profile deactivation notification (`profile_id`, `trace_id`).
-    - `transcription_ready`: Transcribed user utterance (`profile_id`, `text`, `trace_id`).
+    - `profile_deactivated`: Profile deactivation notification (`profile_id`).
+    - `transcription_ready`: Transcribed user utterance (`profile_id`, `text`).
     - `speech_interrupted`: Playback interruption notification (`profile_id`).
+- **Status Codes:** `200 OK`, `404 Not Found` (unknown profile), `409 Conflict` (profile already in use by an active session).
 
 ---
 
-### `POST /api/v1/speech`
+### `POST /api/v1/command`
 
 Sends a command to the speech pipeline within an active session.
 
@@ -79,13 +79,15 @@ Sends a command to the speech pipeline within an active session.
       ```json
       {
         "type": "say_text",
-        "text": "Hello, world!"
+        "text": "Hello, world!",
+        "profile_id": "default"
       }
       ```
-    - **`ActivateProfile`**: Activate/switch session profile:
+    - **`ActivateProfile`**: Activate session profile:
       ```json
       {
-        "type": "activate_profile"
+        "type": "activate_profile",
+        "profile_id": "default"
       }
       ```
     - **`DeactivateProfile`**: Deactivate current profile:
@@ -96,4 +98,5 @@ Sends a command to the speech pipeline within an active session.
       ```
 - **Response:** `{"success": true}`
 - **Status Codes:** `200 OK`, `401 Unauthorized` (missing/invalid session), `403 Forbidden` (profile mismatch)
+
 

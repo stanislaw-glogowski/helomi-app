@@ -38,25 +38,22 @@ class SayText(PipelineMessage):
 # events
 
 
-class _BaseEvent(PipelineMessage):
+class ProfileEvent(PipelineMessage):
     profile_id: str
 
 
-class ProfileActivated(_BaseEvent):
+class ProfileActivated(ProfileEvent):
     type: Literal["profile_activated"] = "profile_activated"
 
 
-class ProfileDeactivated(_BaseEvent):
+class ProfileDeactivated(ProfileEvent):
     type: Literal["profile_deactivated"] = "profile_deactivated"
-    profile_id: str
 
 
-class TranscriptionReady(_BaseEvent):
+class TranscriptionReady(ProfileEvent):
     type: Literal["transcription_ready"] = "transcription_ready"
-    profile_id: str
     text: str
 
 
-class SpeechInterrupted(_BaseEvent):
+class SpeechInterrupted(ProfileEvent):
     type: Literal["speech_interrupted"] = "speech_interrupted"
-    profile_id: str

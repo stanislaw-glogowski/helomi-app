@@ -62,12 +62,22 @@ async def test_profiles_endpoints(mock_api_setup) -> None:
 
 
 @pytest.mark.asyncio
+async def test_root_index_endpoint(mock_api_setup) -> None:
+    app, _, _ = mock_api_setup
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/")
+        assert resp.status_code == 200
+        assert resp.json() == {"title": "Helomi API"}
+
+
+@pytest.mark.asyncio
 async def test_speech_sse_and_post_cmd(mock_api_setup) -> None:
     app, mock_pipeline, sessions = mock_api_setup
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        # 404 for unknown profile
-        resp_404 = await client.get("/api/v1/speech", params={"profile_id": "unknown"})
+        # 404 for unknown profile stream
+        resp_404 = await client.get("/api/v1/profile/unknown/stream")
         assert resp_404.status_code == 404
 
         # Acquire session directly to test POST
@@ -76,30 +86,86 @@ async def test_speech_sse_and_post_cmd(mock_api_setup) -> None:
 
         # POST with unknown session
         resp_unauth = await client.post(
-            "/api/v1/speech",
+            "/api/v1/command",
             json={"type": "say_text", "text": "hello"},
             headers={"x-session-id": "bad_id"},
         )
         assert resp_unauth.status_code == 401
 
-        # POST with valid session
+        # POST with valid session (say_text)
         resp_ok = await client.post(
-            "/api/v1/speech",
+            "/api/v1/command",
             json={"type": "say_text", "text": "hello", "profile_id": "p1"},
             headers={"x-session-id": session.id},
         )
         assert resp_ok.status_code == 200
         assert resp_ok.json() == {"success": True}
-        mock_pipeline.execute_command.assert_called_once()
+        assert mock_pipeline.execute_command.call_count == 1
+
+        # POST activate_profile
+        resp_act = await client.post(
+            "/api/v1/command",
+            json={"type": "activate_profile", "profile_id": "p1"},
+            headers={"x-session-id": session.id},
+        )
+        assert resp_act.status_code == 200
+        assert resp_act.json() == {"success": True}
+
+        # POST deactivate_profile (no profile_id)
+        resp_deact = await client.post(
+            "/api/v1/command",
+            json={"type": "deactivate_profile"},
+            headers={"x-session-id": session.id},
+        )
+        assert resp_deact.status_code == 200
+        assert resp_deact.json() == {"success": True}
 
         # POST with mismatching profile_id
         resp_forbidden = await client.post(
-            "/api/v1/speech",
+            "/api/v1/command",
             json={"type": "say_text", "text": "hello", "profile_id": "other"},
             headers={"x-session-id": session.id},
         )
         assert resp_forbidden.status_code == 403
 
         # 409 if profile already in use for SSE
-        resp_conflict = await client.get("/api/v1/speech", params={"profile_id": "p1"})
+        resp_conflict = await client.get("/api/v1/profile/p1/stream")
         assert resp_conflict.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_profile_sse_stream_events(mock_api_setup) -> None:
+    from helomi_core.pipeline.domain import ProfileActivated
+    from helomi_core.server.api.router import create_router
+
+    _, mock_pipeline, sessions = mock_api_setup
+    router = create_router()
+    route = next(
+        r
+        for r in router.routes
+        if getattr(r, "path", "") == "/profile/{profile_id}/stream"
+    )
+
+    streaming_resp = await route.endpoint(
+        profile_id="p1",
+        pipeline=mock_pipeline,
+        sessions=sessions,
+    )
+    assert streaming_resp.status_code == 200
+    session_id = streaming_resp.headers["X-Session-ID"]
+    session = sessions.get(session_id)
+    assert session is not None
+
+    gen = streaming_resp.body_iterator
+    first = await anext(gen)
+    assert "event: session" in first
+
+    session.dispatch_event(ProfileActivated(profile_id="p1"))
+    second = await anext(gen)
+    assert "event: profile_activated" in second
+
+    session.close()
+    with pytest.raises(StopAsyncIteration):
+        await anext(gen)
+
+    assert sessions.get(session_id) is None

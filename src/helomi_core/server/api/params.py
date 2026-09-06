@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, Header, Query, Request
+from fastapi import Depends, Header, Request
 
 from ...pipeline import PipelineExtension
 from ..session import SessionManager
@@ -14,14 +14,9 @@ def get_sessions(request: Request) -> SessionManager:
     return request.app.state.sessions
 
 
-ProfileId = Annotated[
-    str,
-    Query(description="ID of the profile to lock"),
-]
-
 SessionId = Annotated[
     str,
-    Header(alias="x-session-id", description="Session ID returned by SSE"),
+    Header(alias="x-session-id", description="Session ID returned by profile SSE"),
 ]
 
 Pipeline = Annotated[PipelineExtension, Depends(get_pipeline)]

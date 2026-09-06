@@ -44,15 +44,16 @@ profile:
   default: "my_assistant"
 ```
 
-## TypeScript Client Examples
+## TypeScript Voice Assistant Demo
 
-The `examples/` directory contains sample client applications integrating with Helomi via its REST and SSE API:
+The [`demo/`](../demo/README.md) directory contains a complete reference client application built with [Bun](https://bun.sh/), TypeScript, and the [Vercel AI SDK](https://sdk.vercel.ai/):
 
-- [Yes, Minister! (
-  `examples/yes-minister-typescript`)](file:///Users/staszek/Workspace/stanislaw-glogowski/helomi-app/examples/yes-minister-typescript/README.md):
-  Speech translator turning user speech into diplomatic political statements.
-- [Profile Assistant with Memory (
-  `examples/profile-memory-typescript`)](file:///Users/staszek/Workspace/stanislaw-glogowski/helomi-app/examples/profile-memory-typescript/README.md):
-  Conversational assistant dynamically loading `./prompts/<profile_id>.md` per active voice profile and maintaining the
-  last 10 messages of conversation history per profile.
+- **Real-Time Speech Streaming**: Subscribes to SSE pipeline events via `GET /api/v1/profile/{profile_id}/stream`.
+- **Low-Latency LLM Streaming**: Streams text from OpenAI-compatible models (e.g. Ollama or OpenAI) and sends synthesized sentence lines immediately to `POST /api/v1/command`.
+- **Barge-in / Interruption Handling**: Automatically aborts ongoing LLM generation upon receiving `speech_interrupted`.
+- **Multi-Turn Memory**: Retains rolling conversation history per profile session.
+- **Dynamic Prompts**: Loads persona prompts from `prompts/profiles/<profile_id>.md` (default: `default.md`) merged with output formatting instructions in `prompts/instructions.md`.
+
+For setup and execution details, refer to the [Demo Documentation](../demo/README.md).
+
 
