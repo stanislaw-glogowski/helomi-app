@@ -77,7 +77,7 @@ async function subscribeToProfile(
       case 'transcription_ready': {
         const { text } = event;
         log(
-          `${ANSI_STYLES.bold}${ANSI_STYLES.blue}🎙️  User:${ANSI_STYLES.reset} "${text}"`,
+          `${ANSI_STYLES.bold}${ANSI_STYLES.blue}🎙 User:${ANSI_STYLES.reset} "${text}"`,
         );
 
         // Record user message in conversation history
