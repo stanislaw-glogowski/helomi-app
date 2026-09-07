@@ -4,7 +4,12 @@ from enum import IntEnum, auto
 from ..audio import AudioChunk
 
 type DetectionResult = (
-    ProfileDetected | UtteranceDetected | UtteranceContinued | ConversationEnded | None
+    ProfileDetected
+    | UtteranceStarted
+    | UtteranceDetected
+    | UtteranceContinued
+    | ConversationEnded
+    | None
 )
 
 
@@ -16,6 +21,11 @@ class DetectionMode(IntEnum):
 @dataclass(frozen=True, slots=True)
 class ProfileDetected:
     profile_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class UtteranceStarted:
+    pass
 
 
 @dataclass(frozen=True, slots=True)

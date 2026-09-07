@@ -12,7 +12,8 @@ make run-tray
 uv run helomi-tray
 ```
 
-From the menu bar icon, you can switch active voice profiles (shortcuts `0`–`8`), start the API server for client integrations (`a`), enable Parrot mode (`p`), and quit the application (`q`).
+From the menu bar icon, you can switch active voice profiles (shortcuts `0`–`8`), start the API server for client
+integrations (`a`), enable Parrot mode (`p`), and quit the application (`q`).
 
 ## Running a Specific Profile via Developer CLI
 
@@ -58,13 +59,16 @@ profile:
 
 ## TypeScript Voice Assistant Demo
 
-The [`demo/`](../demo/README.md) directory contains a complete reference client application built with [Bun](https://bun.sh/), TypeScript, and the [Vercel AI SDK](https://sdk.vercel.ai/):
+The [`demo/`](../demo/README.md) directory contains a complete reference client application built
+with [Bun](https://bun.sh/), TypeScript, and the [Vercel AI SDK](https://sdk.vercel.ai/):
 
 - **Real-Time Speech Streaming**: Subscribes to SSE pipeline events via `GET /api/v1/profile/{profile_id}/stream`.
-- **Low-Latency LLM Streaming**: Streams text from OpenAI-compatible models (e.g. Ollama or OpenAI) and sends synthesized sentence lines immediately to `POST /api/v1/command`.
+- **Low-Latency LLM Streaming**: Streams text from OpenAI-compatible models (e.g. Ollama or OpenAI) and sends
+  synthesized sentence lines immediately to `POST /api/v1/command`.
 - **Barge-in / Interruption Handling**: Automatically aborts ongoing LLM generation upon receiving `speech_interrupted`.
 - **Multi-Turn Memory**: Retains rolling conversation history per profile session.
-- **Dynamic Prompts**: Loads persona prompts from `prompts/profiles/<profile_id>.md` (default: `alexa.md`) merged with output formatting instructions in `prompts/instructions.md`.
+- **Dynamic Prompts**: Loads persona prompts from `prompts/profiles/<profile_id>.md` (default: `alexa.md`) merged with
+  output formatting instructions in `prompts/instructions.md`.
 
 For setup and execution details, refer to the [Demo Documentation](../demo/README.md).
 

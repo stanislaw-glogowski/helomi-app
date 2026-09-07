@@ -4,6 +4,10 @@ emoji: # optional
 disabled: false
 readonly: false
 
+reactions:
+  greeting: # optional list
+  interrupted: # optional list
+
 audio:
   room_voice_path: # optional
 

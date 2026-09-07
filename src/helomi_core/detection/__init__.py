@@ -5,6 +5,7 @@ from .domain import (
     ProfileDetected,
     UtteranceContinued,
     UtteranceDetected,
+    UtteranceStarted,
 )
 from .worker import DetectionWorker
 
@@ -16,4 +17,5 @@ __all__ = [
     "ProfileDetected",
     "UtteranceContinued",
     "UtteranceDetected",
+    "UtteranceStarted",
 ]

@@ -111,7 +111,7 @@ preset = "default"
 project-includes = ["hatch_build.py", "src"]
 python-platform = "darwin"
 python-version = "3.14"
-replace-imports-with-any = ["mlx.core"]
+replace-imports-with-any = ["mlx.core", "AppKit"]
 search-path = ["src"]
 use-ignore-files = true
 

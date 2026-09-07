@@ -7,6 +7,7 @@ from helomi_core.detection.domain import (
     ProfileDetected,
     UtteranceContinued,
     UtteranceDetected,
+    UtteranceStarted,
 )
 
 
@@ -20,6 +21,9 @@ def test_detection_event_dataclasses():
     """Verify detection event dataclasses."""
     prof_ev = ProfileDetected(profile_id="default")
     assert prof_ev.profile_id == "default"
+
+    start_ev = UtteranceStarted()
+    assert isinstance(start_ev, UtteranceStarted)
 
     cont_ev = UtteranceContinued()
     assert isinstance(cont_ev, UtteranceContinued)

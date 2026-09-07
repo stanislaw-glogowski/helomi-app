@@ -6,6 +6,7 @@ from helomi_core.turn import TurnPrediction, TurnSettings, TurnStatus
 
 def test_turn_status_enum():
     """Verify TurnStatus string values."""
+    assert TurnStatus.STARTED == "started"
     assert TurnStatus.COMPLETED == "completed"
     assert TurnStatus.CONTINUED == "continued"
     assert TurnStatus.TIMEOUT == "timeout"

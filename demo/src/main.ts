@@ -4,7 +4,8 @@ import type { Profile } from './api';
 import { Client, ClientError } from './api';
 import { MessageManager, PromptLoader } from './conversation';
 import { LlmProvider } from './llm';
-import { ANSI_STYLES, printBanner } from './ui';
+import type { Color } from './ui';
+import { print, printBanner } from './ui';
 
 // Configuration read from environment variables or defaults
 const {
@@ -13,20 +14,6 @@ const {
   LLM_API_KEY = undefined,
   LLM_MODEL_ID = 'gpt-5.6-luna',
 } = process.env;
-
-/**
- * Wraps an async function to execute detached without unhandled promise rejection crashes.
- */
-function wrapAsync(fn: () => Promise<void>): void {
-  fn().catch((err) => {
-    if (err instanceof Error && err.name === 'AbortError') {
-      return;
-    }
-    console.error(
-      `${ANSI_STYLES.red}[ERROR]${ANSI_STYLES.reset} ${err instanceof Error ? err.message : String(err)}`,
-    );
-  });
-}
 
 /**
  * Subscribes to SSE stream for a voice profile, handles speech recognition events,
@@ -44,41 +31,34 @@ async function subscribeToProfile(
   // Controller used to abort ongoing LLM generation when the user interrupts
   let abortController = new AbortController();
 
-  const log = (message: string) => {
-    const badge = `${ANSI_STYLES.cyan}[${profile.id}]${ANSI_STYLES.reset}`;
-    console.log(`${badge} ${message}`);
+  const log = (...parts: Array<string | [string, ...Color[]]>) => {
+    print([`[${profile.id}]`, 'cyan'], ' ', ...parts);
   };
 
   for await (const event of session.subscribe()) {
     switch (event.type) {
       case 'session_started':
-        log(
-          `${ANSI_STYLES.green}● Session connected${ANSI_STYLES.reset} (listening for speech)`,
-        );
+        log(['● Session connected', 'green'], ' (listening for speech)');
         break;
 
       case 'session_ended':
-        log(`${ANSI_STYLES.gray}○ Session ended${ANSI_STYLES.reset}`);
+        log(['○ Session ended', 'gray']);
         break;
 
       case 'profile_activated':
-        log(`${ANSI_STYLES.magenta}⚡ Profile activated${ANSI_STYLES.reset}`);
+        log(['⚡ Profile activated', 'magenta']);
         break;
 
       case 'speech_interrupted':
         // User spoke while TTS was playing: cancel LLM generation
         abortController.abort();
         abortController = new AbortController();
-        log(
-          `${ANSI_STYLES.yellow}⏹ Interrupted${ANSI_STYLES.reset} (user spoke, cancelled ongoing speech)`,
-        );
+        log(['⏹ Interrupted', 'yellow'], ' (user spoke, cancelled ongoing speech)');
         break;
 
       case 'transcription_ready': {
         const { text } = event;
-        log(
-          `${ANSI_STYLES.bold}${ANSI_STYLES.blue}🎙 User:${ANSI_STYLES.reset} "${text}"`,
-        );
+        log(['🎙 User:', 'bold', 'blue'], ` "${text}"`);
 
         // Record user message in conversation history
         messages.append({
@@ -87,7 +67,7 @@ async function subscribeToProfile(
         });
 
         // Generate and stream assistant reply sentence-by-sentence to TTS
-        wrapAsync(async () => {
+        (async () => {
           const lines: string[] = [];
 
           try {
@@ -99,7 +79,8 @@ async function subscribeToProfile(
 
             for await (const line of reply) {
               log(
-                `${ANSI_STYLES.bold}${ANSI_STYLES.green}🔊 Assistant [#${lines.length + 1}]:${ANSI_STYLES.reset} "${line}"`,
+                [`🔊 Assistant [#${lines.length + 1}]:`, 'bold', 'green'],
+                ` "${line}"`,
               );
 
               lines.push(line);
@@ -119,6 +100,14 @@ async function subscribeToProfile(
               content: lines.join('\n'),
             });
           }
+        })().catch((err) => {
+          if (err instanceof Error && err.name === 'AbortError') {
+            return;
+          }
+          print(
+            ['[ERROR]', 'red'],
+            ` ${err instanceof Error ? err.message : String(err)}`,
+          );
         });
         break;
       }
@@ -155,8 +144,9 @@ async function main(): Promise<void> {
   for (const profile of profiles) {
     const system = await prompts.loadSystemMessage(profile.id);
     if (!system) {
-      console.log(
-        `${ANSI_STYLES.yellow}ℹ [INFO]${ANSI_STYLES.reset} Skipping profile '${profile.id}': no prompt found in prompts/profiles/${profile.id}.md`,
+      print(
+        ['ℹ [INFO]', 'yellow'],
+        ` Skipping profile '${profile.id}': no prompt found in prompts/profiles/${profile.id}.md`,
       );
       continue;
     }
@@ -165,12 +155,12 @@ async function main(): Promise<void> {
   }
 
   if (promises.length === 0) {
-    console.warn(
-      `\n${ANSI_STYLES.yellow}[WARN]${ANSI_STYLES.reset} No active profiles found with matching prompt files.`,
-    );
-    console.warn(
-      `${ANSI_STYLES.dim}Create a prompt file under prompts/profiles/<profile_id>.md (e.g. prompts/profiles/default.md).${ANSI_STYLES.reset}\n`,
-    );
+    print();
+    print(['[WARN]', 'yellow'], ' No active profiles found with matching prompt files.');
+    print([
+      'Create a prompt file under prompts/profiles/<profile_id>.md (e.g. prompts/profiles/alexa.md).\n',
+      'dim',
+    ]);
     return;
   }
 
@@ -181,15 +171,17 @@ try {
   await main();
 } catch (err) {
   if (err instanceof ClientError || (err instanceof Error && 'cause' in err)) {
-    console.error(
-      `\n${ANSI_STYLES.red}${ANSI_STYLES.bold}[ERROR]${ANSI_STYLES.reset} Could not connect to Helomi server at ${API_BASE_URL}.`,
+    print();
+    print(
+      ['[ERROR]', 'bold', 'red'],
+      ` Could not connect to Helomi server at ${API_BASE_URL}.`,
     );
-    console.error(
-      `${ANSI_STYLES.dim}Ensure the Helomi server is running${ANSI_STYLES.reset}\n`,
-    );
+    print(['Ensure the Helomi server is running\n', 'dim']);
   } else {
-    console.error(
-      `\n${ANSI_STYLES.red}${ANSI_STYLES.bold}[ERROR]${ANSI_STYLES.reset} ${err instanceof Error ? err.message : String(err)}\n`,
+    print();
+    print(
+      ['[ERROR]', 'bold', 'red'],
+      ` ${err instanceof Error ? err.message : String(err)}\n`,
     );
   }
 }

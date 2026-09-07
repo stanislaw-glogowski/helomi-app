@@ -54,7 +54,7 @@ class SmartTurnAdapter(TurnAdapter[SmartTurnConfig]):
             state.speech_samples = samples.size
             state.silence_samples = 0
             state.waiting_for_continuation = False
-            return None
+            return TurnPrediction(status=TurnStatus.STARTED)
 
         # 2. Active state: speech currently detected
         if voice_detected:

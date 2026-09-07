@@ -1,10 +1,12 @@
 import asyncio
 import runpy
 import sys
+from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from helomi_core.audio import AudioFormat, RawAudio
 from helomi_core.parrot import ParrotExtension
 from helomi_core.pipeline import (
     ActivateProfile,
@@ -109,7 +111,7 @@ def test_tray_app_sync_ui_running(mock_runtime):
         server_url="http://127.0.0.1:8181",
     )
     app._sync_ui(None)
-    assert app.title == f"{TryIcon.PARROT} Alexa"
+    assert app.title == "👩🏻 Alexa 🦜"
 
     # Switch profile to None (idle -> EAR icon)
     app._state = TrayState(
@@ -444,3 +446,94 @@ def test_tray_package_main_execution():
     ):
         runpy.run_module("helomi_tray", run_name="__main__")
         mock_run.assert_called_once()
+
+
+def test_tray_app_toggle_recording(mock_runtime):
+    """Verify toggle recording turns on/off without discarding existing recording."""
+    app = TrayApp(runtime=mock_runtime)
+    assert app._state.is_recording is False
+    assert app._state.recording == []
+
+    # Turn on
+    app._handle_toggle_recording(app._menu_recording)
+    assert app._state.is_recording is True
+    assert app._state.recording == []
+
+    # Add mock audio chunk
+    chunk = MagicMock(spec=RawAudio)
+    app._update_state(audio=chunk)
+    assert app._state.recording == [chunk]
+
+    # Turn off (should keep recording buffer intact)
+    app._handle_toggle_recording(app._menu_recording)
+    assert app._state.is_recording is False
+    assert app._state.recording == [chunk]
+
+
+def test_tray_app_sync_recording(mock_runtime):
+    """Verify _sync_recording updates menu item states."""
+    app = TrayApp(runtime=mock_runtime)
+
+    # Idle state
+    app._sync_recording()
+    assert app._menu_recording.state == 0
+    assert app._menu_save.callback is None
+
+    # Recording with no data yet
+    app._state = replace(app._state, is_recording=True, recording=[])
+    app._sync_recording()
+    assert app._menu_recording.state == 1
+    assert app._menu_save.callback is None
+
+    # Recording with data
+    chunk = MagicMock(spec=RawAudio)
+    app._state = replace(app._state, is_recording=True, recording=[chunk])
+    app._sync_recording()
+    assert app._menu_recording.state == 1
+    assert app._menu_save.callback is not None
+
+    # Stopped recording with data (save should remain enabled!)
+    app._state = replace(app._state, is_recording=False, recording=[chunk])
+    app._sync_recording()
+    assert app._menu_recording.state == 0
+    assert app._menu_save.callback is not None
+
+
+def test_tray_app_handle_save_empty(mock_runtime):
+    """Verify _handle_save does nothing if recording is empty."""
+    app = TrayApp(runtime=mock_runtime)
+    assert app._state.recording == []
+    with patch("AppKit.NSSavePanel") as mock_panel_cls:
+        app._handle_save(app._menu_save)
+        mock_panel_cls.assert_not_called()
+
+
+def test_tray_app_handle_save_cancelled_and_success(mock_runtime, tmp_path):
+    """Verify _handle_save handles cancel without clearing and success writes file."""
+    app = TrayApp(runtime=mock_runtime)
+    chunk = RawAudio(format=AudioFormat.MONO_16, data=b"\x00" * 32)
+    app._state = replace(app._state, recording=[chunk])
+
+    # 1. Cancelled save dialog
+    mock_panel = MagicMock()
+    mock_panel.runModal.return_value = 0  # Not OK
+    mock_appkit = MagicMock()
+    mock_appkit.NSModalResponseOK = 1
+    mock_appkit.NSSavePanel.savePanel.return_value = mock_panel
+
+    with patch.dict(sys.modules, {"AppKit": mock_appkit}):
+        app._handle_save(app._menu_save)
+        # Recording should NOT be cleared if user cancelled
+        assert app._state.recording == [chunk]
+
+    # 2. Successful save dialog
+    out_file = tmp_path / "saved_test.wav"
+    mock_panel.runModal.return_value = 1  # OK
+    mock_url = MagicMock()
+    mock_url.path.return_value = str(out_file)
+    mock_panel.URL.return_value = mock_url
+
+    with patch.dict(sys.modules, {"AppKit": mock_appkit}):
+        app._handle_save(app._menu_save)
+        assert app._state.recording == []
+        assert out_file.exists()

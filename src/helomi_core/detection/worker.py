@@ -14,6 +14,7 @@ from .domain import (
     ProfileDetected,
     UtteranceContinued,
     UtteranceDetected,
+    UtteranceStarted,
 )
 
 
@@ -84,6 +85,9 @@ class DetectionWorker(AbstractWorker):
                         )
 
                 match prediction:
+                    case TurnPrediction(status=TurnStatus.STARTED):
+                        yield UtteranceStarted()
+
                     case TurnPrediction(
                         status=TurnStatus.COMPLETED, audio=AudioChunk() as audio
                     ):

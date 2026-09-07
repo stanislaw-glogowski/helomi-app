@@ -5,6 +5,7 @@ from ..audio import AudioChunk
 
 
 class TurnStatus(StrEnum):
+    STARTED = auto()
     COMPLETED = auto()
     CONTINUED = auto()
     TIMEOUT = auto()

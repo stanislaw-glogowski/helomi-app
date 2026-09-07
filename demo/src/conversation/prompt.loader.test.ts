@@ -2,15 +2,15 @@ import { describe, expect, it } from 'bun:test';
 import { PromptLoader } from './prompt.loader';
 
 describe('PromptLoader', () => {
-  it('loads system message for default profile', async () => {
+  it('loads system message for alexa profile', async () => {
     const loader = new PromptLoader();
-    const system = await loader.loadSystemMessage('default');
+    const system = await loader.loadSystemMessage('alexa');
 
     expect(system).not.toBeNull();
     expect(system?.role).toBe('system');
     expect(typeof system?.content).toBe('string');
     // Content should contain both profile description and formatting instructions
-    expect(system?.content).toContain('Profile: Default Assistant');
+    expect(system?.content).toContain('Profile: Alexa');
     expect(system?.content).toContain('Output Formatting');
     expect(system?.content).toContain('One Sentence Per Line');
   });

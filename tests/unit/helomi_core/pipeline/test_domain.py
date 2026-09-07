@@ -5,6 +5,7 @@ from helomi_core.pipeline.domain import (
     ProfileDeactivated,
     SayText,
     SpeechInterrupted,
+    SynthesisReady,
     TranscriptionReady,
 )
 
@@ -37,6 +38,12 @@ def test_pipeline_events() -> None:
     trans = TranscriptionReady(profile_id="p1", text="speech text")
     assert trans.type == "transcription_ready"
     assert trans.text == "speech text"
+    assert trans.audio is None
+
+    synth = SynthesisReady(profile_id="p1", text="hello")
+    assert synth.type == "synthesis_ready"
+    assert synth.text == "hello"
+    assert synth.audio is None
 
     interrupted = SpeechInterrupted(profile_id="p1")
     assert interrupted.type == "speech_interrupted"

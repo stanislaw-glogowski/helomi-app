@@ -82,7 +82,7 @@ async def run(args: argparse.Namespace) -> None:
 
 def main():
     args = parse_args()
-    configure_logger(LogLevel.TRACE if args.debug else LogLevel.INFO)
+    configure_logger(LogLevel.DEBUG if args.debug else LogLevel.INFO)
     asyncio.run(run(args))
 
 

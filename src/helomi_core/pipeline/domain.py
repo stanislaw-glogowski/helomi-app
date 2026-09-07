@@ -1,6 +1,8 @@
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from ..audio import AudioChunk, RawAudio
 
 type PipelineCmd = Annotated[
     ActivateProfile | DeactivateProfile | SayText,
@@ -8,7 +10,11 @@ type PipelineCmd = Annotated[
 ]
 
 type PipelineEvent = Annotated[
-    ProfileActivated | ProfileDeactivated | TranscriptionReady | SpeechInterrupted,
+    ProfileActivated
+    | ProfileDeactivated
+    | TranscriptionReady
+    | SpeechInterrupted
+    | SynthesisReady,
     Field(discriminator="type"),
 ]
 
@@ -51,8 +57,23 @@ class ProfileDeactivated(ProfileEvent):
 
 
 class TranscriptionReady(ProfileEvent):
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+    )
+
     type: Literal["transcription_ready"] = "transcription_ready"
     text: str
+    audio: AudioChunk | RawAudio | None = Field(default=None, exclude=True)
+
+
+class SynthesisReady(ProfileEvent):
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+    )
+
+    type: Literal["synthesis_ready"] = "synthesis_ready"
+    text: str
+    audio: RawAudio | None = Field(default=None, exclude=True)
 
 
 class SpeechInterrupted(ProfileEvent):

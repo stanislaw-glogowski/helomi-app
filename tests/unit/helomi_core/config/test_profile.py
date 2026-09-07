@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from helomi_core.config.profile import Profile, ProfileCatalog, ProfileSettings
 from helomi_core.config.settings import Settings
@@ -175,3 +176,29 @@ def test_profile_catalog_get_not_found(mock_catalog) -> None:
     assert catalog.get("non_existent", throw_on_not_found=False) is None
     with pytest.raises(KeyError, match="Profile not found: non_existent"):
         catalog.get("non_existent", throw_on_not_found=True)
+
+
+def test_profile_reactions() -> None:
+    from helomi_core.reaction import ReactionKind
+
+    # Profile with multiple reactions
+    p1 = Profile(
+        name="Test",
+        reactions={
+            ReactionKind.GREETING: ["Tak?", "Słucham?"],
+            ReactionKind.INTERRUPTED: "Czekam...",
+        },
+    )
+    assert p1.reactions[ReactionKind.GREETING] == ["Tak?", "Słucham?"]
+    assert p1.reactions[ReactionKind.INTERRUPTED] == ["Czekam..."]
+    assert p1.get_reaction(ReactionKind.GREETING) in ("Tak?", "Słucham?")
+    assert p1.get_reaction(ReactionKind.INTERRUPTED) == "Czekam..."
+
+    # Empty / None reactions
+    p2 = Profile(name="Empty", reactions={ReactionKind.GREETING: []})
+    assert p2.get_reaction(ReactionKind.GREETING) is None
+    assert p2.get_reaction(ReactionKind.INTERRUPTED) is None
+
+    # Non-dict reactions passes through to pydantic validator
+    with pytest.raises(ValidationError):
+        Profile.model_validate({"name": "Invalid", "reactions": 123})

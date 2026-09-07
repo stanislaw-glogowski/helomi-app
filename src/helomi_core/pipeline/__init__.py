@@ -7,6 +7,7 @@ from .domain import (
     ProfileDeactivated,
     SayText,
     SpeechInterrupted,
+    SynthesisReady,
     TranscriptionReady,
 )
 from .extension import PipelineExtension, PipelineExtensionKey
@@ -24,5 +25,6 @@ __all__ = [
     "ProfileDeactivated",
     "SayText",
     "SpeechInterrupted",
+    "SynthesisReady",
     "TranscriptionReady",
 ]

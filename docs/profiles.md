@@ -44,21 +44,40 @@ The profile ID is derived automatically from the directory name (e.g., `alexa`, 
 
 ## Profile Attributes
 
-| Field | Type | Description |
-|---|---|---|
-| `name` | `string` | Display name of the assistant profile (e.g., `"Alexa"`). |
-| `emoji` | `string` (optional) | Single emoji icon displayed in the macOS system tray when the profile is active (e.g. `👩🏻`, `🦆`). |
-| `disabled` | `boolean` (optional) | Set to `true` to skip loading this profile (default: `false`). |
-| `readonly` | `boolean` (optional) | Marks profile configuration as read-only (default: `false`). |
-| `audio.room_voice_path` | `string` (optional) | Path to an audio file played in a continuous loop when the profile is active (`path://assets/...`). |
-| `tts` | `object` | Configuration for TTS adapters (`supertonic`, `voxcpm2`). |
-| `stt` | `object` | Configuration for STT adapters (`parakeet`, `whisper`). |
-| `wakeword` | `object` | Configuration for wake-word adapters (`openwakeword`). |
+| Field                   | Type                      | Description                                                                                                           |
+|-------------------------|---------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| `name`                  | `string`                  | Display name of the assistant profile (e.g., `"Alexa"`).                                                              |
+| `emoji`                 | `string` (optional)       | Single emoji icon displayed in the macOS system tray when the profile is active (e.g. `👩🏻`, `🦆`).                    |
+| `disabled`              | `boolean` (optional)      | Set to `true` to skip loading this profile (default: `false`).                                                        |
+| `readonly`              | `boolean` (optional)      | Marks profile configuration as read-only (default: `false`).                                                          |
+| `reactions.greeting`    | `list[string]` (optional) | Spoken greetings randomly selected when the profile is activated / wake-word detected (e.g., `["Tak?", "Słucham?"]`). |
+| `reactions.interrupted` | `list[string]` (optional) | Spoken reactions randomly selected when the assistant's ongoing speech is interrupted (barge-in).                     |
+| `audio.room_voice_path` | `string` (optional)       | Path to an audio file played in a continuous loop when the profile is active (`path://assets/...`).                   |
+| `tts`                   | `object`                  | Configuration for TTS adapters (`supertonic`, `voxcpm2`).                                                             |
+| `stt`                   | `object`                  | Configuration for STT adapters (`parakeet`, `whisper`).                                                               |
+| `wakeword`              | `object`                  | Configuration for wake-word adapters (`openwakeword`).                                                                |
+
+## Spoken Reactions (`reactions`)
+
+Profiles can define verbal acknowledgements that the assistant synthesizes and speaks in response to lifecycle events:
+
+- **`greeting`**: Triggered when a profile is activated (e.g., when the wake-word is detected). The assistant randomly
+  picks one phrase from the configured list.
+- **`interrupted`**: Triggered when speech playback is actively interrupted by the user (barge-in).
+
+```yaml
+reactions:
+  greeting:
+    - "Tak?"
+    - "Słucham?"
+  interrupted:
+    - "Tak?"
+```
 
 ## Default Profile Values (`defaults.yml`)
 
-You can define base configuration values inherited by all profiles in `resources/profiles/defaults.yml`. Specific profile
-definitions will automatically extend and override these defaults.
+You can define base configuration values inherited by all profiles in `resources/profiles/defaults.yml`. Specific
+profile definitions will automatically extend and override these defaults.
 
 ## Example `profile.yml`
 

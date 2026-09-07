@@ -49,7 +49,7 @@ def run(_: argparse.Namespace) -> None:
 def main() -> None:
     args = parse_args()
     configure_logger(
-        LogLevel.TRACE if args.debug else LogLevel.INFO,
+        LogLevel.DEBUG if args.debug else LogLevel.INFO,
     )
     run(args)
 

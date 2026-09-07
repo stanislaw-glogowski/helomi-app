@@ -60,6 +60,9 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
 
     async def interrupt(self) -> bool:
         self._require_ready(AudioMode.DUPLEX)
+        if self._playback_counter == 0:
+            return False
+
         self._playback_counter = 0
         await self._send_wait(MessageKind.STOP_PLAYBACK)
         return True
@@ -224,7 +227,7 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
                         continue
 
                 case _:
-                    self._logger.trace("Unhandled frame kind: {}", frame.kind.name)
+                    self._logger.trace("{} frame skipped", frame.kind.name)
 
             self._resolve_request(frame.request_id, result)
 

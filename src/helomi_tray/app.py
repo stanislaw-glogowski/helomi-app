@@ -2,14 +2,16 @@ import asyncio
 import atexit
 import threading
 from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum, auto
+from pathlib import Path
 from typing import ClassVar, TypedDict, Unpack
 
 import rumps
 
 from helomi_common import BaseComponent, TaskManager
-from helomi_core import Profile, Runtime
+from helomi_core import Runtime
+from helomi_core.audio import AudioFile, RawAudio
 from helomi_core.parrot import ParrotExtension
 from helomi_core.pipeline import (
     ActivateProfile,
@@ -20,6 +22,7 @@ from helomi_core.pipeline import (
     PipelineService,
     ProfileActivated,
     ProfileDeactivated,
+    SynthesisReady,
 )
 from helomi_core.server import ServerExtension
 
@@ -33,6 +36,7 @@ class TrayStatus(StrEnum):
 class TryIcon(StrEnum):
     START = "🚀️"
     PARROT = "🦜"
+    RECORD = "🎙️"
     ROBOT = "🤖"
     API = "🌐"
     EAR = "👂"
@@ -45,9 +49,13 @@ class TrayState:
         status: TrayStatus
         profile_id: str | None
         extension_key: PipelineExtensionKey
+        is_recording: bool
+        recording: list[RawAudio]
         server_url: str | None
 
     status: TrayStatus = TrayStatus.STARTING
+    is_recording: bool = False
+    recording: list[RawAudio] = field(default_factory=list)
     profile_id: str | None = None
     extension_key: PipelineExtensionKey = ServerExtension
     server_url: str | None = None
@@ -97,12 +105,22 @@ class TrayApp(rumps.App, BaseComponent):
         }
 
         menu_server = rumps.MenuItem(
-            title=self._render_title(TryIcon.API, "API"),
+            title=self._render_title(TryIcon.API, "API Disabled"),
             key="a",
         )
         menu_parrot = rumps.MenuItem(
             title=self._render_title(TryIcon.PARROT, "Parrot Mode"),
             key="p",
+        )
+
+        self._menu_recording = rumps.MenuItem(
+            title="Recording",
+            key="r",
+        )
+
+        self._menu_save = rumps.MenuItem(
+            title="Save As …",
+            key="s",
         )
 
         self._menu_extensions: dict[PipelineExtensionKey, rumps.MenuItem] = {
@@ -122,6 +140,9 @@ class TrayApp(rumps.App, BaseComponent):
             menu_server,
             menu_parrot,
             rumps.separator,
+            self._menu_recording,
+            self._menu_save,
+            rumps.separator,
             rumps.MenuItem(
                 title="Quit",
                 callback=self._handle_quit,
@@ -134,6 +155,9 @@ class TrayApp(rumps.App, BaseComponent):
     def run(self, **options) -> None:
         self._before_run()
         super().run(**options)
+
+    def quit(self) -> None:
+        self._handle_quit(None)
 
     @rumps.timer(0.5)
     def _sync_ui(self, _):
@@ -149,9 +173,7 @@ class TrayApp(rumps.App, BaseComponent):
                     if last_state.server_url != self._state.server_url:
                         title = self._render_title(
                             TryIcon.API,
-                            f"API: {self._state.server_url}"
-                            if self._state.server_url
-                            else "API",
+                            self._state.server_url or "Disabled",
                         )
                         self._menu_extensions[ServerExtension].title = title
 
@@ -163,33 +185,54 @@ class TrayApp(rumps.App, BaseComponent):
                         self._sync_profile(last_state.profile_id, False)
                         self._sync_profile(self._state.profile_id, True)
 
-                    self._sync_title(
-                        self._state.extension_key,
-                        self._runtime.profiles.get(self._state.profile_id)
-                        if self._state.profile_id
-                        else None,
-                    )
+                    self._sync_recording()
+                    self._sync_title()
 
                 case TrayStatus.QUITING:
                     if last_state.status == TrayStatus.RUNNING:
                         self._sync_menu(False)
                     self.title = self._render_title(TryIcon.EXIT)
 
-    def _sync_title(
-        self,
-        extension_key: type[PipelineExtension],
-        profile: Profile | None,
-    ) -> None:
+    def _sync_menu(self, enabled: bool) -> None:
+        extension_callback = self._handle_toggle_extension if enabled else None
+        profile_callback = self._handle_toggle_profile if enabled else None
+
+        for menu_item in self._menu_profiles.values():
+            menu_item.set_callback(profile_callback)
+        for menu_item in self._menu_extensions.values():
+            menu_item.set_callback(extension_callback)
+
+        if not enabled:
+            self._menu_recording.state = 0
+            self._menu_recording.set_callback(None)
+            self._menu_save.set_callback(None)
+        else:
+            self._menu_recording.set_callback(self._handle_toggle_recording)
+
+    def _sync_title(self) -> None:
+        profile = (
+            self._runtime.profiles.get(self._state.profile_id)
+            if self._state.profile_id
+            else None
+        )
+
         if profile is None:
             icon = TryIcon.EAR
-        elif extension_key is ParrotExtension:
-            icon = TryIcon.PARROT
+            label = None
         else:
             icon = profile.emoji if profile.emoji else TryIcon.ROBOT
+            label = profile.name
+            if self._state.extension_key is ParrotExtension:
+                label = f"{label} {TryIcon.PARROT}"
+            if self._state.is_recording:
+                label = f"{label} {TryIcon.RECORD}"
 
-        self.title = self._render_title(
-            icon,
-            profile.name if profile else None,
+        self.title = self._render_title(icon, label)
+
+    def _sync_recording(self) -> None:
+        self._menu_recording.state = 1 if self._state.is_recording else 0
+        self._menu_save.set_callback(
+            self._handle_save if self._state.recording else None
         )
 
     def _sync_extension(
@@ -206,15 +249,6 @@ class TrayApp(rumps.App, BaseComponent):
         if profile_id is None:
             return
         self._menu_profiles[profile_id].state = 1 if active else 0
-
-    def _sync_menu(self, enabled: bool) -> None:
-        extension_callback = self._handle_toggle_extension if enabled else None
-        profile_callback = self._handle_toggle_profile if enabled else None
-
-        for menu_item in self._menu_profiles.values():
-            menu_item.set_callback(profile_callback)
-        for menu_item in self._menu_extensions.values():
-            menu_item.set_callback(extension_callback)
 
     def _handle_toggle_profile(self, sender: rumps.MenuItem):
         if sender.state == 1:
@@ -238,8 +272,42 @@ class TrayApp(rumps.App, BaseComponent):
                 )
                 return
 
-    def quit(self) -> None:
-        self._handle_quit(None)
+    def _handle_toggle_recording(self, _: rumps.MenuItem):
+        if self._state.is_recording:
+            self._update_state(is_recording=False)
+        else:
+            self._update_state(is_recording=True, recording=[])
+
+    def _handle_save(self, _: rumps.MenuItem):
+        if not self._state.recording:
+            return
+
+        # noinspection PyUnresolvedReferences
+        from AppKit import NSApp, NSModalResponseOK, NSSavePanel
+
+        NSApp.setActivationPolicy_(0)
+        NSApp.activateIgnoringOtherApps_(True)
+
+        panel = NSSavePanel.savePanel()
+        panel.setFloatingPanel_(True)
+        panel.orderFrontRegardless()
+        panel.setTitle_("Save Recording")
+        panel.setNameFieldStringValue_("recording.wav")
+        panel.setCanCreateDirectories_(True)
+        panel.setAllowedFileTypes_(["wav", "wave"])
+        panel.center()
+
+        response = panel.runModal()
+        if response != NSModalResponseOK:
+            return
+
+        recording = self._state.recording
+        self._update_state(recording=[])
+
+        path: str = panel.URL().path()
+
+        with suppress(Exception):
+            AudioFile(Path(path)).write(RawAudio.concat(recording))
 
     def _handle_quit(self, sender: rumps.MenuItem | None = None) -> None:
         if sender is not None:
@@ -268,13 +336,18 @@ class TrayApp(rumps.App, BaseComponent):
     def _update_state(
         self,
         force_sync=False,
+        audio: RawAudio | None = None,
         **kwargs: Unpack[TrayState.Update],
     ) -> None:
         if self._state.status == TrayStatus.QUITING:
             return
 
         with self._lock:
+            if audio is not None and self._state.is_recording:
+                kwargs["recording"] = [*self._state.recording, audio]
+
             self._state = replace(self._state, **kwargs)
+
             if force_sync:
                 self._sync_ui(None)
 
@@ -308,11 +381,11 @@ class TrayApp(rumps.App, BaseComponent):
 
         async with self._runtime:
             pipeline = await self._runtime.get_pipeline_service()
-            await self._runtime.get_parrot_extension(
-                self._state.extension_key is ParrotExtension
-            )
             server_extension = await self._runtime.get_server_extension(
                 self._state.extension_key is ServerExtension
+            )
+            await self._runtime.get_parrot_extension(
+                self._state.extension_key is ParrotExtension
             )
 
             self._pipeline = pipeline
@@ -340,6 +413,8 @@ class TrayApp(rumps.App, BaseComponent):
                     self._update_state(profile_id=profile_id)
                 case ProfileDeactivated():
                     self._update_state(profile_id=None)
+                case SynthesisReady(audio=audio):
+                    self._update_state(audio=audio)
 
     def _pipeline_set_activate_extension(self, key: PipelineExtensionKey) -> None:
         if self._pipeline is None or self._loop is None or self._loop.is_closed():

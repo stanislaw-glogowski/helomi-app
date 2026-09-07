@@ -1,14 +1,17 @@
 # Audio Pipeline & Audio Assets
 
-Helomi utilizes a native macOS CoreAudio / `AVFAudio` engine to achieve low-latency audio capture and playback with hardware acceleration.
+Helomi utilizes a native macOS CoreAudio / `AVFAudio` engine to achieve low-latency audio capture and playback with
+hardware acceleration.
 
 ## Native Audio Engine (`AVFAudio`)
 
-The native audio engine bridge handles real-time microphone capture, synthesized speech playback, and ambient soundscapes.
+The native audio engine bridge handles real-time microphone capture, synthesized speech playback, and ambient
+soundscapes.
 
 ### Apple Voice Processing (Echo Cancellation)
 
-You can enable macOS system-level hardware acoustic echo cancellation (AEC) and automatic gain control in `resources/settings.yml`:
+You can enable macOS system-level hardware acoustic echo cancellation (AEC) and automatic gain control in
+`resources/settings.yml`:
 
 ```yaml
 audio:
@@ -17,13 +20,15 @@ audio:
     voice_processing: true
 ```
 
-When enabled, output speech played through speakers is automatically subtracted from the microphone capture buffer, minimizing accidental self-triggering and speech barge-in confusion.
+When enabled, output speech played through speakers is automatically subtracted from the microphone capture buffer,
+minimizing accidental self-triggering and speech barge-in confusion.
 
 ---
 
 ## Room Voice / Ambient Audio Loop
 
-Profiles can specify an ambient background audio track (room voice) that plays continuously while that profile is active:
+Profiles can specify an ambient background audio track (room voice) that plays continuously while that profile is
+active:
 
 ```yaml
 audio:
@@ -31,7 +36,8 @@ audio:
 ```
 
 - **Format:** `.wav` (PCM)
-- **Lifecycle:** Starts playing seamlessly when the profile is activated, and stops automatically when switching profiles or deactivating the assistant.
+- **Lifecycle:** Starts playing seamlessly when the profile is activated, and stops automatically when switching
+  profiles or deactivating the assistant.
 
 ---
 

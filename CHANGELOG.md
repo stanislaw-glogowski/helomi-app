@@ -6,33 +6,63 @@ All notable changes to Helomi are documented in this file.
 
 ### Added
 
+- **Spoken Reactions & Instant Barge-In**:
+    - Added `ReactionKind` (`GREETING`, `INTERRUPTED`) and `reactions` profile configuration with random selection and
+      string/list normalization.
+    - Implemented instant barge-in upon speech onset (`UtteranceStarted` from `SmartTurnAdapter`), immediately halting
+      ongoing audio playback, bumping pipeline generation, and triggering interruption reactions.
+    - Added spoken greeting reactions (`ReactionKind.GREETING`) upon assistant activation.
+- **macOS System Tray Audio Recording & Native WAV Export (`helomi_tray`)**:
+    - Added audio recording of synthesized assistant speech in `helomi_tray` with hotkeys `r` (toggle recording) and `s`
+      (save as).
+    - Integrated native macOS `NSSavePanel` modal dialog for exporting recordings to `.wav` files, safely preserving
+      buffers on dialog cancel.
+    - Added dynamic `🎙️` recording indicator in the menu bar title.
+- **Pipeline Events**:
+    - Added `SynthesisReady` pipeline event carrying synthesized audio and text.
+    - Added optional `audio` field to `TranscriptionReady` (excluded from JSON serialization for network efficiency).
 - **Default Profile (`alexa`)**:
-    - Established `alexa` as the official default assistant profile across `resources/settings.yml`, `Profile.DEFAULT_ID`, and CLI/API interfaces.
-    - Automatic wake-word model installation for Alexa (`alexa_v0.1.onnx`) into `resources/profiles/alexa/models/` via `helomi-cli install`.
+    - Established `alexa` as the official default assistant profile across `resources/settings.yml`,
+      `Profile.DEFAULT_ID`, and CLI/API interfaces.
+    - Automatic wake-word model installation for Alexa (`alexa_v0.1.onnx`) into `resources/profiles/alexa/models/` via
+      `helomi-cli install`.
 - **Profile Customization (`emoji`, `readonly`, `room_voice_path`)**:
-    - Added `emoji` field to `Profile` with single-emoji validation, displayed in the macOS system tray when the profile is active.
+    - Added `emoji` field to `Profile` with single-emoji validation, displayed in the macOS system tray when the profile
+      is active.
     - Added `readonly` flag to `Profile` model schema.
     - Added `audio.room_voice_path` to support continuous ambient room soundscapes upon profile activation.
 - **Enhanced macOS System Tray (`helomi_tray`) UX**:
-    - Added keyboard shortcuts for rapid menu actions: profile selection (`0`–`8`), API Server (`a`), Parrot Mode (`p`), and quitting (`q`).
-    - Added dynamic status bar icons: active profile emoji (or `🤖` fallback), idle listening (`👂`), parrot mode (`🦜`), and exiting (`💤`).
+    - Added keyboard shortcuts for rapid menu actions: profile selection (`0`–`8`), API Server (`a`), Parrot Mode (`p`),
+      and quitting (`q`).
+    - Added dynamic status bar icons: active profile emoji (or `🤖` fallback), idle listening (`👂`), parrot mode (`🦜`),
+      and exiting (`💤`).
     - Implemented clean signal handling for `SIGINT` (`Ctrl+C`) and `SIGTERM`.
 
 ### Changed
 
 - **Resources Directory Migration**:
-    - Migrated local workspace configuration and resources directory from `.helomi/` to `resources/` (`resources/settings.yml`, `resources/profiles/`, `resources/models/`).
+    - Migrated local workspace configuration and resources directory from `.helomi/` to `resources/`
+      (`resources/settings.yml`, `resources/profiles/`, `resources/models/`).
     - Updated `.gitignore` patterns and `UserData` search paths to target `resources/`.
 - **Audio Driver Architecture (`AudioDriver`)**:
-    - Replaced `start_room_voice()` and `stop_room_voice()` with profile-aware lifecycle hooks `activate(profile: AudioProfile)` and `deactivate()`.
-    - Streamlined native Swift `AVFAudio` engine wire protocol (`startRoomVoice` payload with file path, removed deprecated audio device listing).
+    - Replaced `start_room_voice()` and `stop_room_voice()` with profile-aware lifecycle hooks
+      `activate(profile: AudioProfile)` and `deactivate()`.
+    - Streamlined native Swift `AVFAudio` engine wire protocol (`startRoomVoice` payload with file path, removed
+      deprecated audio device listing).
 - **Pipeline Robustness & Input Filtering**:
-    - Added whitespace and empty text validation in `SayText` command handling and `ParrotExtension`, avoiding redundant TTS synthesis.
-    - Wrapped audio driver activation in `PipelineService` with graceful error recovery to prevent audio playback errors from blocking assistant activation.
+    - Added whitespace and empty text validation in `SayText` command handling and `ParrotExtension`, avoiding redundant
+      TTS synthesis.
+    - Wrapped audio driver activation in `PipelineService` with graceful error recovery to prevent audio playback errors
+      from blocking assistant activation.
 - **Documentation & Examples Overhaul**:
-    - Added Hugging Face CLI (`hf` / `huggingface-cli`) prerequisite and model download guide with explicit disk size requirements (`~7.5 GB` default stack) to `README.md` and `docs/models.md`.
-    - Promoted macOS system tray application (`helomi_tray` / `make run-tray`) as the primary user-facing application across `README.md`, `docs/apps.md`, and `docs/examples.md`, framing `helomi_cli` as developer and automation tooling.
-    - Updated all documentation (`README.md`, `docs/profiles.md`, `docs/settings.md`, `docs/audio.md`, `docs/apps.md`, `docs/api.md`, `docs/examples.md`) to reflect `resources/` workspace directory, `alexa` as the default profile, `avfaudio.voice_processing`, ambient audio, and system tray shortcuts.
+    - Added Hugging Face CLI (`hf` / `huggingface-cli`) prerequisite and model download guide with explicit disk size
+      requirements (`~7.5 GB` default stack) to `README.md` and `docs/models.md`.
+    - Promoted macOS system tray application (`helomi_tray` / `make run-tray`) as the primary user-facing application
+      across `README.md`, `docs/apps.md`, and `docs/examples.md`, framing `helomi_cli` as developer and automation
+      tooling.
+    - Updated all documentation (`README.md`, `docs/profiles.md`, `docs/settings.md`, `docs/audio.md`, `docs/apps.md`,
+      `docs/api.md`, `docs/examples.md`) to reflect `resources/` workspace directory, `alexa` as the default profile,
+      `avfaudio.voice_processing`, ambient audio, and system tray shortcuts.
     - Updated TypeScript demo client (`demo/README.md`) to pair with `prompts/profiles/alexa.md`.
 
 ### Fixed
@@ -74,14 +104,18 @@ All notable changes to Helomi are documented in this file.
 ### Changed
 
 - Consolidated application runtime, pipeline service, and server extensions (`helomi_app`) directly into `helomi_core`,
-  streamlining the architecture to three primary layers (`helomi_common`, `helomi_core`, and UI layers `helomi_cli` / `helomi_tray`).
+  streamlining the architecture to three primary layers (`helomi_common`, `helomi_core`, and UI layers `helomi_cli` /
+  `helomi_tray`).
 - Enhanced speech pipeline orchestration in `PipelineService`:
-    - Introduced generation tracking (`PipelineRequest`) to invalidate outdated audio synthesis tasks on speech interruption.
+    - Introduced generation tracking (`PipelineRequest`) to invalidate outdated audio synthesis tasks on speech
+      interruption.
     - Decoupled audio playback into dedicated `_playback_queue` and `_playback_loop`.
     - Added `SpeechInterrupted` event dispatched when user speech interrupts ongoing playback.
-    - Added extension lifecycle management (`register_extension`, `set_active_extension`) with extension-scoped command and event filtering.
+    - Added extension lifecycle management (`register_extension`, `set_active_extension`) with extension-scoped command
+      and event filtering.
 - Migrated user resources directory from `resources/` to `.helomi/` (`.helomi/settings.yml`, `.helomi/profiles/`).
-- Modularized CLI command handlers into `helomi_cli/commands/` (`install.py`, `parrot.py`, `serve.py`) with rich banner widgets (`prints.py`).
+- Modularized CLI command handlers into `helomi_cli/commands/` (`install.py`, `parrot.py`, `serve.py`) with rich banner
+  widgets (`prints.py`).
 - Removed deprecated CLI commands (`say`, `settings`).
 - Standardized component lifecycle inheritance across the codebase (`BaseComponent`, `PipelineComponent`).
 

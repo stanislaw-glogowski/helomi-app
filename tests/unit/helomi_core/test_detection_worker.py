@@ -6,6 +6,7 @@ from helomi_core.detection.domain import (
     ProfileDetected,
     UtteranceContinued,
     UtteranceDetected,
+    UtteranceStarted,
 )
 from helomi_core.detection.worker import DetectionWorker
 from helomi_core.turn import TurnPrediction, TurnStatus
@@ -41,6 +42,27 @@ async def test_detection_worker_mode_and_wakeword_trigger():
             for r in results
         )
         assert worker.current_mode == DetectionMode.UTTERANCE
+
+
+@pytest.mark.asyncio
+async def test_detection_worker_turn_started():
+    """Verify DetectionWorker yields UtteranceStarted when speech begins."""
+    vad_adapter = MockVADAdapter(default_detected=True)
+    turn_adapter = MockTurnAdapter(prediction=TurnPrediction(status=TurnStatus.STARTED))
+
+    worker = DetectionWorker(
+        turn_adapter=turn_adapter,
+        vad_adapter=vad_adapter,
+        wakeword_adapter=None,
+    )
+
+    raw = create_raw_audio(sample_rate=16000, num_samples=512)
+
+    async with worker:
+        results = [r async for r in worker.detect(raw)]
+
+    assert len(results) > 0
+    assert any(isinstance(r, UtteranceStarted) for r in results)
 
 
 @pytest.mark.asyncio

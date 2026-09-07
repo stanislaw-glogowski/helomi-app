@@ -64,7 +64,8 @@ Subscribes to the Server-Sent Events (SSE) stream for real-time speech pipeline 
     - `profile_deactivated`: Profile deactivation notification (`profile_id`).
     - `transcription_ready`: Transcribed user utterance (`profile_id`, `text`).
     - `speech_interrupted`: Playback interruption notification (`profile_id`).
-- **Status Codes:** `200 OK`, `404 Not Found` (unknown profile), `409 Conflict` (profile already in use by an active session).
+- **Status Codes:** `200 OK`, `404 Not Found` (unknown profile), `409 Conflict` (profile already in use by an active
+  session).
 
 ---
 

@@ -4,11 +4,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from helomi_core.audio import AudioDriver, AudioProfile, RawAudio
+from helomi_core.audio import (
+    AudioChunk,
+    AudioDriver,
+    AudioFormat,
+    AudioProfile,
+    RawAudio,
+)
 from helomi_core.config.profile import Profile
 from helomi_core.detection import (
     DetectionWorker,
+    UtteranceContinued,
     UtteranceDetected,
+    UtteranceStarted,
 )
 from helomi_core.pipeline.domain import (
     ActivateProfile,
@@ -16,10 +24,12 @@ from helomi_core.pipeline.domain import (
     ProfileActivated,
     SayText,
     SpeechInterrupted,
+    SynthesisReady,
     TranscriptionReady,
 )
 from helomi_core.pipeline.extension import PipelineExtension
 from helomi_core.pipeline.service import PipelineRequest, PipelineService
+from helomi_core.reaction import ReactionKind
 from helomi_core.stt import STTResponse, STTWorker
 from helomi_core.tts import TTSChunk, TTSWorker
 
@@ -42,6 +52,7 @@ def mock_profiles():
     )
     prof1.stt = MagicMock()
     prof1.tts = MagicMock()
+    prof1.get_reaction = MagicMock(return_value=None)
 
     prof2 = MagicMock(spec=Profile)
     prof2.id = "prof2"
@@ -51,6 +62,7 @@ def mock_profiles():
     )
     prof2.stt = MagicMock()
     prof2.tts = MagicMock()
+    prof2.get_reaction = MagicMock(return_value=None)
 
     catalog = MagicMock()
 
@@ -297,7 +309,7 @@ async def test_pipeline_service_detection_loop_speech_interrupted(mock_service) 
     await service.execute_command(ActivateProfile(profile_id="prof1"))
 
     async def mock_detect(audio):
-        yield UtteranceDetected(audio=MagicMock(spec=RawAudio))
+        yield UtteranceDetected(audio=MagicMock(spec=AudioChunk))
 
     service._detection_worker.detect = mock_detect
 
@@ -394,3 +406,96 @@ async def test_pipeline_service_say_text_empty(mock_service) -> None:
 
     res = await service.execute_command(SayText(text="   "))
     assert res is False
+
+
+@pytest.mark.asyncio
+async def test_pipeline_service_utterance_started_barge_in(mock_service) -> None:
+    service, audio_driver, _, _, _ = mock_service
+    audio_driver.interrupt = AsyncMock(return_value=True)
+
+    await service.execute_command(ActivateProfile(profile_id="prof1"))
+    service.active_profile.get_reaction = MagicMock(
+        side_effect=lambda kind: "Tak?" if kind == ReactionKind.INTERRUPTED else None
+    )
+
+    async def mock_detect(audio):
+        yield UtteranceStarted()
+        yield UtteranceContinued()
+
+    service._detection_worker.detect = mock_detect
+
+    events = []
+
+    async def listener():
+        async for evt in service.subscribe_event():
+            events.append(evt)
+
+    task = asyncio.create_task(listener())
+    await asyncio.sleep(0.01)
+
+    service._detection_queue.put_nowait(MagicMock(spec=RawAudio))
+
+    det_task = asyncio.create_task(service._detection_loop())
+    await asyncio.sleep(0.05)
+    det_task.cancel()
+    task.cancel()
+    await asyncio.gather(det_task, task, return_exceptions=True)
+
+    interrupted_events = [e for e in events if isinstance(e, SpeechInterrupted)]
+    assert len(interrupted_events) == 1
+    assert interrupted_events[0].profile_id == "prof1"
+    assert not service._tts_queue.empty()
+    req = service._tts_queue.get_nowait()
+    assert req.data.text == "Tak?"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_service_greeting_reaction(mock_service) -> None:
+    service, _, _, _, _ = mock_service
+
+    # Configure greeting reaction
+    service._profiles.get("prof1").get_reaction = MagicMock(
+        side_effect=lambda kind: "Cześć!" if kind == ReactionKind.GREETING else None
+    )
+
+    await service.execute_command(ActivateProfile(profile_id="prof1"))
+    assert not service._tts_queue.empty()
+    req = service._tts_queue.get_nowait()
+    assert req.data.text == "Cześć!"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_service_synthesis_ready_event(mock_service) -> None:
+    service, _, _, _, tts_worker = mock_service
+
+    await service.execute_command(ActivateProfile(profile_id="prof1"))
+
+    raw1 = RawAudio(format=AudioFormat.MONO_16, data=b"\x00" * 32)
+    fake_chunk = TTSChunk(audio=raw1)
+
+    async def fake_synth(request, profile):
+        yield fake_chunk
+
+    tts_worker.synthesize = fake_synth
+
+    events = []
+
+    async def listener():
+        async for evt in service.subscribe_event():
+            events.append(evt)
+
+    sub_task = asyncio.create_task(listener())
+    tts_task = asyncio.create_task(service._tts_loop())
+
+    await asyncio.sleep(0.01)
+    await service.execute_command(SayText(text="Hello synthesis"))
+    await asyncio.sleep(0.05)
+
+    synthesis_events = [e for e in events if isinstance(e, SynthesisReady)]
+    assert len(synthesis_events) == 1
+    assert synthesis_events[0].text == "Hello synthesis"
+    assert synthesis_events[0].profile_id == "prof1"
+
+    sub_task.cancel()
+    tts_task.cancel()
+    await asyncio.gather(sub_task, tts_task, return_exceptions=True)

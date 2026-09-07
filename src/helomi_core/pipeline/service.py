@@ -4,14 +4,17 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 
-from ..audio import AudioDriver, RawAudio
+from ..audio import AudioChunk, AudioDriver, RawAudio
 from ..detection import (
     ConversationEnded,
     DetectionMode,
     DetectionWorker,
     ProfileDetected,
+    UtteranceContinued,
     UtteranceDetected,
+    UtteranceStarted,
 )
+from ..reaction import ReactionKind
 from ..stt import STTRequest, STTResponse, STTWorker
 from ..tts import TTSChunk, TTSRequest, TTSWorker
 from .component import PipelineComponent
@@ -24,6 +27,7 @@ from .domain import (
     ProfileDeactivated,
     SayText,
     SpeechInterrupted,
+    SynthesisReady,
     TranscriptionReady,
 )
 from .extension import PipelineExtension, PipelineExtensionKey
@@ -201,12 +205,17 @@ class PipelineService(PipelineComponent):
                                 ActivateProfile(profile_id=res.profile_id),
                             )
 
-                        case UtteranceDetected():
-                            profile = self._active_profile
+                        case ConversationEnded():
+                            await self.execute_command(
+                                DeactivateProfile(),
+                            )
 
-                            if profile is None:
-                                continue
+                    profile = self._active_profile
+                    if profile is None:
+                        continue
 
+                    match res:
+                        case UtteranceStarted():
                             if await self._audio_driver.interrupt():
                                 PipelineRequest.bump_generation()
 
@@ -214,17 +223,51 @@ class PipelineService(PipelineComponent):
                                     SpeechInterrupted(profile_id=profile.id)
                                 )
 
+                                reaction = profile.get_reaction(
+                                    ReactionKind.INTERRUPTED
+                                )
+
+                                if reaction:
+                                    self._tts_queue.put_nowait(
+                                        PipelineRequest(
+                                            data=TTSRequest(
+                                                text=reaction,
+                                            ),
+                                        )
+                                    )
+
+                        case UtteranceContinued():
+                            pass
+
+                        case UtteranceDetected():
+                            if await self._audio_driver.interrupt():
+                                PipelineRequest.bump_generation()
+
+                                self._dispatch_event(
+                                    SpeechInterrupted(profile_id=profile.id)
+                                )
+
+                                reaction = profile.get_reaction(
+                                    ReactionKind.INTERRUPTED
+                                )
+
+                                if reaction:
+                                    self._tts_queue.put_nowait(
+                                        PipelineRequest(
+                                            data=TTSRequest(
+                                                text=reaction,
+                                            ),
+                                        )
+                                    )
+
                             self._stt_queue.put_nowait(
                                 PipelineRequest(
                                     data=STTRequest(
-                                        audio=res.audio,
+                                        audio=res.audio
+                                        if isinstance(res.audio, AudioChunk)
+                                        else AudioChunk.from_raw(res.audio),
                                     ),
                                 ),
-                            )
-
-                        case ConversationEnded():
-                            await self.execute_command(
-                                DeactivateProfile(),
                             )
 
             finally:
@@ -243,11 +286,16 @@ class PipelineService(PipelineComponent):
                     profile=profile.stt,
                 ):
                     if request.is_valid and isinstance(response, STTResponse):
+                        text = response.text.strip()
+                        if not text:
+                            continue
+
                         self._dispatch_event(
                             TranscriptionReady(
                                 trace_id=request.trace_id,
                                 profile_id=profile.id,
-                                text=response.text,
+                                text=text,
+                                audio=request.data.audio,
                             )
                         )
             finally:
@@ -265,17 +313,33 @@ class PipelineService(PipelineComponent):
                 continue
 
             try:
+                chunks: list[RawAudio] = []
+
                 async for chunk in self._tts_worker.synthesize(
                     request=request.data,
                     profile=profile.tts,
                 ):
-                    if request.is_valid and isinstance(chunk, TTSChunk):
-                        self._playback_queue.put_nowait(
-                            PipelineRequest(
-                                trace_id=request.trace_id,
-                                data=chunk.audio,
+                    if isinstance(chunk, TTSChunk):
+                        if request.is_valid:
+                            chunks.append(chunk.audio)
+                            self._playback_queue.put_nowait(
+                                PipelineRequest(
+                                    trace_id=request.trace_id,
+                                    data=chunk.audio,
+                                )
                             )
+                        else:
+                            chunks.clear()
+
+                if chunks:
+                    self._dispatch_event(
+                        SynthesisReady(
+                            trace_id=request.trace_id,
+                            profile_id=profile.id,
+                            text=request.data.text,
+                            audio=RawAudio.concat(chunks),
                         )
+                    )
 
             finally:
                 self._tts_queue.task_done()
@@ -322,6 +386,18 @@ class PipelineService(PipelineComponent):
 
         await self._detection_worker.change_mode(DetectionMode.UTTERANCE)
 
+        reaction = profile.get_reaction(ReactionKind.GREETING)
+
+        if reaction:
+            self._tts_queue.put_nowait(
+                PipelineRequest(
+                    trace_id=cmd.trace_id,
+                    data=TTSRequest(
+                        text=reaction,
+                    ),
+                )
+            )
+
         return True
 
     async def _handle_deactivate_profile(self, cmd: DeactivateProfile) -> bool:
@@ -345,7 +421,8 @@ class PipelineService(PipelineComponent):
         return True
 
     async def _handle_say_text(self, cmd: SayText) -> bool:
-        if not cmd.text or not cmd.text.strip():
+        text = cmd.text.strip()
+        if not text:
             return False
 
         match self._active_profile:
@@ -364,7 +441,7 @@ class PipelineService(PipelineComponent):
 
         self._tts_queue.put_nowait(
             PipelineRequest(
-                data=TTSRequest(text=cmd.text),
+                data=TTSRequest(text=text),
                 trace_id=cmd.trace_id,
             )
         )
