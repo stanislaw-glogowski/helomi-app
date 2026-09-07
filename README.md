@@ -39,7 +39,7 @@ memory. Zero telemetry, zero cloud audio streaming.
 
 ### Prerequisites
 
-- macOS running on Apple Silicon (M1/M2/M3/M4)
+- macOS running on Apple Silicon
 - [uv](https://docs.astral.sh/uv/) package manager
 - Xcode Command Line Tools (`xcode-select --install`)
 - [Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/guides/cli)
