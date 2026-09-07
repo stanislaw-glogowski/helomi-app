@@ -1,5 +1,11 @@
 name: # required
+
+emoji: # optional
 disabled: false
+readonly: false
+
+audio:
+  room_voice_path: # optional
 
 stt:
   parakeet:

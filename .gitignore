@@ -25,19 +25,17 @@ node_modules
 !.env.example
 
 # Resources
-/.helomi/assets/*
-/.helomi/logs/*
 /.helomi/models/*
 /.helomi/profiles/*
 !/.helomi/profiles/defaults.yml
-!/.helomi/profiles/default
-/.helomi/profiles/default/models/*
-/.helomi/profiles/default/profile.override.yml
+!/.helomi/profiles/alexa
+/.helomi/profiles/alexa/models/*
+/.helomi/profiles/alexa/profile.override.yml
 /.helomi/settings.override.yml
 
 # Demo
 /demo/prompts/profiles/*
-!/demo/prompts/profiles/default.md
+!/demo/prompts/profiles/alexa.md
 
 # Native
 native/**/.build/

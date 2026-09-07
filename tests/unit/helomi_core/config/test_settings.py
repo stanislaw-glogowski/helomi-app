@@ -9,7 +9,7 @@ from helomi_core.resources.user import UserData
 def test_settings_load_success(temp_helomi_store: Path) -> None:
     resources = UserData(temp_helomi_store)
     settings = Settings.load(resources)
-    assert settings.profile.default == "default"
+    assert settings.profile.default == "alexa"
     assert settings.audio.adapter == "avfaudio"
     assert settings.root_path == temp_helomi_store
 

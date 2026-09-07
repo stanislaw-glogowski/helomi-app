@@ -8,7 +8,6 @@ public enum WireMessageKind: UInt8, Sendable {
   case shutdown = 3
   case reservedDuck = 4
   case reservedRestore = 5
-  case getDevices = 6
   case checkDuplex = 7
   case startAudio = 8
   case stopAudio = 9
@@ -23,7 +22,6 @@ public enum WireMessageKind: UInt8, Sendable {
   case playbackStopped = 131
   case playbackGainChanged = 132
   case diagnostic = 133
-  case devices = 134
   case duplexChecked = 135
   case audioStarted = 136
   case audioStopped = 137
@@ -65,52 +63,36 @@ public enum AudioStatusMode: String, Codable, Sendable {
 
 public struct StartAudioRequest: Codable, Equatable, Sendable {
   public let mode: AudioMode
-  public let inputIndex: Int?
-  public let outputIndex: Int?
+  public let voiceProcessing: Bool?
 
-  public init(mode: AudioMode, inputIndex: Int? = nil, outputIndex: Int? = nil) {
+  public init(
+    mode: AudioMode,
+    voiceProcessing: Bool? = nil
+  ) {
     self.mode = mode
-    self.inputIndex = inputIndex
-    self.outputIndex = outputIndex
+    self.voiceProcessing = voiceProcessing
+  }
+
+  public func validate() throws {}
+}
+
+public struct StartRoomVoiceRequest: Codable, Equatable, Sendable {
+  public let path: String
+
+  public init(path: String) {
+    self.path = path
   }
 
   public func validate() throws {
-    if inputIndex != nil && !mode.hasInput {
-      throw WireProtocolError.invalidPayload(
-        "inputIndex is not allowed for audio mode \(mode.rawValue)"
-      )
-    }
-    if outputIndex != nil && !mode.hasOutput {
-      throw WireProtocolError.invalidPayload(
-        "outputIndex is not allowed for audio mode \(mode.rawValue)"
-      )
-    }
-    if let inputIndex, inputIndex < 0 {
-      throw WireProtocolError.invalidPayload("inputIndex must not be negative")
-    }
-    if let outputIndex, outputIndex < 0 {
-      throw WireProtocolError.invalidPayload("outputIndex must not be negative")
+    if path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      throw WireProtocolError.invalidPayload("room voice path must not be empty")
     }
   }
 }
 
 public struct DuplexCheckRequest: Codable, Equatable, Sendable {
-  public let inputIndex: Int?
-  public let outputIndex: Int?
-
-  public init(inputIndex: Int? = nil, outputIndex: Int? = nil) {
-    self.inputIndex = inputIndex
-    self.outputIndex = outputIndex
-  }
-
-  public func validate() throws {
-    if let inputIndex, inputIndex < 0 {
-      throw WireProtocolError.invalidPayload("inputIndex must not be negative")
-    }
-    if let outputIndex, outputIndex < 0 {
-      throw WireProtocolError.invalidPayload("outputIndex must not be negative")
-    }
-  }
+  public init() {}
+  public func validate() throws {}
 }
 
 public struct PlaybackGainRequest: Codable, Equatable, Sendable {
@@ -139,46 +121,32 @@ public struct PlaybackGainPacket: Codable, Equatable, Sendable {
 
 public struct AudioStartedPacket: Codable, Equatable, Sendable {
   public let mode: AudioMode
-  public let input: AudioDeviceInfo?
-  public let output: AudioDeviceInfo?
   public let duplexInterruptionAvailable: Bool
 
   public init(
     mode: AudioMode,
-    input: AudioDeviceInfo?,
-    output: AudioDeviceInfo?,
     duplexInterruptionAvailable: Bool
   ) {
     self.mode = mode
-    self.input = input
-    self.output = output
     self.duplexInterruptionAvailable = duplexInterruptionAvailable
   }
 }
 
 public struct DuplexCheckedPacket: Codable, Equatable, Sendable {
   public let available: Bool
-  public let input: AudioDeviceInfo?
-  public let output: AudioDeviceInfo?
   public let reason: String?
 
   public init(
     available: Bool,
-    input: AudioDeviceInfo?,
-    output: AudioDeviceInfo?,
     reason: String? = nil
   ) {
     self.available = available
-    self.input = input
-    self.output = output
     self.reason = reason
   }
 }
 
 public struct AudioStatusPacket: Codable, Equatable, Sendable {
   public let audioMode: AudioStatusMode
-  public let input: AudioDeviceInfo?
-  public let output: AudioDeviceInfo?
   public let roomVoiceConfigured: Bool
   public let roomVoiceActive: Bool
   public let playbackGain: Float
@@ -187,8 +155,6 @@ public struct AudioStatusPacket: Codable, Equatable, Sendable {
 
   public init(
     audioMode: AudioStatusMode,
-    input: AudioDeviceInfo?,
-    output: AudioDeviceInfo?,
     roomVoiceConfigured: Bool,
     roomVoiceActive: Bool,
     playbackGain: Float,
@@ -196,8 +162,6 @@ public struct AudioStatusPacket: Codable, Equatable, Sendable {
     duplexInterruptionAvailable: Bool
   ) {
     self.audioMode = audioMode
-    self.input = input
-    self.output = output
     self.roomVoiceConfigured = roomVoiceConfigured
     self.roomVoiceActive = roomVoiceActive
     self.playbackGain = playbackGain

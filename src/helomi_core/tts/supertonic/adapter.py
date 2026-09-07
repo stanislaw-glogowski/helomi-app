@@ -24,6 +24,11 @@ class SupertonicAdapter(TTSAdapter[SupertonicConfig, SupertonicOptions]):
         options: SupertonicOptions,
     ) -> Iterator[Exception | TTSChunk]:
         try:
+            text = request.raw_text
+            if not text:
+                yield StopIteration()
+                return
+
             model = self._require_model()
 
             style = self._styles.get(options.voice_name)
@@ -36,7 +41,7 @@ class SupertonicAdapter(TTSAdapter[SupertonicConfig, SupertonicOptions]):
                 self._styles[options.voice_name] = style
 
             samples, _ = model.synthesize(
-                text=request.raw_text,
+                text=text,
                 voice_style=style,
                 total_steps=options.quality,
                 speed=options.speed,

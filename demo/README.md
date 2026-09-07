@@ -84,7 +84,7 @@ Configure your LLM provider and server settings in `.env`:
 API_BASE_URL=http://127.0.0.1:4356
 LLM_BASE_URL=http://localhost:11434/v1
 LLM_API_KEY=ollama
-LLM_MODEL_ID=llama3.2
+LLM_MODEL_ID=gemma4:e4b-mlx
 ```
 
 #### Example: OpenAI
@@ -127,7 +127,7 @@ The demo dynamically pairs each active voice profile with prompt definitions:
 
 1. **System Persona (`prompts/profiles/<profile_id>.md`)**: Defines the personality, traits, and response style of the
    profile.
-    - The repository includes the default profile prompt: `prompts/profiles/default.md`.
+    - The repository includes the default profile prompt: `prompts/profiles/alexa.md`.
     - To add personas for custom profiles configured in Helomi, create a markdown file matching your profile ID:
       `prompts/profiles/<profile_id>.md`.
 2. **Output Formatting (`prompts/instructions.md`)**: Shared rules ensuring LLM output is formatted for real-time speech

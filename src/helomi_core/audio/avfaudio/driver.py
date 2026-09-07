@@ -2,13 +2,12 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..domain import AudioMode, RawAudio
 from ..ports import AudioDriver
 from .config import AVFAudioConfig
 from .protocol import (
-    AudioDevicesPacket,
     AudioPacked,
     AudioStartedPacked,
     ErrorPacket,
@@ -16,14 +15,17 @@ from .protocol import (
     MessageKind,
     PackedMessage,
     StartAudioRequest,
+    StartRoomVoiceRequest,
     WireFrame,
 )
+
+if TYPE_CHECKING:
+    from ..config import AudioProfile
 
 
 class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
     _PROC_PATH: ClassVar[Path] = Path(__file__).resolve().parent / "bin" / "avfaudio"
     _PROC_TIMEOUT: ClassVar[float] = 3.0
-    _PROC_ROOM_VOICE_ARG: ClassVar[str] = "--room-voice"
 
     def __init__(self, config, mode) -> None:
         super().__init__(config, mode)
@@ -58,20 +60,23 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
 
     async def interrupt(self) -> bool:
         self._require_ready(AudioMode.DUPLEX)
-        if self._playback_counter > 0:
-            await self._send_wait(MessageKind.STOP_PLAYBACK)
-            return True
-        return False
+        self._playback_counter = 0
+        await self._send_wait(MessageKind.STOP_PLAYBACK)
+        return True
 
-    async def start_room_voice(self):
-        self._require_ready(AudioMode.OUTPUT)
-        if self._config.room_voice_path:
-            await self._send_wait(MessageKind.START_ROOM_VOICE)
+    async def activate(self, profile: AudioProfile) -> None:
+        if profile.room_voice_path is None:
+            return
 
-    async def stop_room_voice(self):
         self._require_ready(AudioMode.OUTPUT)
-        if self._config.room_voice_path:
-            await self._send_wait(MessageKind.STOP_ROOM_VOICE)
+        await self._send_wait(
+            MessageKind.START_ROOM_VOICE,
+            StartRoomVoiceRequest(path=str(profile.room_voice_path)),
+        )
+
+    async def deactivate(self) -> None:
+        self._require_ready(AudioMode.OUTPUT)
+        await self._send_wait(MessageKind.STOP_ROOM_VOICE)
 
     def _send(self, kind: MessageKind, msg: PackedMessage | None = None) -> bool:
         proc = self._require_proc()
@@ -99,14 +104,8 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
         if self._proc is not None:
             return
 
-        cfg = self._config
-
         proc_path = str(self._PROC_PATH)
         proc_args: list[str] = []
-
-        if cfg.room_voice_path:
-            proc_args.append(self._PROC_ROOM_VOICE_ARG)
-            proc_args.append(str(cfg.room_voice_path))
 
         self._proc = await asyncio.create_subprocess_exec(
             proc_path,
@@ -120,10 +119,12 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
         await asyncio.wait_for(self._ready_signal.wait(), timeout=self._PROC_TIMEOUT)
 
     async def _post_open(self) -> None:
+        cfg = self._config
         await self._send_wait(
             MessageKind.START_AUDIO,
             StartAudioRequest(
                 mode=self._mode,
+                voice_processing=cfg.voice_processing,
             ),
         )
 
@@ -185,9 +186,6 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
                     frame.unpack_msg(HandshakePacked).verify()
                     self._ready_signal.set()
 
-                case MessageKind.DEVICES:
-                    result = frame.unpack_msg(AudioDevicesPacket)
-
                 case MessageKind.CAPTURE:
                     if not self._capture_queues:
                         continue
@@ -213,9 +211,17 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
                     self._playback_counter = 0
 
                 case MessageKind.ERROR:
-                    self._logger.warning(frame.unpack_msg(ErrorPacket))
+                    error_packet = frame.unpack_msg(ErrorPacket)
+                    self._logger.warning(error_packet)
                     if not self._ready_signal.is_set():
                         return
+                    if frame.request_id in self._pending_requests:
+                        future = self._pending_requests.pop(frame.request_id, None)
+                        if future and not future.done():
+                            future.set_exception(
+                                RuntimeError(f"AVFAudio error: {error_packet.message}")
+                            )
+                        continue
 
                 case _:
                     self._logger.trace("Unhandled frame kind: {}", frame.kind.name)

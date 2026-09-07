@@ -2,6 +2,41 @@
 
 All notable changes to Helomi are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Default Profile (`alexa`)**:
+    - Established `alexa` as the official default assistant profile across `.helomi/settings.yml`, `Profile.DEFAULT_ID`, and CLI/API interfaces.
+    - Automatic wake-word model installation for Alexa (`alexa_v0.1.onnx`) into `.helomi/profiles/alexa/models/` via `helomi-cli install`.
+- **Profile Customization (`emoji`, `readonly`, `room_voice_path`)**:
+    - Added `emoji` field to `Profile` with single-emoji validation, displayed in the macOS system tray when the profile is active.
+    - Added `readonly` flag to `Profile` model schema.
+    - Added `audio.room_voice_path` to support continuous ambient room soundscapes upon profile activation.
+- **Enhanced macOS System Tray (`helomi_tray`) UX**:
+    - Added keyboard shortcuts for rapid menu actions: profile selection (`0`–`8`), API Server (`a`), Parrot Mode (`p`), and quitting (`q`).
+    - Added dynamic status bar icons: active profile emoji (or `🤖` fallback), idle listening (`👂`), parrot mode (`🦜`), and exiting (`💤`).
+    - Implemented clean signal handling for `SIGINT` (`Ctrl+C`) and `SIGTERM`.
+
+### Changed
+
+- **Audio Driver Architecture (`AudioDriver`)**:
+    - Replaced `start_room_voice()` and `stop_room_voice()` with profile-aware lifecycle hooks `activate(profile: AudioProfile)` and `deactivate()`.
+    - Streamlined native Swift `AVFAudio` engine wire protocol (`startRoomVoice` payload with file path, removed deprecated audio device listing).
+- **Pipeline Robustness & Input Filtering**:
+    - Added whitespace and empty text validation in `SayText` command handling and `ParrotExtension`, avoiding redundant TTS synthesis.
+    - Wrapped audio driver activation in `PipelineService` with graceful error recovery to prevent audio playback errors from blocking assistant activation.
+- **Documentation & Examples Overhaul**:
+    - Updated all documentation (`README.md`, `docs/profiles.md`, `docs/settings.md`, `docs/audio.md`, `docs/apps.md`, `docs/api.md`, `docs/examples.md`) to reflect `alexa` as the default profile, `avfaudio.voice_processing`, ambient audio, and system tray shortcuts.
+    - Updated TypeScript demo client (`demo/README.md`) to pair with `prompts/profiles/alexa.md`.
+
+### Fixed
+
+- Implemented `activate` and `deactivate` in `MockAudioDriver` test fixture to satisfy abstract interface requirements.
+- Updated `TrayApp._render_title` test invocations to match the new positional parameter signature.
+- Fixed `Profile.model_post_init` to safely handle missing or non-dict initialization context.
+- Expanded automated unit test suite to 174 passing tests with 95.97% branch coverage.
+
 ## [0.6.0] - 2026-09-04
 
 ### Added

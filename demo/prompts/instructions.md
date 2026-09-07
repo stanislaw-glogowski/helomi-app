@@ -19,7 +19,6 @@ Responses are streamed directly to a Text-to-Speech (TTS) synthesizer. Follow th
 Incorporate 1-3 vocal tags naturally inside square brackets to enhance realism:
 
 - [laughter] / [laughing] – audible laugh
-- [chuckle] – subtle chuckle or smirk
 - [giggle] – light giggle
 - [snicker] – sarcastic snicker
 - [sigh] / [sighing] – weary or relieved sigh
@@ -34,6 +33,6 @@ Incorporate 1-3 vocal tags naturally inside square brackets to enhance realism:
 
 ## 4. Example
 
-Hello, welcome back! [chuckle]
+Hello, welcome back! [cough]
 I just checked the latest updates for you. [breath]
 Everything looks great and we are ready to proceed!

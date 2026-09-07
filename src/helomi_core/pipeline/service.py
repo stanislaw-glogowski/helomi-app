@@ -180,7 +180,7 @@ class PipelineService(PipelineComponent):
         )
 
     async def _do_close(self) -> None:
-        await self._audio_driver.stop_room_voice()
+        await self._audio_driver.deactivate()
         for subscription in self._event_subscriptions:
             subscription.put_nowait(None)
         self._event_subscriptions.clear()
@@ -257,7 +257,11 @@ class PipelineService(PipelineComponent):
         while True:
             request = await self._tts_queue.get()
 
-            if not request.is_valid or (profile := self._active_profile) is None:
+            if (
+                not request.is_valid
+                or not request.data.raw_text
+                or (profile := self._active_profile) is None
+            ):
                 continue
 
             try:
@@ -294,10 +298,8 @@ class PipelineService(PipelineComponent):
 
         PipelineRequest.bump_generation()
 
-        if self._active_profile is None:
-            await self._audio_driver.start_room_voice()
-            await self._detection_worker.change_mode(DetectionMode.UTTERANCE)
-        else:
+        if self._active_profile is not None:
+            await self._audio_driver.deactivate()
             self._dispatch_event(
                 ProfileDeactivated(
                     profile_id=self._active_profile.id,
@@ -313,6 +315,13 @@ class PipelineService(PipelineComponent):
             )
         )
 
+        try:
+            await self._audio_driver.activate(profile.audio)
+        except Exception:
+            self._logger.warning("Failed to activate audio for profile {}", profile.id)
+
+        await self._detection_worker.change_mode(DetectionMode.UTTERANCE)
+
         return True
 
     async def _handle_deactivate_profile(self, cmd: DeactivateProfile) -> bool:
@@ -320,7 +329,7 @@ class PipelineService(PipelineComponent):
         if profile is None:
             return False
 
-        await self._audio_driver.stop_room_voice()
+        await self._audio_driver.deactivate()
         await self._detection_worker.change_mode(DetectionMode.PROFILE)
 
         self._active_profile = None
@@ -336,6 +345,9 @@ class PipelineService(PipelineComponent):
         return True
 
     async def _handle_say_text(self, cmd: SayText) -> bool:
+        if not cmd.text or not cmd.text.strip():
+            return False
+
         match self._active_profile:
             case None:
                 await self._handle_activate_profile(

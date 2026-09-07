@@ -8,7 +8,7 @@ class ParrotExtension(PipelineExtension):
     async def _pipeline_loop(self) -> None:
         async for event in self._subscribe_event():
             match event:
-                case TranscriptionReady(text=text):
+                case TranscriptionReady(text=text) if text and text.strip():
                     await self._execute_command(
                         SayText(
                             text=text,

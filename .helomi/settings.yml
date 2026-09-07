@@ -1,5 +1,5 @@
 profile:
-  default: "default"
+  default: "alexa"
 
 server:
   host: "127.0.0.1"
@@ -8,9 +8,7 @@ server:
 audio:
   adapter: "avfaudio"
   avfaudio:
-    input_index: # optional
-    output_index: # optional
-    room_voice_path: # optional
+    voice_processing: true
 
 stt:
   adapter: "parakeet" # options: parakeet, whisper
@@ -22,7 +20,7 @@ stt:
     language: "en"
 
 tts:
-  adapter: "supertonic" # options: supertonic, voxcpm2
+  adapter: "voxcpm2" # options: supertonic, voxcpm2
   supertonic:
     model_id: "Supertone/supertonic-3" # huggingface model id
     language: "en"

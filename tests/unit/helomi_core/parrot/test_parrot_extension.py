@@ -26,3 +26,21 @@ async def test_parrot_extension_echoes_transcription() -> None:
     called_cmd = mock_pipeline.execute_command.call_args[0][0]
     assert isinstance(called_cmd, SayText)
     assert called_cmd.text == "echo this"
+
+
+@pytest.mark.asyncio
+async def test_parrot_extension_ignores_empty_transcription() -> None:
+    mock_pipeline = MagicMock(spec=PipelineService)
+    mock_pipeline.execute_command = AsyncMock(return_value=True)
+
+    async def fake_subscribe(_=None):
+        yield TranscriptionReady(profile_id="p1", text="")
+        yield TranscriptionReady(profile_id="p1", text="   ")
+
+    mock_pipeline.subscribe_event = fake_subscribe
+
+    parrot = ParrotExtension(mock_pipeline)
+    async with parrot:
+        await asyncio.sleep(0.05)
+
+    mock_pipeline.execute_command.assert_not_called()

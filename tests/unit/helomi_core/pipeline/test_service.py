@@ -1,9 +1,10 @@
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from helomi_core.audio import AudioDriver, RawAudio
+from helomi_core.audio import AudioDriver, AudioProfile, RawAudio
 from helomi_core.config.profile import Profile
 from helomi_core.detection import (
     DetectionWorker,
@@ -36,12 +37,18 @@ def mock_profiles():
     prof1 = MagicMock(spec=Profile)
     prof1.id = "prof1"
     prof1.name = "Profile One"
+    prof1.audio = AudioProfile.model_construct(
+        room_voice_path=Path("/path/to/room1.wav"),
+    )
     prof1.stt = MagicMock()
     prof1.tts = MagicMock()
 
     prof2 = MagicMock(spec=Profile)
     prof2.id = "prof2"
     prof2.name = "Profile Two"
+    prof2.audio = AudioProfile.model_construct(
+        room_voice_path=Path("/path/to/room2.wav"),
+    )
     prof2.stt = MagicMock()
     prof2.tts = MagicMock()
 
@@ -58,8 +65,8 @@ def mock_profiles():
 @pytest.fixture
 def mock_service(mock_profiles):
     audio_driver = MagicMock(spec=AudioDriver)
-    audio_driver.start_room_voice = AsyncMock()
-    audio_driver.stop_room_voice = AsyncMock()
+    audio_driver.activate = AsyncMock()
+    audio_driver.deactivate = AsyncMock()
     audio_driver.interrupt = AsyncMock(return_value=False)
     audio_driver.play = MagicMock()
 
@@ -110,7 +117,7 @@ async def test_pipeline_service_activation_flow(mock_service) -> None:
     res = await service.execute_command(ActivateProfile(profile_id="prof1"))
     assert res is True
     assert service.active_profile.id == "prof1"
-    audio_driver.start_room_voice.assert_called_once()
+    audio_driver.activate.assert_called_once_with(service.profiles.get("prof1").audio)
     det_worker.change_mode.assert_called_once()
 
     # Re-activating the same profile returns False
@@ -121,12 +128,15 @@ async def test_pipeline_service_activation_flow(mock_service) -> None:
     res = await service.execute_command(ActivateProfile(profile_id="prof2"))
     assert res is True
     assert service.active_profile.id == "prof2"
+    audio_driver.deactivate.assert_called_once()
+    assert audio_driver.activate.call_count == 2
+    audio_driver.activate.assert_called_with(service.profiles.get("prof2").audio)
 
     # Deactivating profile
     res = await service.execute_command(DeactivateProfile())
     assert res is True
     assert service.active_profile is None
-    audio_driver.stop_room_voice.assert_called_once()
+    assert audio_driver.deactivate.call_count == 2
 
     # Deactivating when already None returns False
     res = await service.execute_command(DeactivateProfile())
@@ -161,6 +171,22 @@ async def test_pipeline_service_say_text(mock_service) -> None:
     # SayText with mismatching profile returns False
     res = await service.execute_command(SayText(text="Mismatch", profile_id="prof2"))
     assert res is False
+
+
+@pytest.mark.asyncio
+async def test_pipeline_service_start_room_voice_error(mock_service) -> None:
+    service, audio_driver, _, _, _ = mock_service
+    audio_driver.activate.side_effect = RuntimeError("audio_conversion_failed")
+
+    # Initial activation handles activate failure gracefully
+    res = await service.execute_command(ActivateProfile(profile_id="prof1"))
+    assert res is True
+    assert service.active_profile.id == "prof1"
+
+    # Switching profiles handles activate failure gracefully
+    res = await service.execute_command(ActivateProfile(profile_id="prof2"))
+    assert res is True
+    assert service.active_profile.id == "prof2"
 
 
 @pytest.mark.asyncio
@@ -355,3 +381,16 @@ async def test_pipeline_service_stt_tts_and_playback_loops(mock_service) -> None
     await asyncio.gather(
         sub_task, stt_task, tts_task, playback_task, return_exceptions=True
     )
+
+
+@pytest.mark.asyncio
+async def test_pipeline_service_say_text_empty(mock_service) -> None:
+    service, _, _, _, _ = mock_service
+    await service.execute_command(ActivateProfile(profile_id="prof1"))
+
+    # Empty text returns False
+    res = await service.execute_command(SayText(text=""))
+    assert res is False
+
+    res = await service.execute_command(SayText(text="   "))
+    assert res is False

@@ -1,5 +1,11 @@
-from .config import AudioSettings
-from .domain import AudioChunk, AudioFile, AudioFormat, AudioMode, RawAudio
+from .config import AudioProfile, AudioSettings
+from .domain import (
+    AudioChunk,
+    AudioFile,
+    AudioFormat,
+    AudioMode,
+    RawAudio,
+)
 from .ports import AudioDriver
 from .resampler import AudioResampler
 
@@ -23,6 +29,7 @@ __all__ = [
     "AudioFile",
     "AudioFormat",
     "AudioMode",
+    "AudioProfile",
     "AudioResampler",
     "AudioSettings",
     "RawAudio",

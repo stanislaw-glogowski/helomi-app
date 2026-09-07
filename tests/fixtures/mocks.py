@@ -5,7 +5,14 @@ from typing import Any
 
 import numpy as np
 
-from helomi_core.audio import AudioChunk, AudioDriver, AudioFormat, AudioMode, RawAudio
+from helomi_core.audio import (
+    AudioChunk,
+    AudioDriver,
+    AudioFormat,
+    AudioMode,
+    AudioProfile,
+    RawAudio,
+)
 from helomi_core.resources import ResourceCatalog
 from helomi_core.stt import STTAdapter, STTChunk, STTRequest
 from helomi_core.tts import TTSAdapter, TTSChunk, TTSRequest
@@ -25,6 +32,8 @@ class MockAudioDriver(AudioDriver[Any]):
         self.played_audio: list[RawAudio] = []
         self.interrupt_count = 0
         self.room_voice_started = False
+        self.room_voice_path: Path | str | None = None
+        self.activated_profile: AudioProfile | None = None
         self._initial_chunks: list[RawAudio] = incoming_chunks or []
         self._incoming_queue: asyncio.Queue[RawAudio] | None = None
 
@@ -59,10 +68,14 @@ class MockAudioDriver(AudioDriver[Any]):
         self.interrupt_count += 1
         return True
 
-    async def start_room_voice(self) -> None:
-        self.room_voice_started = True
+    async def activate(self, profile: AudioProfile) -> None:
+        self.activated_profile = profile
+        if profile.room_voice_path:
+            self.room_voice_started = True
+            self.room_voice_path = profile.room_voice_path
 
-    async def stop_room_voice(self) -> None:
+    async def deactivate(self) -> None:
+        self.activated_profile = None
         self.room_voice_started = False
 
 

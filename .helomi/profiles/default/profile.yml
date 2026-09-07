@@ -1,5 +1,0 @@
-name: Alexa
-
-wakeword:
-  openwakeword:
-    model_path: "path://models/alexa_v0.1.onnx"

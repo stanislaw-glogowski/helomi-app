@@ -185,7 +185,7 @@ try {
       `\n${ANSI_STYLES.red}${ANSI_STYLES.bold}[ERROR]${ANSI_STYLES.reset} Could not connect to Helomi server at ${API_BASE_URL}.`,
     );
     console.error(
-      `${ANSI_STYLES.dim}Ensure the Helomi server is running via:${ANSI_STYLES.reset} ${ANSI_STYLES.yellow}uv run helomi-cli serve${ANSI_STYLES.reset}\n`,
+      `${ANSI_STYLES.dim}Ensure the Helomi server is running${ANSI_STYLES.reset}\n`,
     );
   } else {
     console.error(

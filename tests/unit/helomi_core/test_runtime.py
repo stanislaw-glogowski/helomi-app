@@ -13,7 +13,7 @@ async def test_runtime_initialization_and_components(temp_helomi_store: Path) ->
     runtime = Runtime(catalog)
 
     assert runtime.resources is catalog
-    assert runtime.settings.profile.default == "default"
+    assert runtime.settings.profile.default == "alexa"
     assert len(runtime.profiles) == 1
 
     with (

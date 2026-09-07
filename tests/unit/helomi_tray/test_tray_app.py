@@ -22,18 +22,20 @@ def mock_runtime():
     runtime = MagicMock()
 
     mock_profile1 = MagicMock()
-    mock_profile1.id = "default"
-    mock_profile1.name = "Default Assistant"
+    mock_profile1.id = "alexa"
+    mock_profile1.name = "Alexa"
+    mock_profile1.emoji = "👩🏻"
 
     mock_profile2 = MagicMock()
     mock_profile2.id = "gizmo"
     mock_profile2.name = "Gizmo"
+    mock_profile2.emoji = None
 
     profiles = MagicMock()
     profiles.__iter__.return_value = [mock_profile1, mock_profile2]
 
     def _get_profile(pid: str | None):
-        return mock_profile1 if pid == "default" else mock_profile2
+        return mock_profile1 if pid in ("alexa", None) else mock_profile2
 
     profiles.get.side_effect = _get_profile
 
@@ -51,16 +53,20 @@ def test_tray_app_initialization(mock_runtime):
     assert app._state.extension_key is ServerExtension
     assert app._state.server_url is None
 
-    assert "default" in app._menu_profiles
+    assert "alexa" in app._menu_profiles
     assert "gizmo" in app._menu_profiles
+    assert app._menu_profiles["alexa"].key == "0"
+    assert app._menu_profiles["gizmo"].key == "1"
     assert ServerExtension in app._menu_extensions
     assert ParrotExtension in app._menu_extensions
+    assert app._menu_extensions[ServerExtension].key == "a"
+    assert app._menu_extensions[ParrotExtension].key == "p"
 
 
 def test_tray_app_render_title():
     """Verify _render_title formats icons and labels correctly."""
-    assert TrayApp._render_title() == f"{TryIcon.START} Helomi"
-    title = TrayApp._render_title("Custom", TryIcon.PARROT)
+    assert TrayApp._render_title(TryIcon.START) == f"{TryIcon.START} Helomi"
+    title = TrayApp._render_title(TryIcon.PARROT, "Custom")
     assert title == f"{TryIcon.PARROT} Custom"
 
 
@@ -68,23 +74,44 @@ def test_tray_app_sync_ui_running(mock_runtime):
     """Verify _sync_ui updates menus, title, and extension states when running."""
     app = TrayApp(runtime=mock_runtime)
 
-    # Transition from STARTING to RUNNING with SERVER extension and active profile
+    # Transition from STARTING to RUNNING with SERVER extension
+    # and active alexa profile (with emoji)
     app._state = TrayState(
         status=TrayStatus.RUNNING,
-        profile_id="default",
+        profile_id="alexa",
         extension_key=ServerExtension,
         server_url="http://127.0.0.1:8181",
     )
     app._sync_ui(None)
 
-    assert app.title == f"{TryIcon.ROBOT} Default Assistant"
-    assert app._menu_profiles["default"].state == 1
+    assert app.title == "👩🏻 Alexa"
+    assert app._menu_profiles["alexa"].state == 1
     assert app._menu_profiles["gizmo"].state == 0
     assert app._menu_extensions[ServerExtension].state == 1
     assert app._menu_extensions[ParrotExtension].state == 0
     assert "http://127.0.0.1:8181" in app._menu_extensions[ServerExtension].title
 
-    # Switch profile to None (idle)
+    # Transition with active gizmo profile (emoji is None -> fallback to ROBOT icon)
+    app._state = TrayState(
+        status=TrayStatus.RUNNING,
+        profile_id="gizmo",
+        extension_key=ServerExtension,
+        server_url="http://127.0.0.1:8181",
+    )
+    app._sync_ui(None)
+    assert app.title == f"{TryIcon.ROBOT} Gizmo"
+
+    # Transition with active profile and ParrotExtension
+    app._state = TrayState(
+        status=TrayStatus.RUNNING,
+        profile_id="alexa",
+        extension_key=ParrotExtension,
+        server_url="http://127.0.0.1:8181",
+    )
+    app._sync_ui(None)
+    assert app.title == f"{TryIcon.PARROT} Alexa"
+
+    # Switch profile to None (idle -> EAR icon)
     app._state = TrayState(
         status=TrayStatus.RUNNING,
         profile_id=None,
@@ -93,8 +120,8 @@ def test_tray_app_sync_ui_running(mock_runtime):
     )
     app._sync_ui(None)
 
-    assert app.title == f"{TryIcon.PARROT} Helomi"
-    assert app._menu_profiles["default"].state == 0
+    assert app.title == f"{TryIcon.EAR} Helomi"
+    assert app._menu_profiles["alexa"].state == 0
     assert app._menu_extensions[ServerExtension].state == 0
     assert app._menu_extensions[ParrotExtension].state == 1
 
@@ -116,7 +143,7 @@ def test_tray_app_handle_toggle_profile(mock_runtime):
     app._pipeline_execute_command = MagicMock()
 
     # If item is currently active (state == 1), clicking deactivates
-    item = app._menu_profiles["default"]
+    item = app._menu_profiles["alexa"]
     item.state = 1
     app._handle_toggle_profile(item)
     app._pipeline_execute_command.assert_called_once()
@@ -129,7 +156,7 @@ def test_tray_app_handle_toggle_profile(mock_runtime):
     app._pipeline_execute_command.assert_called_once()
     cmd = app._pipeline_execute_command.call_args[0][0]
     assert isinstance(cmd, ActivateProfile)
-    assert cmd.profile_id == "default"
+    assert cmd.profile_id == "alexa"
 
 
 def test_tray_app_handle_toggle_extension(mock_runtime):
@@ -156,6 +183,7 @@ def test_tray_app_pipeline_set_activate_extension(mock_runtime):
     app = TrayApp(runtime=mock_runtime)
     app._pipeline = MagicMock()
     mock_loop = MagicMock()
+    mock_loop.is_closed.return_value = False
     app._loop = mock_loop
 
     with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
@@ -166,12 +194,20 @@ def test_tray_app_pipeline_set_activate_extension(mock_runtime):
     app._pipeline = None
     app._pipeline_set_activate_extension(ParrotExtension)
 
+    # When loop is closed, does nothing
+    app._pipeline = MagicMock()
+    mock_loop.is_closed.return_value = True
+    with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
+        app._pipeline_set_activate_extension(ParrotExtension)
+        mock_run_coro.assert_not_called()
+
 
 def test_tray_app_pipeline_execute_command(mock_runtime):
     """Verify _pipeline_execute_command runs pipeline command on event loop."""
     app = TrayApp(runtime=mock_runtime)
     app._pipeline = MagicMock()
     mock_loop = MagicMock()
+    mock_loop.is_closed.return_value = False
     app._loop = mock_loop
 
     with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
@@ -182,6 +218,13 @@ def test_tray_app_pipeline_execute_command(mock_runtime):
     # Without pipeline or loop, does nothing
     app._pipeline = None
     app._pipeline_execute_command(cmd)
+
+    # When loop is closed, does nothing
+    app._pipeline = MagicMock()
+    mock_loop.is_closed.return_value = True
+    with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
+        app._pipeline_execute_command(cmd)
+        mock_run_coro.assert_not_called()
 
 
 def test_tray_app_handle_quit_and_exit(mock_runtime):
@@ -280,6 +323,45 @@ def test_tray_app_thread_worker(mock_runtime):
         mock_r_loop.assert_called_once()
 
 
+def test_tray_app_thread_worker_exception(mock_runtime):
+    """Verify _thread_worker logs exception when runtime loop fails."""
+    app = TrayApp(runtime=mock_runtime)
+    with (
+        patch.object(app, "_runtime_loop", side_effect=RuntimeError("boom")),
+        patch.object(app._logger, "exception") as mock_log,
+    ):
+        app._thread_worker()
+        mock_log.assert_called_once()
+
+
+def test_tray_app_thread_worker_cancelled(mock_runtime):
+    """Verify _thread_worker cleanly suppresses CancelledError and KeyboardInterrupt."""
+    app = TrayApp(runtime=mock_runtime)
+    with patch.object(app, "_runtime_loop", side_effect=asyncio.CancelledError):
+        app._thread_worker()
+
+    with patch.object(app, "_runtime_loop", side_effect=KeyboardInterrupt):
+        app._thread_worker()
+
+
+def test_tray_app_many_profiles_keys():
+    """Verify profiles with index >= 9 do not receive a single-digit shortcut."""
+    runtime = MagicMock()
+    mock_profiles = [
+        MagicMock(id=f"prof_{i}", name=f"Profile {i}", emoji=None) for i in range(12)
+    ]
+    profiles = MagicMock()
+    profiles.__iter__.return_value = mock_profiles
+    profiles.get.return_value = mock_profiles[0]
+    runtime.profiles = profiles
+
+    app = TrayApp(runtime=runtime)
+    assert app._menu_profiles["prof_0"].key == "0"
+    assert app._menu_profiles["prof_8"].key == "8"
+    assert not app._menu_profiles["prof_9"].key
+    assert not app._menu_profiles["prof_10"].key
+
+
 def test_tray_app_run(mock_runtime):
     """Verify run starts worker thread and calls rumps.App.run."""
     app = TrayApp(runtime=mock_runtime)
@@ -303,37 +385,62 @@ def test_tray_main_and_run():
         assert args.debug
 
     with (
-        patch("asyncio.run") as mock_asyncio_run,
+        patch("helomi_tray.main.run") as mock_run,
         patch("helomi_tray.main.configure_logger") as mock_conf,
         patch.object(sys, "argv", ["helomi-tray"]),
     ):
-        mock_asyncio_run.side_effect = lambda coro: coro.close()
         main()
         mock_conf.assert_called_once()
-        mock_asyncio_run.assert_called_once()
+        mock_run.assert_called_once()
 
 
-@pytest.mark.asyncio
-async def test_tray_run_function():
-    """Verify _run instantiates Runtime and TrayApp."""
+def test_tray_run_function():
+    """Verify run instantiates Runtime and TrayApp and handles signals."""
     with (
         patch("helomi_tray.main.Runtime") as mock_runtime_cls,
         patch("helomi_tray.main.TrayApp") as mock_tray_cls,
+        patch("signal.signal") as mock_signal,
     ):
         mock_app = mock_tray_cls.return_value
         args = MagicMock()
         args.debug = False
-        await run(args)
+        run(args)
         mock_runtime_cls.assert_called_once()
         mock_tray_cls.assert_called_once_with(runtime=mock_runtime_cls.return_value)
         mock_app.run.assert_called_once()
+        assert mock_signal.call_count == 2
+
+        # Test signal handler
+        handler = mock_signal.call_args_list[0][0][1]
+        handler(2, None)
+        mock_app.quit.assert_called_once()
+
+    # Test KeyboardInterrupt
+    with (
+        patch("helomi_tray.main.Runtime"),
+        patch("helomi_tray.main.TrayApp") as mock_tray_cls,
+        patch("signal.signal"),
+    ):
+        mock_app = mock_tray_cls.return_value
+        mock_app.run.side_effect = KeyboardInterrupt
+        args = MagicMock()
+        run(args)
+        mock_app.quit.assert_called_once()
+
+
+def test_tray_quit_calls_handle_quit(mock_runtime):
+    """Verify app.quit delegates to _handle_quit."""
+    app = TrayApp(runtime=mock_runtime)
+    with patch.object(app, "_handle_quit") as mock_handle:
+        app.quit()
+        mock_handle.assert_called_once_with(None)
 
 
 def test_tray_package_main_execution():
     """Verify running helomi_tray __main__."""
     with (
-        patch("asyncio.run") as mock_asyncio_run,
+        patch("helomi_tray.main.run") as mock_run,
         patch.object(sys, "argv", ["helomi-tray"]),
     ):
-        mock_asyncio_run.side_effect = lambda coro: coro.close()
         runpy.run_module("helomi_tray", run_name="__main__")
+        mock_run.assert_called_once()

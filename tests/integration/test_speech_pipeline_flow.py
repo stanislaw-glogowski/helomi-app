@@ -65,12 +65,12 @@ async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockLocalCatalog):
             await asyncio.sleep(0.02)
 
             # 1. Simulate Profile Activation
-            await pipeline.execute_command(ActivateProfile(profile_id="default"))
+            await pipeline.execute_command(ActivateProfile(profile_id="alexa"))
             await asyncio.sleep(0.05)
 
             assert len(received_events) >= 1
             assert isinstance(received_events[-1], ProfileActivated)
-            assert received_events[-1].profile_id == "default"
+            assert received_events[-1].profile_id == "alexa"
 
             # 2. Simulate Speech-to-Text input directly through queue
             speech_chunk = create_audio_chunk(sample_rate=16000, num_samples=512)

@@ -1,5 +1,5 @@
 import argparse
-import asyncio
+import signal
 import warnings
 
 from helomi_common import LogLevel, configure_logger
@@ -30,10 +30,20 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-async def run(_: argparse.Namespace) -> None:
+def run(_: argparse.Namespace) -> None:
     runtime = Runtime()
     app = TrayApp(runtime=runtime)
-    app.run()
+
+    def _signal_handler(_sig: int, _frame: object) -> None:
+        app.quit()
+
+    signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
+
+    try:
+        app.run()
+    except KeyboardInterrupt:
+        app.quit()
 
 
 def main() -> None:
@@ -41,7 +51,7 @@ def main() -> None:
     configure_logger(
         LogLevel.TRACE if args.debug else LogLevel.INFO,
     )
-    asyncio.run(run(args))
+    run(args)
 
 
 if __name__ == "__main__":

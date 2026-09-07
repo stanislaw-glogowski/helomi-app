@@ -62,7 +62,7 @@ def sample_settings_dict(tmp_path: Path) -> dict[str, Any]:
 
     return {
         "profile": {
-            "default": "default",
+            "default": "alexa",
         },
         "audio": {
             "adapter": "avfaudio",
@@ -102,8 +102,8 @@ def sample_profiles_dict(tmp_path: Path) -> dict[str, dict[str, Any]]:
     model_file.touch()
 
     return {
-        "default": {
-            "name": "Default",
+        "alexa": {
+            "name": "Alexa",
             "stt": {
                 "adapter": "parakeet",
                 "parakeet": {},
@@ -118,8 +118,8 @@ def sample_profiles_dict(tmp_path: Path) -> dict[str, dict[str, Any]]:
                     "model_path": str(model_file),
                 },
             },
-            "id": "default",
-            "root_path": tmp_path / "profiles" / "default",
+            "id": "alexa",
+            "root_path": tmp_path / "profiles" / "alexa",
         }
     }
 
@@ -186,7 +186,7 @@ def temp_helomi_store(tmp_path: Path) -> Path:
     settings_file = store_dir / "settings.yml"
     settings_data = {
         "profile": {
-            "default": "default",
+            "default": "alexa",
         },
         "audio": {
             "adapter": "avfaudio",
@@ -219,16 +219,16 @@ def temp_helomi_store(tmp_path: Path) -> Path:
     settings_file.write_text(yaml.safe_dump(settings_data), encoding="utf-8")
 
     profiles_dir = store_dir / "profiles"
-    default_profile_dir = profiles_dir / "default"
-    default_profile_dir.mkdir(parents=True)
-    default_models = default_profile_dir / "models"
-    default_models.mkdir()
-    default_model_file = default_models / "model.onnx"
-    default_model_file.touch()
+    alexa_profile_dir = profiles_dir / "alexa"
+    alexa_profile_dir.mkdir(parents=True)
+    alexa_models = alexa_profile_dir / "models"
+    alexa_models.mkdir()
+    alexa_model_file = alexa_models / "model.onnx"
+    alexa_model_file.touch()
 
-    default_profile_file = default_profile_dir / "profile.yml"
-    default_profile_data = {
-        "name": "Default Profile",
+    alexa_profile_file = alexa_profile_dir / "profile.yml"
+    alexa_profile_data = {
+        "name": "Alexa",
         "stt": {
             "adapter": "parakeet",
             "parakeet": {},
@@ -244,8 +244,6 @@ def temp_helomi_store(tmp_path: Path) -> Path:
             },
         },
     }
-    default_profile_file.write_text(
-        yaml.safe_dump(default_profile_data), encoding="utf-8"
-    )
+    alexa_profile_file.write_text(yaml.safe_dump(alexa_profile_data), encoding="utf-8")
 
     return store_dir

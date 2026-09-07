@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum, auto
 from typing import Annotated, ClassVar, Protocol, Self, overload
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic.alias_generators import to_camel
 
 from ..domain import (
@@ -32,7 +32,7 @@ class MessageKind(IntEnum):
     SHUTDOWN = 3
     # 4 RESERVED
     # 5 RESERVED
-    GET_DEVICES = 6
+    # 6 RESERVED
     CHECK_DUPLEX = 7
     START_AUDIO = 8
     STOP_AUDIO = 9
@@ -47,7 +47,7 @@ class MessageKind(IntEnum):
     PLAYBACK_STOPPED = 131
     PLAYBACK_GAIN_CHANGED = 132
     DIAGNOSTIC = 133
-    DEVICES = 134
+    # 134 RESERVED
     DUPLEX_CHECKED = 135
     AUDIO_STARTED = 136
     AUDIO_STOPPED = 137
@@ -252,21 +252,8 @@ class ErrorPacket(JSONPacket):
     fatal: bool
 
 
-class AudioDevicePacked(JSONPacket):
-    uid: str | None = None
-    index: Annotated[int, Field(ge=0)]
-    name: Annotated[str, Field(min_length=1)]
-    is_default: bool
-
-
-class AudioDevicesPacket(JSONPacket):
-    input: tuple[AudioDevicePacked, ...]
-    output: tuple[AudioDevicePacked, ...]
-
-
 class CheckDuplexPacked(JSONPacket):
-    input_index: Annotated[int, Field(ge=0)] | None = None
-    output_index: Annotated[int, Field(ge=0)] | None = None
+    pass
 
 
 class PlaybackGainChangedPacked(JSONPacket):
@@ -275,22 +262,16 @@ class PlaybackGainChangedPacked(JSONPacket):
 
 class AudioStartedPacked(JSONPacket):
     mode: AudioMode
-    input: AudioDevicePacked | None = None
-    output: AudioDevicePacked | None = None
     duplex_interruption_available: bool
 
 
 class DuplexCheckedPacket(JSONPacket):
     available: bool
-    input: AudioDevicePacked | None = None
-    output: AudioDevicePacked | None = None
     reason: str | None = None
 
 
 class AudioStatusPacket(JSONPacket):
     audio_mode: AudioStatusMode
-    input: AudioDevicePacked | None = None
-    output: AudioDevicePacked | None = None
     room_voice_configured: bool
     room_voice_active: bool
     playback_gain: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
@@ -301,17 +282,10 @@ class AudioStatusPacket(JSONPacket):
 # requests
 
 
+class StartRoomVoiceRequest(JSONPacket):
+    path: Annotated[str, Field(min_length=1)]
+
+
 class StartAudioRequest(JSONPacket):
     mode: AudioMode
-    input_index: Annotated[int, Field(ge=0)] | None = None
-    output_index: Annotated[int, Field(ge=0)] | None = None
-
-    @model_validator(mode="after")
-    def validate_device_indices(self) -> Self:
-        if self.input_index is not None and not self.mode.has_input:
-            raise ValueError(f"input_index is not allowed for mode {self.mode}")
-
-        if self.output_index is not None and not self.mode.has_output:
-            raise ValueError(f"output_index is not allowed for mode {self.mode}")
-
-        return self
+    voice_processing: bool | None = None

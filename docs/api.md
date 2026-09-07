@@ -23,8 +23,8 @@ Lists all loaded voice assistant profiles and identifies whether each is current
   ```json
   [
     {
-      "id": "default",
-      "name": "Default Assistant",
+      "id": "alexa",
+      "name": "Alexa",
       "is_active": true
     }
   ]
@@ -41,8 +41,8 @@ Retrieves detailed information for a specific profile ID.
 - **Response:**
   ```json
   {
-    "id": "default",
-    "name": "Default Assistant",
+    "id": "alexa",
+    "name": "Alexa",
     "is_active": true
   }
   ```
@@ -80,14 +80,14 @@ Sends a command to the speech pipeline within an active session.
       {
         "type": "say_text",
         "text": "Hello, world!",
-        "profile_id": "default"
+        "profile_id": "alexa"
       }
       ```
     - **`ActivateProfile`**: Activate session profile:
       ```json
       {
         "type": "activate_profile",
-        "profile_id": "default"
+        "profile_id": "alexa"
       }
       ```
     - **`DeactivateProfile`**: Deactivate current profile:

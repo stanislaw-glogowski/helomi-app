@@ -46,7 +46,7 @@ Adapters for speech components (`stt`, `tts`, `turn`, `vad`, `wakeword`) are con
 
 ```yaml
 profile:
-  default: "default"
+  default: "alexa"
 
 server:
   host: "127.0.0.1"
@@ -54,6 +54,8 @@ server:
 
 audio:
   adapter: "avfaudio"
+  avfaudio:
+    voice_processing: true
 
 stt:
   adapter: "parakeet"
@@ -62,10 +64,13 @@ stt:
     language: "en"
 
 tts:
-  adapter: "supertonic"
+  adapter: "voxcpm2"
   supertonic:
     model_id: "Supertone/supertonic-3"
     language: "en"
+  voxcpm2:
+    model_id: "openbmb/VoxCPM2"
+    load_denoiser: false
 
 turn:
   adapter: "smart_turn"

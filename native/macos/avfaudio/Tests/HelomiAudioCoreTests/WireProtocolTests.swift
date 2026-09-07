@@ -1,5 +1,4 @@
 @preconcurrency import AVFAudio
-import CoreAudio
 import Foundation
 import Testing
 
@@ -44,8 +43,8 @@ import Testing
   }
 }
 
-@Test func startAudioPayloadRoundTripsAndRejectsIrrelevantIndices() throws {
-  let request = StartAudioRequest(mode: .duplex, inputIndex: 1, outputIndex: 2)
+@Test func startAudioPayloadRoundTrips() throws {
+  let request = StartAudioRequest(mode: .duplex, voiceProcessing: true)
   let decoded = try WireJSON.decode(
     StartAudioRequest.self,
     from: WireJSON.encode(request)
@@ -53,14 +52,29 @@ import Testing
   try decoded.validate()
   #expect(decoded == request)
 
+  let requestWithVP = StartAudioRequest(mode: .duplex, voiceProcessing: false)
+  let decodedWithVP = try WireJSON.decode(
+    StartAudioRequest.self,
+    from: WireJSON.encode(requestWithVP)
+  )
+  try decodedWithVP.validate()
+  #expect(decodedWithVP == requestWithVP)
+}
+
+@Test func startRoomVoicePayloadRoundTripsAndValidatesPath() throws {
+  let request = StartRoomVoiceRequest(path: "/path/to/room.wav")
+  let decoded = try WireJSON.decode(
+    StartRoomVoiceRequest.self,
+    from: WireJSON.encode(request)
+  )
+  try decoded.validate()
+  #expect(decoded == request)
+
   #expect(throws: WireProtocolError.self) {
-    try StartAudioRequest(mode: .input, outputIndex: 0).validate()
+    try StartRoomVoiceRequest(path: "").validate()
   }
   #expect(throws: WireProtocolError.self) {
-    try StartAudioRequest(mode: .output, inputIndex: 0).validate()
-  }
-  #expect(throws: WireProtocolError.self) {
-    try StartAudioRequest(mode: .duplex, inputIndex: -1).validate()
+    try StartRoomVoiceRequest(path: "   ").validate()
   }
 }
 
@@ -79,43 +93,10 @@ import Testing
   }
 }
 
-@Test func audioDevicesPacketEncodesListsAndDefaultFlags() throws {
-  let packet = AudioDevicesPacket(
-    input: [
-      AudioDeviceInfo(index: 0, name: "MacBook Microphone", uid: "input-1", isDefault: true)
-    ],
-    output: [
-      AudioDeviceInfo(index: 0, name: "Studio Display", uid: "output-1", isDefault: false)
-    ]
-  )
-
-  let decoded = try WireJSON.decode(
-    AudioDevicesPacket.self,
-    from: WireJSON.encode(packet)
-  )
-  #expect(decoded == packet)
-}
-
-@Test func deviceResolverBuildsDirectionalSortedCatalog() throws {
-  let resolver = AudioDeviceResolver(hardware: FakeAudioHardware())
-  let catalog = try resolver.catalog()
-
-  #expect(catalog.packet.input.map(\.name) == ["Alpha Microphone", "Combo Device"])
-  #expect(catalog.packet.output.map(\.name) == ["Beta Speaker", "Combo Device"])
-  #expect(catalog.packet.input[0].isDefault)
-  #expect(catalog.packet.output[0].isDefault)
-  #expect(try catalog.resolve(nil, direction: .input).id == 10)
-  #expect(try catalog.resolve(1, direction: .output).id == 30)
-  #expect(throws: AudioDeviceError.self) {
-    try catalog.resolve(2, direction: .input)
-  }
-}
-
 @Test func idleControllerReportsStateAndRoomVoiceNoOps() throws {
   let controller = try AudioEngineController(
     writer: WireFrameWriter(handle: .nullDevice),
-    roomVoicePath: nil,
-    deviceResolver: AudioDeviceResolver(hardware: FakeAudioHardware())
+    roomVoicePath: nil
   )
 
   #expect(controller.status().audioMode == .stopped)
@@ -151,8 +132,7 @@ import Testing
 
   let controller = try AudioEngineController(
     writer: WireFrameWriter(handle: .nullDevice),
-    roomVoicePath: url.path,
-    deviceResolver: AudioDeviceResolver(hardware: FakeAudioHardware())
+    roomVoicePath: url.path
   )
   #expect(controller.status().roomVoiceConfigured)
   #expect(try !controller.startRoomVoice())
@@ -166,28 +146,19 @@ import Testing
   #expect(packet.code.rawValue == "device_unavailable")
 }
 
-private struct FakeAudioHardware: AudioHardwareAccess {
-  func allDeviceIDs() throws -> [AudioDeviceID] { [30, 20, 10] }
+@Test func convertAudioBufferHandlesFormatConversionSuccessfully() throws {
+  let sourceFormat = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!
+  let targetFormat = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
 
-  func defaultDeviceID(for direction: AudioDeviceDirection) throws -> AudioDeviceID? {
-    direction == .input ? 10 : 20
-  }
-
-  func hasStreams(_ deviceID: AudioDeviceID, direction: AudioDeviceDirection) -> Bool {
-    switch direction {
-    case .input: deviceID == 10 || deviceID == 30
-    case .output: deviceID == 20 || deviceID == 30
+  let sourceBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: 160)!
+  sourceBuffer.frameLength = 160
+  if let channelData = sourceBuffer.floatChannelData {
+    for i in 0..<160 {
+      channelData[0][i] = Float(i) / 160.0
     }
   }
 
-  func name(of deviceID: AudioDeviceID) -> String? {
-    switch deviceID {
-    case 10: "Alpha Microphone"
-    case 20: "Beta Speaker"
-    case 30: "Combo Device"
-    default: nil
-    }
-  }
-
-  func uid(of deviceID: AudioDeviceID) -> String? { "device-\(deviceID)" }
+  let converted = try AudioEngineController.convert(sourceBuffer, to: targetFormat)
+  #expect(converted.format == targetFormat)
+  #expect(converted.frameLength > 0)
 }

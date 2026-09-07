@@ -86,14 +86,6 @@ do {
         try requireEmptyPayload(frame)
         controller.stopPlayback()
         writer.send(WireFrame(kind: .playbackStopped, requestID: frame.requestID))
-      case .getDevices:
-        try requireEmptyPayload(frame)
-        try sendJSON(
-          controller.devices(),
-          kind: .devices,
-          requestID: frame.requestID,
-          writer: writer
-        )
       case .checkDuplex:
         let request =
           frame.payload.isEmpty
@@ -118,8 +110,15 @@ do {
         controller.stopAudio()
         writer.send(WireFrame(kind: .audioStopped, requestID: frame.requestID))
       case .startRoomVoice:
-        try requireEmptyPayload(frame)
-        let changed = try controller.startRoomVoice()
+        let path: String?
+        if frame.payload.isEmpty {
+          path = nil
+        } else {
+          let request = try WireJSON.decode(StartRoomVoiceRequest.self, from: frame.payload)
+          try request.validate()
+          path = request.path
+        }
+        let changed = try controller.startRoomVoice(path: path)
         writer.send(
           WireFrame(
             kind: .roomVoiceStartResult,
@@ -161,7 +160,7 @@ do {
           "message kind \(frame.kind.rawValue) is reserved in protocol v4"
         )
       case .ready, .capture, .playbackFinished, .playbackStopped,
-        .playbackGainChanged, .diagnostic, .devices, .duplexChecked, .audioStarted,
+        .playbackGainChanged, .diagnostic, .duplexChecked, .audioStarted,
         .audioStopped, .roomVoiceStartResult, .roomVoiceStopResult, .status, .error:
         throw CommandLineError.invalidCommand(
           "unexpected client command kind: \(frame.kind.rawValue)"

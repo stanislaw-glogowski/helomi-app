@@ -49,7 +49,7 @@ private final class AudioBufferSupplier: @unchecked Sendable {
   private var buffer: AVAudioPCMBuffer?
   private let exhaustedStatus: AVAudioConverterInputStatus
 
-  init(buffer: AVAudioPCMBuffer, exhaustedStatus: AVAudioConverterInputStatus) {
+  init(buffer: AVAudioPCMBuffer, exhaustedStatus: AVAudioConverterInputStatus = .endOfStream) {
     self.buffer = buffer
     self.exhaustedStatus = exhaustedStatus
   }
@@ -68,7 +68,6 @@ private final class AudioBufferSupplier: @unchecked Sendable {
 /// Owns one explicitly started AVAudioEngine session and its protocol-visible state.
 public final class AudioEngineController: @unchecked Sendable {
   private let writer: WireFrameWriter
-  private let deviceResolver: AudioDeviceResolver
   private let roomVoiceURL: URL?
   private let captureQueue = DispatchQueue(label: "helomi.audio.capture")
   private let volumeQueue = DispatchQueue(label: "helomi.audio.volume")
@@ -80,8 +79,6 @@ public final class AudioEngineController: @unchecked Sendable {
   private var roomVoiceBuffer: AVAudioPCMBuffer?
   private var playbackFormat: AVAudioFormat?
   private var mode: AudioMode?
-  private var selectedInput: ResolvedAudioDevice?
-  private var selectedOutput: ResolvedAudioDevice?
   private var roomVoiceActive = false
   private var playbackGain: Float = 1
   private var pendingPlayback: Set<UInt32> = []
@@ -89,45 +86,25 @@ public final class AudioEngineController: @unchecked Sendable {
   private var captureDiagnosticSampleCount = 0
   private var captureDiagnosticSquaredSum = 0.0
   private var captureDiagnosticPeak = Float.zero
+  private var dynamicRoomVoiceURL: URL?
 
-  public convenience init(
+  public init(
     writer: WireFrameWriter,
     roomVoicePath: String? = nil
   ) throws {
-    try self.init(
-      writer: writer,
-      roomVoicePath: roomVoicePath,
-      deviceResolver: AudioDeviceResolver()
-    )
-  }
-
-  init(
-    writer: WireFrameWriter,
-    roomVoicePath: String?,
-    deviceResolver: AudioDeviceResolver
-  ) throws {
     self.writer = writer
-    self.deviceResolver = deviceResolver
     self.roomVoiceURL = try Self.validateRoomVoice(path: roomVoicePath)
-  }
-
-  public func devices() throws -> AudioDevicesPacket {
-    try deviceResolver.catalog().packet
   }
 
   public func startAudio(_ request: StartAudioRequest) throws -> AudioStartedPacket {
     try request.validate()
-    guard mode == nil else {
-      throw AudioEngineError.invalidState("audio is already started; stop it before reconfiguring")
+    let wasRoomVoiceActive = roomVoiceActive
+    let previousRoomVoiceURL = dynamicRoomVoiceURL ?? roomVoiceURL
+
+    if mode != nil {
+      stopAudio()
     }
 
-    let catalog = try deviceResolver.catalog()
-    let input =
-      request.mode.hasInput
-      ? try catalog.resolve(request.inputIndex, direction: .input) : nil
-    let output =
-      request.mode.hasOutput
-      ? try catalog.resolve(request.outputIndex, direction: .output) : nil
     let newEngine = AVAudioEngine()
     let newPlaybackPlayer = request.mode.hasOutput ? AVAudioPlayerNode() : nil
     let newRoomVoicePlayer = request.mode.hasOutput ? AVAudioPlayerNode() : nil
@@ -136,20 +113,12 @@ public final class AudioEngineController: @unchecked Sendable {
 
     do {
       let inputNode = request.mode.hasInput ? newEngine.inputNode : nil
-      let outputNode = request.mode.hasOutput ? newEngine.outputNode : nil
 
-      if request.mode == .duplex, let inputNode {
+      let shouldEnableVoiceProcessing = request.voiceProcessing ?? true
+      var voiceProcessingActive = false
+      if request.mode == .duplex, let inputNode, shouldEnableVoiceProcessing {
         try inputNode.setVoiceProcessingEnabled(true)
-        guard inputNode.isVoiceProcessingEnabled else {
-          throw AudioEngineError.configuration("voice processing did not become active")
-        }
-      }
-
-      if let input, let inputNode {
-        try AudioDeviceResolver.select(input, on: inputNode.audioUnit)
-      }
-      if let output, let outputNode {
-        try AudioDeviceResolver.select(output, on: outputNode.audioUnit)
+        voiceProcessingActive = inputNode.isVoiceProcessingEnabled
       }
 
       if let newPlaybackPlayer, let newRoomVoicePlayer, let newPlaybackFormat {
@@ -178,9 +147,13 @@ public final class AudioEngineController: @unchecked Sendable {
 
       newEngine.prepare()
       try newEngine.start()
-      if request.mode == .duplex, let inputNode {
+      if request.mode == .duplex, let inputNode, voiceProcessingActive {
         inputNode.isVoiceProcessingInputMuted = false
         inputNode.isVoiceProcessingBypassed = false
+      }
+
+      if wasRoomVoiceActive, let path = previousRoomVoiceURL?.path {
+        _ = try? startRoomVoice(path: path)
       }
 
       engine = newEngine
@@ -188,19 +161,15 @@ public final class AudioEngineController: @unchecked Sendable {
       roomVoicePlayer = newRoomVoicePlayer
       playbackFormat = newPlaybackFormat
       mode = request.mode
-      selectedInput = input
-      selectedOutput = output
       resetCaptureDiagnostic()
 
       sendDiagnostic(
         "audio_started mode=\(request.mode.rawValue), "
-          + "voice_processing=\(request.mode == .duplex)"
+          + "voice_processing=\(voiceProcessingActive)"
       )
       return AudioStartedPacket(
         mode: request.mode,
-        input: input?.info,
-        output: output?.info,
-        duplexInterruptionAvailable: request.mode == .duplex
+        duplexInterruptionAvailable: voiceProcessingActive
       )
     } catch {
       if tapInstalled {
@@ -228,8 +197,6 @@ public final class AudioEngineController: @unchecked Sendable {
     roomVoicePlayer = nil
     roomVoiceBuffer = nil
     playbackFormat = nil
-    selectedInput = nil
-    selectedOutput = nil
     mode = nil
   }
 
@@ -238,7 +205,7 @@ public final class AudioEngineController: @unchecked Sendable {
       throw AudioEngineError.invalidState("PLAY requires active output audio")
     }
     let input = try makeBuffer(packet: packet)
-    let output = try convert(input, to: playbackFormat)
+    let output = try Self.convert(input, to: playbackFormat)
 
     playbackLock.withLock { _ = pendingPlayback.insert(requestID) }
     playbackPlayer.scheduleBuffer(output, completionCallbackType: .dataPlayedBack) {
@@ -267,8 +234,16 @@ public final class AudioEngineController: @unchecked Sendable {
   }
 
   @discardableResult
-  public func startRoomVoice() throws -> Bool {
-    guard let roomVoiceURL, mode?.hasOutput == true,
+  public func startRoomVoice(path: String? = nil) throws -> Bool {
+    let targetURL: URL?
+    if let path {
+      targetURL = try Self.validateRoomVoice(path: path)
+      self.dynamicRoomVoiceURL = targetURL
+    } else {
+      targetURL = self.dynamicRoomVoiceURL ?? self.roomVoiceURL
+    }
+
+    guard let targetURL, mode?.hasOutput == true,
       let roomVoicePlayer, let playbackFormat, !roomVoiceActive
     else {
       return false
@@ -276,7 +251,7 @@ public final class AudioEngineController: @unchecked Sendable {
 
     let file: AVAudioFile
     do {
-      file = try AVAudioFile(forReading: roomVoiceURL)
+      file = try AVAudioFile(forReading: targetURL)
     } catch {
       throw AudioEngineError.roomVoice(error.localizedDescription)
     }
@@ -293,7 +268,7 @@ public final class AudioEngineController: @unchecked Sendable {
     }
     do {
       try file.read(into: source)
-      let loop = try convert(source, to: playbackFormat)
+      let loop = try Self.convert(source, to: playbackFormat)
       roomVoiceBuffer = loop
       roomVoicePlayer.scheduleBuffer(loop, at: nil, options: .loops)
       roomVoicePlayer.play()
@@ -336,9 +311,7 @@ public final class AudioEngineController: @unchecked Sendable {
   public func status() -> AudioStatusPacket {
     AudioStatusPacket(
       audioMode: AudioStatusMode(mode),
-      input: selectedInput?.info,
-      output: selectedOutput?.info,
-      roomVoiceConfigured: roomVoiceURL != nil,
+      roomVoiceConfigured: (dynamicRoomVoiceURL ?? roomVoiceURL) != nil,
       roomVoiceActive: roomVoiceActive,
       playbackGain: playbackGain,
       pendingPlaybackCount: playbackLock.withLock { pendingPlayback.count },
@@ -346,33 +319,18 @@ public final class AudioEngineController: @unchecked Sendable {
     )
   }
 
-  public func checkDuplex(_ request: DuplexCheckRequest) throws -> DuplexCheckedPacket {
-    try request.validate()
+  public func checkDuplex(_ request: DuplexCheckRequest = DuplexCheckRequest())
+    -> DuplexCheckedPacket
+  {
     guard mode == nil else {
-      throw AudioEngineError.invalidState("CHECK_DUPLEX requires stopped audio")
+      return DuplexCheckedPacket(available: false, reason: "CHECK_DUPLEX requires stopped audio")
     }
 
-    var selectedInputInfo: AudioDeviceInfo?
-    var selectedOutputInfo: AudioDeviceInfo?
     do {
-      let catalog = try deviceResolver.catalog()
-      let input = try catalog.resolve(request.inputIndex, direction: .input)
-      let output = try catalog.resolve(request.outputIndex, direction: .output)
-      selectedInputInfo = input.info
-      selectedOutputInfo = output.info
-      try probeDuplex(input: input, output: output)
-      return DuplexCheckedPacket(
-        available: true,
-        input: input.info,
-        output: output.info
-      )
+      try probeDuplex()
+      return DuplexCheckedPacket(available: true)
     } catch {
-      return DuplexCheckedPacket(
-        available: false,
-        input: selectedInputInfo,
-        output: selectedOutputInfo,
-        reason: error.localizedDescription
-      )
+      return DuplexCheckedPacket(available: false, reason: error.localizedDescription)
     }
   }
 
@@ -414,14 +372,10 @@ public final class AudioEngineController: @unchecked Sendable {
     return format
   }
 
-  private func probeDuplex(
-    input: ResolvedAudioDevice,
-    output: ResolvedAudioDevice
-  ) throws {
+  private func probeDuplex() throws {
     let probeEngine = AVAudioEngine()
     let probePlayer = AVAudioPlayerNode()
     let inputNode = probeEngine.inputNode
-    let outputNode = probeEngine.outputNode
     let format = try Self.makePlaybackFormat()
     let captured = DispatchSemaphore(value: 0)
 
@@ -429,8 +383,6 @@ public final class AudioEngineController: @unchecked Sendable {
     guard inputNode.isVoiceProcessingEnabled else {
       throw AudioEngineError.configuration("voice processing did not become active")
     }
-    try AudioDeviceResolver.select(input, on: inputNode.audioUnit)
-    try AudioDeviceResolver.select(output, on: outputNode.audioUnit)
     probeEngine.attach(probePlayer)
     probeEngine.connect(probePlayer, to: probeEngine.mainMixerNode, format: format)
     inputNode.installTap(onBus: 0, bufferSize: 256, format: nil) { _, _ in
@@ -500,7 +452,9 @@ public final class AudioEngineController: @unchecked Sendable {
   }
 
   private func finishPlayback(requestID: UInt32) {
-    let wasPending = playbackLock.withLock { pendingPlayback.remove(requestID) != nil }
+    let wasPending = playbackLock.withLock {
+      pendingPlayback.remove(requestID) != nil
+    }
     guard wasPending else { return }
     writer.send(
       WireFrame(
@@ -529,72 +483,56 @@ public final class AudioEngineController: @unchecked Sendable {
           + "\(packet.sampleRate) Hz"
       )
     }
-
-    let samples = packet.samples.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
-    let channelCount = Int(packet.channels)
-    for channelIndex in 0..<channelCount {
-      let destination = channelData[channelIndex]
-      for frameIndex in 0..<packet.frameCount {
-        destination[frameIndex] = samples[frameIndex * channelCount + channelIndex]
-      }
-    }
     buffer.frameLength = AVAudioFrameCount(packet.frameCount)
+    packet.samples.withUnsafeBytes { raw in
+      guard let source = raw.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
+      channelData[0].initialize(from: source, count: Int(packet.frameCount))
+    }
     return buffer
   }
 
-  private func convert(
+  package static func convert(
     _ input: AVAudioPCMBuffer,
-    to outputFormat: AVAudioFormat
+    to targetFormat: AVAudioFormat
   ) throws -> AVAudioPCMBuffer {
-    if input.format == outputFormat { return input }
-    guard let converter = AVAudioConverter(from: input.format, to: outputFormat) else {
+    if input.format == targetFormat {
+      return input
+    }
+    guard let converter = AVAudioConverter(from: input.format, to: targetFormat) else {
       throw AudioEngineError.conversion(
-        "unsupported conversion from \(input.format) to \(outputFormat)"
+        "cannot create converter from \(input.format) to \(targetFormat)"
       )
     }
-    let ratio = outputFormat.sampleRate / input.format.sampleRate
-    let capacity = AVAudioFrameCount(ceil(Double(input.frameLength) * ratio) + 16)
-    guard let output = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else {
-      throw AudioEngineError.conversion(
-        "cannot allocate a converted buffer with capacity \(capacity)"
-      )
+    let ratio = targetFormat.sampleRate / input.format.sampleRate
+    let capacity = AVAudioFrameCount((Double(input.frameLength) * ratio).rounded(.up)) + 64
+    guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else {
+      throw AudioEngineError.conversion("cannot allocate conversion output buffer")
     }
 
     let supplier = AudioBufferSupplier(buffer: input, exhaustedStatus: .endOfStream)
-    var conversionError: NSError?
-    let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
-      supplier.next(status: inputStatus)
+    var error: NSError?
+    let status = converter.convert(to: output, error: &error) { _, outStatus in
+      supplier.next(status: outStatus)
     }
-    if let conversionError { throw conversionError }
+    if let error {
+      throw AudioEngineError.conversion(error.localizedDescription)
+    }
     guard status != .error else {
-      throw AudioEngineError.conversion(
-        "audio converter returned status \(String(describing: status))"
-      )
+      throw AudioEngineError.conversion("audio conversion failed without an explicit error")
     }
     return output
   }
 
   private func copyBuffer(_ source: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-    guard
-      let copy = AVAudioPCMBuffer(
-        pcmFormat: source.format,
-        frameCapacity: source.frameLength
-      )
-    else { return nil }
+    guard let copy = AVAudioPCMBuffer(pcmFormat: source.format, frameCapacity: source.frameLength),
+      let sourceData = source.floatChannelData,
+      let copyData = copy.floatChannelData
+    else {
+      return nil
+    }
     copy.frameLength = source.frameLength
-
-    let sourceBuffers = UnsafeMutableAudioBufferListPointer(
-      UnsafeMutablePointer(mutating: source.audioBufferList)
-    )
-    let destinationBuffers = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
-    guard sourceBuffers.count == destinationBuffers.count else { return nil }
-    for index in sourceBuffers.indices {
-      guard let sourceData = sourceBuffers[index].mData,
-        let destinationData = destinationBuffers[index].mData
-      else { return nil }
-      let byteCount = Int(sourceBuffers[index].mDataByteSize)
-      memcpy(destinationData, sourceData, byteCount)
-      destinationBuffers[index].mDataByteSize = UInt32(byteCount)
+    for channel in 0..<Int(source.format.channelCount) {
+      copyData[channel].initialize(from: sourceData[channel], count: Int(source.frameLength))
     }
     return copy
   }
@@ -602,39 +540,43 @@ public final class AudioEngineController: @unchecked Sendable {
   private func resetCaptureDiagnostic() {
     captureDiagnosticSent = false
     captureDiagnosticSampleCount = 0
-    captureDiagnosticSquaredSum = 0
-    captureDiagnosticPeak = 0
+    captureDiagnosticSquaredSum = 0.0
+    captureDiagnosticPeak = Float.zero
   }
 
   private func sendCaptureDiagnostic(_ buffer: AVAudioPCMBuffer) {
-    guard !captureDiagnosticSent else { return }
-    guard let channels = buffer.floatChannelData else {
-      captureDiagnosticSent = true
-      sendDiagnostic(
-        "raw_capture format=\(buffer.format), frames=\(buffer.frameLength), "
-          + "float_samples=unavailable"
-      )
-      return
-    }
+    guard !captureDiagnosticSent, let channel = buffer.floatChannelData?[0] else { return }
+    let count = Int(buffer.frameLength)
+    guard count > 0 else { return }
 
-    let frameCount = Int(buffer.frameLength)
-    let channelCount = Int(buffer.format.channelCount)
-    for channelIndex in 0..<channelCount {
-      let channel = channels[channelIndex]
-      for frameIndex in 0..<frameCount {
-        let sample = channel[frameIndex]
-        captureDiagnosticPeak = max(captureDiagnosticPeak, abs(sample))
-        captureDiagnosticSquaredSum += Double(sample * sample)
+    for index in 0..<count {
+      let sample = channel[index]
+      let magnitude = abs(sample)
+      if magnitude > captureDiagnosticPeak {
+        captureDiagnosticPeak = magnitude
       }
+      captureDiagnosticSquaredSum += Double(sample * sample)
     }
-    captureDiagnosticSampleCount += frameCount * channelCount
-    guard captureDiagnosticSampleCount >= 4_800 else { return }
+    captureDiagnosticSampleCount += count
 
+    guard captureDiagnosticSampleCount >= 4_000 else { return }
     captureDiagnosticSent = true
-    let rms = sqrt(captureDiagnosticSquaredSum / Double(captureDiagnosticSampleCount))
+
+    let meanSquare = captureDiagnosticSquaredSum / Double(captureDiagnosticSampleCount)
+    let rms = Float(sqrt(meanSquare))
+    let rmsDB = rms > 0.000_001 ? 20.0 * log10(rms) : -120.0
+    let peakDB = captureDiagnosticPeak > 0.000_001 ? 20.0 * log10(captureDiagnosticPeak) : -120.0
+
     sendDiagnostic(
-      "raw_capture format=\(buffer.format), frames=\(buffer.frameLength), "
-        + "rms=\(rms), peak=\(captureDiagnosticPeak)"
+      String(
+        format:
+          "first_capture_signal sample_rate=%.0f, channels=%d, frames=%d, rms_db=%.1f, peak_db=%.1f",
+        buffer.format.sampleRate,
+        buffer.format.channelCount,
+        captureDiagnosticSampleCount,
+        rmsDB,
+        peakDB
+      )
     )
   }
 

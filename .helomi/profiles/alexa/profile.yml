@@ -1,0 +1,13 @@
+name: Alexa
+
+emoji: 👩🏻
+
+tts:
+  supertonic:
+    voice_name: "F1"
+  voxcpm2:
+    ref_audio: "path://assets/ref_audio.wav"
+
+wakeword:
+  openwakeword:
+    model_path: "path://models/alexa_v0.1.onnx"

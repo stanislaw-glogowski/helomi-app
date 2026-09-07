@@ -1,9 +1,13 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from helomi_common import AbstractAsyncComponent
 
 from .domain import AudioMode, RawAudio
+
+if TYPE_CHECKING:
+    from .config import AudioProfile
 
 
 class AudioDriver[TConfig](AbstractAsyncComponent, ABC):
@@ -29,9 +33,9 @@ class AudioDriver[TConfig](AbstractAsyncComponent, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def start_room_voice(self):
+    async def activate(self, profile: AudioProfile) -> None:
         raise NotImplementedError
 
     @abstractmethod
-    async def stop_room_voice(self):
+    async def deactivate(self) -> None:
         raise NotImplementedError

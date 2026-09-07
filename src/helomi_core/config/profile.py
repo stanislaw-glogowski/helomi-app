@@ -2,10 +2,12 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, overload
 
-from pydantic import Field, PrivateAttr
+import emoji
+from pydantic import Field, PrivateAttr, field_validator
 
 from helomi_common import BaseConfig, ConfigFile, DeepMergeDict
 
+from ..audio import AudioProfile
 from ..resources import ResourceCatalog
 from ..stt import STTProfile
 from ..tts import TTSProfile
@@ -16,11 +18,15 @@ if TYPE_CHECKING:
 
 
 class Profile(BaseConfig):
-    DEFAULT_ID: ClassVar[str] = "default"
+    DEFAULT_ID: ClassVar[str] = "alexa"
     _CONFIG_FILE: ClassVar[str] = "profile"
 
     name: str
+    emoji: str | None = None
     disabled: bool = False
+    readonly: bool = False
+
+    audio: AudioProfile = Field(default_factory=AudioProfile)
     stt: STTProfile = Field(default_factory=STTProfile)
     tts: TTSProfile = Field(default_factory=TTSProfile)
     wakeword: WakeWordProfile = Field(default_factory=WakeWordProfile)
@@ -66,9 +72,19 @@ class Profile(BaseConfig):
 
         return model
 
-    def model_post_init(self, context: dict[str, Any]) -> None:
-        for key in ("id", "root_path"):
-            self._set_private_attr(key, context.get(key))
+    @field_validator("emoji")
+    @classmethod
+    def validate_emoji(cls, value: str | None) -> str | None:
+        if not value:
+            return None
+        if not emoji.is_emoji(value):
+            raise ValueError(f"Input should be a single emoji, got {value!r}")
+        return value
+
+    def model_post_init(self, context: Any) -> None:
+        if context and isinstance(context, dict):
+            for key in ("id", "root_path"):
+                self._set_private_attr(key, context.get(key))
 
 
 class ProfileSettings(BaseConfig):

@@ -1,4 +1,4 @@
-# Profile: Default Assistant
+# Profile: Alexa
 
 ## Personal Description
 

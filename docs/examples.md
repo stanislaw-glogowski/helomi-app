@@ -52,7 +52,7 @@ The [`demo/`](../demo/README.md) directory contains a complete reference client 
 - **Low-Latency LLM Streaming**: Streams text from OpenAI-compatible models (e.g. Ollama or OpenAI) and sends synthesized sentence lines immediately to `POST /api/v1/command`.
 - **Barge-in / Interruption Handling**: Automatically aborts ongoing LLM generation upon receiving `speech_interrupted`.
 - **Multi-Turn Memory**: Retains rolling conversation history per profile session.
-- **Dynamic Prompts**: Loads persona prompts from `prompts/profiles/<profile_id>.md` (default: `default.md`) merged with output formatting instructions in `prompts/instructions.md`.
+- **Dynamic Prompts**: Loads persona prompts from `prompts/profiles/<profile_id>.md` (default: `alexa.md`) merged with output formatting instructions in `prompts/instructions.md`.
 
 For setup and execution details, refer to the [Demo Documentation](../demo/README.md).
 

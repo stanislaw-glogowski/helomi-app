@@ -71,7 +71,7 @@ uv run helomi-cli install
 # 2. Start parrot mode (live speech recognition and spoken echo)
 make run-cli parrot
 # or specify an active profile:
-make run-cli parrot default
+make run-cli parrot alexa
 # or directly via uv:
 uv run helomi-cli parrot [profile_id]
 

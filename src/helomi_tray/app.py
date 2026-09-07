@@ -9,7 +9,7 @@ from typing import ClassVar, TypedDict, Unpack
 import rumps
 
 from helomi_common import BaseComponent, TaskManager
-from helomi_core import Runtime
+from helomi_core import Profile, Runtime
 from helomi_core.parrot import ParrotExtension
 from helomi_core.pipeline import (
     ActivateProfile,
@@ -35,6 +35,7 @@ class TryIcon(StrEnum):
     PARROT = "🦜"
     ROBOT = "🤖"
     API = "🌐"
+    EAR = "👂"
     EXIT = "💤"
 
 
@@ -58,16 +59,16 @@ class TrayApp(rumps.App, BaseComponent):
     @classmethod
     def _render_title(
         cls,
+        icon: TryIcon | str,
         label: str | None = None,
-        icon: TryIcon | None = None,
     ) -> str:
-        return f"{icon or TryIcon.START} {label or cls._TITLE}"
+        return f"{icon} {label or cls._TITLE}"
 
     def __init__(self, runtime: Runtime) -> None:
         rumps.App.__init__(
             self,
             name=self._TITLE,
-            title=self._render_title(),
+            title=self._render_title(TryIcon.START),
             quit_button=None,
         )
         BaseComponent.__init__(self)
@@ -88,34 +89,43 @@ class TrayApp(rumps.App, BaseComponent):
         # menu
 
         self._menu_profiles: dict[str, rumps.MenuItem] = {
-            profile.id: rumps.MenuItem(title=profile.name)
-            for profile in runtime.profiles
-        }
-        self._menu_extensions: dict[PipelineExtensionKey, rumps.MenuItem] = {
-            ServerExtension: rumps.MenuItem(
-                title=self._render_title("API", icon=TryIcon.API)
-            ),
-            ParrotExtension: rumps.MenuItem(
-                title=self._render_title("Parrot Mode", icon=TryIcon.PARROT)
-            ),
+            profile.id: rumps.MenuItem(
+                title=profile.name,
+                key=str(index) if index < 9 else None,
+            )
+            for index, profile in enumerate(runtime.profiles)
         }
 
-        menu_profiles = rumps.MenuItem(title="Profiles")
+        menu_server = rumps.MenuItem(
+            title=self._render_title(TryIcon.API, "API"),
+            key="a",
+        )
+        menu_parrot = rumps.MenuItem(
+            title=self._render_title(TryIcon.PARROT, "Parrot Mode"),
+            key="p",
+        )
+
+        self._menu_extensions: dict[PipelineExtensionKey, rumps.MenuItem] = {
+            ServerExtension: menu_server,
+            ParrotExtension: menu_parrot,
+        }
+
+        menu_profiles = rumps.MenuItem(
+            title="Profiles",
+        )
         for menu_item in self._menu_profiles.values():
             menu_profiles.add(menu_item)
-
-        menu_extensions = rumps.MenuItem(title="Extensions")
-        for menu_item in self._menu_extensions.values():
-            menu_extensions.add(menu_item)
 
         self.menu = [
             menu_profiles,
             rumps.separator,
-            menu_extensions,
+            menu_server,
+            menu_parrot,
             rumps.separator,
             rumps.MenuItem(
                 title="Quit",
                 callback=self._handle_quit,
+                key="q",
             ),
         ]
 
@@ -132,19 +142,16 @@ class TrayApp(rumps.App, BaseComponent):
 
             match self._state.status:
                 case TrayStatus.RUNNING:
-                    if (
-                        last_state.status == TrayStatus.STARTING
-                        and self._state.server_url is not None
-                    ):
+                    if last_state.status == TrayStatus.STARTING:
                         self._sync_menu(True)
                         self._sync_extension(self._state.extension_key, True)
 
                     if last_state.server_url != self._state.server_url:
                         title = self._render_title(
+                            TryIcon.API,
                             f"API: {self._state.server_url}"
                             if self._state.server_url
                             else "API",
-                            TryIcon.API,
                         )
                         self._menu_extensions[ServerExtension].title = title
 
@@ -158,7 +165,7 @@ class TrayApp(rumps.App, BaseComponent):
 
                     self._sync_title(
                         self._state.extension_key,
-                        self._runtime.profiles.get(self._state.profile_id).name
+                        self._runtime.profiles.get(self._state.profile_id)
                         if self._state.profile_id
                         else None,
                     )
@@ -166,22 +173,23 @@ class TrayApp(rumps.App, BaseComponent):
                 case TrayStatus.QUITING:
                     if last_state.status == TrayStatus.RUNNING:
                         self._sync_menu(False)
-                    self.title = self._render_title(icon=TryIcon.EXIT)
+                    self.title = self._render_title(TryIcon.EXIT)
 
     def _sync_title(
         self,
         extension_key: type[PipelineExtension],
-        profile_name: str | None,
+        profile: Profile | None,
     ) -> None:
-        icon: TryIcon | None = None
-        if extension_key is ParrotExtension:
+        if profile is None:
+            icon = TryIcon.EAR
+        elif extension_key is ParrotExtension:
             icon = TryIcon.PARROT
-        elif extension_key is ServerExtension:
-            icon = TryIcon.ROBOT
+        else:
+            icon = profile.emoji if profile.emoji else TryIcon.ROBOT
 
         self.title = self._render_title(
-            icon=icon,
-            label=profile_name,
+            icon,
+            profile.name if profile else None,
         )
 
     def _sync_extension(
@@ -230,8 +238,12 @@ class TrayApp(rumps.App, BaseComponent):
                 )
                 return
 
-    def _handle_quit(self, sender: rumps.MenuItem) -> None:
-        sender.set_callback(None)
+    def quit(self) -> None:
+        self._handle_quit(None)
+
+    def _handle_quit(self, sender: rumps.MenuItem | None = None) -> None:
+        if sender is not None:
+            sender.set_callback(None)
         self._update_state(status=TrayStatus.QUITING, force_sync=True)
         rumps.Timer(self._handle_exit, 0.1).start()
 
@@ -283,8 +295,13 @@ class TrayApp(rumps.App, BaseComponent):
 
         try:
             loop.run_until_complete(self._runtime_loop())
+        except asyncio.CancelledError, KeyboardInterrupt:
+            pass
+        except Exception:
+            self._logger.exception("Error in TrayApp runtime loop")
         finally:
-            loop.close()
+            with suppress(Exception):
+                loop.close()
 
     async def _runtime_loop(self) -> None:
         self._shutdown_signal = (shutdown_signal := asyncio.Event())
@@ -325,7 +342,7 @@ class TrayApp(rumps.App, BaseComponent):
                     self._update_state(profile_id=None)
 
     def _pipeline_set_activate_extension(self, key: PipelineExtensionKey) -> None:
-        if self._pipeline is None or self._loop is None:
+        if self._pipeline is None or self._loop is None or self._loop.is_closed():
             return
 
         asyncio.run_coroutine_threadsafe(
@@ -334,7 +351,7 @@ class TrayApp(rumps.App, BaseComponent):
         )
 
     def _pipeline_execute_command(self, cmd: PipelineCmd) -> None:
-        if self._pipeline is None or self._loop is None:
+        if self._pipeline is None or self._loop is None or self._loop.is_closed():
             return
 
         asyncio.run_coroutine_threadsafe(
