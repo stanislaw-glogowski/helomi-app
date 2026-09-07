@@ -100,16 +100,6 @@ LLM_MODEL_ID=gpt-5.6-luna
 
 ## Running the Demo
 
-### Step 1: Start Helomi Server
-
-In the main repository root, start the Helomi speech server:
-
-```bash
-uv run helomi-cli serve
-```
-
-### Step 2: Start the Demo Client
-
 In the `demo/` directory:
 
 ```bash
