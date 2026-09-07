@@ -25,13 +25,13 @@ node_modules
 !.env.example
 
 # Resources
-/.helomi/models/*
-/.helomi/profiles/*
-!/.helomi/profiles/defaults.yml
-!/.helomi/profiles/alexa
-/.helomi/profiles/alexa/models/*
-/.helomi/profiles/alexa/profile.override.yml
-/.helomi/settings.override.yml
+/resources/models/*
+/resources/profiles/*
+!/resources/profiles/defaults.yml
+!/resources/profiles/alexa
+/resources/profiles/alexa/models/*
+/resources/profiles/alexa/profile.override.yml
+/resources/settings.override.yml
 
 # Demo
 /demo/prompts/profiles/*

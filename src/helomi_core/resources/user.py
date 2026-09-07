@@ -9,7 +9,7 @@ from .ports import ResourceCatalog
 
 class UserData(ResourceCatalog):
     _HOME_ENV_VAR: ClassVar[str] = "HELOMI_HOME"
-    _LOCAL_DIR: ClassVar[str] = ".helomi"
+    _LOCAL_DIR: ClassVar[str] = "resources"
     _APP_DIR: ClassVar[str] = "HelomiApp"
 
     def __init__(self, root_path: Path | None = None) -> None:

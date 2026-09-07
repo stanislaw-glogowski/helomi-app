@@ -13,11 +13,11 @@ styles, reference audio, ambient room audio, and STT language prompts.
 
 ## Creating a Profile
 
-Profiles are stored in the `.helomi/profiles/` directory. Each profile has its own subdirectory containing a
+Profiles are stored in the `resources/profiles/` directory. Each profile has its own subdirectory containing a
 `profile.yml` (or `.json`) file:
 
 ```text
-.helomi/
+resources/
 └── profiles/
     ├── alexa/
     │   ├── profile.yml
@@ -57,7 +57,7 @@ The profile ID is derived automatically from the directory name (e.g., `alexa`, 
 
 ## Default Profile Values (`defaults.yml`)
 
-You can define base configuration values inherited by all profiles in `.helomi/profiles/defaults.yml`. Specific profile
+You can define base configuration values inherited by all profiles in `resources/profiles/defaults.yml`. Specific profile
 definitions will automatically extend and override these defaults.
 
 ## Example `profile.yml`

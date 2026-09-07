@@ -1,9 +1,9 @@
 # Settings Configuration
 
-Helomi uses a hierarchical configuration system. The application locates its configuration and resources directory (`.helomi/`) using the following precedence:
+Helomi uses a hierarchical configuration system. The application locates its configuration and resources directory (`resources/`) using the following precedence:
 
 1. **Environment Variable:** `$HELOMI_HOME` (if set)
-2. **Local Workspace:** `.helomi/` in the current working directory or parent directories (e.g. `./.helomi/settings.yml`)
+2. **Local Workspace:** `resources/` in the current working directory or parent directories (e.g. `./resources/settings.yml`)
 3. **macOS System Default:** `~/Library/Application Support/HelomiApp/settings.yml`
 
 ## File Format
@@ -38,11 +38,11 @@ Adapters for speech components (`stt`, `tts`, `turn`, `vad`, `wakeword`) are con
 - `wakeword.adapter`: `openwakeword`
 
 > [!IMPORTANT]
-> The active adapter configured here dictates which profiles can be loaded. When Helomi starts, it inspects every profile in `.helomi/profiles/`. If a profile lacks configuration for the currently active STT or TTS adapter, that profile is **automatically skipped**.
+> The active adapter configured here dictates which profiles can be loaded. When Helomi starts, it inspects every profile in `resources/profiles/`. If a profile lacks configuration for the currently active STT or TTS adapter, that profile is **automatically skipped**.
 
 ## Example Configuration
 
-`.helomi/settings.yml`:
+`resources/settings.yml`:
 
 ```yaml
 profile:

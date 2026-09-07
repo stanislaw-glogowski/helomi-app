@@ -8,33 +8,30 @@ The application automatically downloads and caches models required by the config
 you have an active internet connection on the first run. Models are cached locally using the standard Hugging Face
 caching mechanism.
 
-If you prefer to pre-download them manually or want to use them offline, you can use the Hugging Face CLI:
+If you prefer to pre-download them manually or want to use them offline, you can use the Hugging Face CLI (`hf` or `huggingface-cli`):
 
 ```bash
-# STT Models
-huggingface-cli download mlx-community/parakeet-tdt-0.6b-v3
-huggingface-cli download mlx-community/whisper-large-v3-turbo
+# Default Speech Stack (~7.5 GB)
+hf download mlx-community/parakeet-tdt-0.6b-v3      # ~2.5 GB (Default STT)
+hf download openbmb/VoxCPM2                         # ~5.0 GB (Default TTS)
+hf download mlx-community/smart-turn-v3             # ~32.0 MB (Default Turn Taking)
+hf download mlx-community/silero-vad                # ~2.2 MB (Default VAD MLX)
 
-# TTS Models
-huggingface-cli download Supertone/supertonic-3
-huggingface-cli download openbmb/VoxCPM2
-
-# Smart Turn & VAD Models
-huggingface-cli download mlx-community/smart-turn-v3
-huggingface-cli download mlx-community/silero-vad
+# Optional Alternatives
+hf download Supertone/supertonic-3                  # ~414.7 MB (Lightweight TTS)
+hf download mlx-community/whisper-large-v3-turbo    # ~1.6 GB (Multilingual STT)
 ```
 
 ## Recommended Models (Default Settings)
 
-The default configuration is designed to offer the best balance of speed and accuracy on Apple Silicon hardware. The
-recommended default models are:
+The default configuration is designed to offer the best balance of speed and accuracy on Apple Silicon hardware:
 
-- **STT (Parakeet)**: `mlx-community/parakeet-tdt-0.6b-v3`
-- **STT (Whisper)**: `mlx-community/whisper-large-v3-turbo`
-- **TTS (Supertonic)**: `Supertone/supertonic-3`
-- **TTS (VoxCPM2)**: `openbmb/VoxCPM2`
-- **Turn Detection**: `mlx-community/smart-turn-v3`
-- **VAD (Silero MLX)**: `mlx-community/silero-vad`
+| Component | Default Model | Size | Optional Alternative | Alternative Size |
+|---|---|:---:|---|:---:|
+| **STT** | `mlx-community/parakeet-tdt-0.6b-v3` | `~2.5 GB` | `mlx-community/whisper-large-v3-turbo` | `~1.6 GB` |
+| **TTS** | `openbmb/VoxCPM2` | `~5.0 GB` | `Supertone/supertonic-3` | `~414.7 MB` |
+| **Turn Detection** | `mlx-community/smart-turn-v3` | `~32.0 MB` | — | — |
+| **VAD (MLX)** | `mlx-community/silero-vad` | `~2.2 MB` | — | — |
 
 ## Adapter Requirements
 

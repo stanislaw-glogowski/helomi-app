@@ -39,9 +39,31 @@ memory. Zero telemetry, zero cloud audio streaming.
 
 ### Prerequisites
 
-- macOS running on Apple Silicon
+- macOS running on Apple Silicon (M1/M2/M3/M4)
 - [uv](https://docs.astral.sh/uv/) package manager
 - Xcode Command Line Tools (`xcode-select --install`)
+- [Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/guides/cli)
+
+### Download Speech Models
+
+Helomi runs inference completely on-device using local Hugging Face models. Download the default models before starting
+the application:
+
+#### Default Models (~7.5 GB total)
+
+| Component | Model Repository                     |    Size    | Description                                       |
+|-----------|--------------------------------------|:----------:|---------------------------------------------------|
+| **STT**   | `mlx-community/parakeet-tdt-0.6b-v3` | `~2.5 GB`  | Fast, low-latency Speech-to-Text                  |
+| **TTS**   | `openbmb/VoxCPM2`                    | `~5.0 GB`  | Expressive neural voice synthesis & voice cloning |
+| **Turn**  | `mlx-community/smart-turn-v3`        | `~32.0 MB` | Intelligent conversational turn-taking detection  |
+| **VAD**   | `mlx-community/silero-vad`           | `~2.2 MB`  | Voice activity detection (MLX engine)             |
+
+```bash
+hf download mlx-community/parakeet-tdt-0.6b-v3
+hf download openbmb/VoxCPM2
+hf download mlx-community/smart-turn-v3
+hf download mlx-community/silero-vad
+```
 
 ### Installation & Setup
 
@@ -50,32 +72,60 @@ memory. Zero telemetry, zero cloud audio streaming.
 git clone https://github.com/stanislaw-glogowski/helomi-app.git
 cd helomi-app
 
-# 2. Build native Swift audio helper and sync environment
+# 2. Build native Swift audio helper, sync environment, and install wake-word models
 make init
 ```
 
-### Running the CLI
+#### Optional Alternative Models
 
-You can run the CLI directly via `make run-cli` (which passes arguments to `helomi-cli`) or with `uv run helomi-cli`:
+| Component              | Model Repository                       |    Size     | Description                                         |
+|------------------------|----------------------------------------|:-----------:|-----------------------------------------------------|
+| **TTS (Lightweight)**  | `Supertone/supertonic-3`               | `~414.7 MB` | Ultra-fast, lightweight voice synthesis alternative |
+| **STT (Multilingual)** | `mlx-community/whisper-large-v3-turbo` |  `~1.6 GB`  | Multilingual Whisper Speech-to-Text                 |
+
+```bash
+# Optional: alternative TTS adapter (supertonic)
+hf download Supertone/supertonic-3
+
+# Optional: alternative STT adapter (whisper)
+hf download mlx-community/whisper-large-v3-turbo
+```
+
+### Running the Application (`helomi-tray`)
+
+The primary way to use Helomi is via the **macOS System Tray application (`helomi-tray`)**. It runs in your macOS menu
+bar, manages continuous on-device audio processing, displays real-time status indicators, and provides quick hotkeys to
+switch voice profiles and toggle background services (FastAPI server or Parrot mode):
+
+```bash
+# Launch the macOS system tray application
+make run-tray
+# or directly via uv:
+uv run helomi-tray
+```
+
+### Developer CLI (`helomi-cli`)
+
+For headless environments, automated CI provisioning, or debugging, a developer CLI is also available:
 
 ```bash
 # List all available commands and options
 make run-cli -- -h
 # or: uv run helomi-cli -h
 
-# 1. Install required acoustic models (OpenWakeWord, VAD)
+# 1. Install required acoustic models (OpenWakeWord, VAD) - already performed by make init
 make run-cli install
 # or directly via uv:
 uv run helomi-cli install
 
-# 2. Start parrot mode (live speech recognition and spoken echo)
+# 2. Run developer parrot mode (live speech recognition and spoken echo in terminal)
 make run-cli parrot
 # or specify an active profile:
 make run-cli parrot alexa
 # or directly via uv:
 uv run helomi-cli parrot [profile_id]
 
-# 3. Start local FastAPI server for speech pipeline
+# 3. Start standalone local FastAPI server directly in terminal
 make run-cli serve
 # or directly via uv:
 uv run helomi-cli serve
@@ -96,7 +146,7 @@ For more detailed information on configuring and extending Helomi, please refer 
 - [Models & Adapters](docs/models.md)
 - [Reference Audio (Voice Cloning)](docs/audio.md)
 - [Server API Specification](docs/api.md)
-- [CLI & Tray Applications](docs/apps.md)
+- [System Tray & CLI Applications](docs/apps.md)
 - [TypeScript Demo Application](demo/README.md)
 - [Configuration Examples](docs/examples.md)
 
@@ -109,14 +159,14 @@ helomi-app/
 ├── src/
 │   ├── helomi_common/   # Shared domain models, foundation components & utilities
 │   ├── helomi_core/     # Audio orchestration, adapters, workers, runtime, pipeline service, server API
-│   ├── helomi_cli/      # Command-line interface & terminal UI (install, parrot, serve)
-│   └── helomi_tray/     # macOS system tray application (rumps)
+│   ├── helomi_tray/     # Primary macOS system tray application (rumps)
+│   └── helomi_cli/      # Developer CLI & terminal UI (install, parrot, serve)
 ├── native/
 │   └── macos/avfaudio/  # Swift package for macOS CoreAudio/AVFAudio bridge
+├── resources/           # Local configuration, profiles, and acoustic models
 ├── demo/                # Interactive TypeScript & Bun voice assistant demo client
 └── tests/               # Unit, integration, and architecture test suite
 ```
-
 
 ---
 

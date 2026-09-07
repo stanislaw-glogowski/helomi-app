@@ -1,32 +1,17 @@
 # Applications
 
-Helomi provides multiple interfaces for interacting with the core engine.
+Helomi provides two interfaces for interacting with the core engine:
 
-## CLI Application (`helomi_cli`)
-
-A feature-rich Terminal User Interface (TUI) for managing the assistant directly from the command line.
-
-**Usage:**
-
-```bash
-make run-cli -- [command]
-# or
-uv run helomi-cli [command]
-```
-
-**Key Commands:**
-
-- `install`: Installs required acoustic models from OpenWakeWord releases (`embedding_model.onnx`, `melspectrogram.onnx`, `silero_vad.onnx`) to `.helomi/models/`, and the default profile wake-word model (`alexa_v0.1.onnx`) to `.helomi/profiles/alexa/models/`.
-- `parrot [profile_id]`: Starts live speech recognition with real-time spoken repetition, rich model status, and live event monitoring. If `profile_id` is not specified, uses the configured default profile (`alexa`).
-- `serve` (alias `server`): Starts the local FastAPI server for speech pipeline orchestration and REST/SSE clients.
+1. **System Tray Application (`helomi_tray`) — Primary Application**: A native macOS menu bar app designed for daily voice assistant interaction, profile switching, and background service control.
+2. **Developer CLI (`helomi_cli`) — Developer Tooling**: A terminal user interface and automation CLI used for acoustic model installation, headless testing, and development debugging.
 
 ---
 
-## System Tray (`helomi_tray`)
+## System Tray Application (`helomi_tray`) — Primary Application
 
-A native macOS menu bar application built with `rumps`. It embeds the `Runtime` directly, offering convenient status monitoring and voice switching.
+A native macOS menu bar application built with `rumps`. It embeds the `Runtime` directly, running quietly in the background while providing instant visual status monitoring and profile controls.
 
-**Launch:**
+### Launch
 
 ```bash
 make run-tray
@@ -35,6 +20,8 @@ uv run helomi-tray
 ```
 
 ### Status Bar Indicators
+
+The tray icon changes dynamically based on the current state of the assistant:
 
 | Icon | State |
 |---|---|
@@ -47,7 +34,30 @@ uv run helomi-tray
 
 ### Menu & Keyboard Shortcuts
 
-- **Profile Switching (`0` – `8`):** Quickly toggle voice profiles.
-- **Toggle API Server (`a`):** Enable or switch to the FastAPI HTTP/SSE server extension.
-- **Toggle Parrot Mode (`p`):** Enable or switch to Parrot repetition mode.
-- **Quit Application (`q`):** Gracefully stops audio drivers, background threads, and shuts down runtime. Can also be interrupted via `SIGINT` (`Ctrl+C`) or `SIGTERM`.
+The tray menu provides rapid hotkey navigation:
+
+- **Profile Switching (`0` – `8`):** Quickly switch between available voice profiles.
+- **Toggle API Server (`a`):** Enable or toggle the FastAPI HTTP/SSE server extension for external integrations (such as the TypeScript web demo).
+- **Toggle Parrot Mode (`p`):** Enable or toggle Parrot repetition mode for testing STT and TTS live.
+- **Quit Application (`q`):** Gracefully stops audio drivers, background threads, and shuts down the runtime. Can also be interrupted via `SIGINT` (`Ctrl+C`) or `SIGTERM`.
+
+---
+
+## Developer CLI (`helomi_cli`) — Developer Tooling
+
+A command-line interface and Terminal User Interface (TUI) intended for developers, automated CI environments, and headless operation.
+
+### Usage
+
+```bash
+make run-cli -- [command]
+# or
+uv run helomi-cli [command]
+```
+
+### Key Commands
+
+- `install`: Installs required acoustic models from OpenWakeWord releases (`embedding_model.onnx`, `melspectrogram.onnx`, `silero_vad.onnx`) to `resources/models/`, and the default profile wake-word model (`alexa_v0.1.onnx`) to `resources/profiles/alexa/models/`. Typically executed automatically via `make init`.
+- `parrot [profile_id]`: Starts developer speech recognition in the terminal with real-time spoken repetition, rich model status display, and live event logging. If `profile_id` is omitted, defaults to `alexa`.
+- `serve` (alias `server`): Starts the local FastAPI server directly in the terminal for speech pipeline orchestration and REST/SSE clients.
+

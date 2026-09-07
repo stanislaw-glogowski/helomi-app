@@ -7,8 +7,8 @@ All notable changes to Helomi are documented in this file.
 ### Added
 
 - **Default Profile (`alexa`)**:
-    - Established `alexa` as the official default assistant profile across `.helomi/settings.yml`, `Profile.DEFAULT_ID`, and CLI/API interfaces.
-    - Automatic wake-word model installation for Alexa (`alexa_v0.1.onnx`) into `.helomi/profiles/alexa/models/` via `helomi-cli install`.
+    - Established `alexa` as the official default assistant profile across `resources/settings.yml`, `Profile.DEFAULT_ID`, and CLI/API interfaces.
+    - Automatic wake-word model installation for Alexa (`alexa_v0.1.onnx`) into `resources/profiles/alexa/models/` via `helomi-cli install`.
 - **Profile Customization (`emoji`, `readonly`, `room_voice_path`)**:
     - Added `emoji` field to `Profile` with single-emoji validation, displayed in the macOS system tray when the profile is active.
     - Added `readonly` flag to `Profile` model schema.
@@ -20,6 +20,9 @@ All notable changes to Helomi are documented in this file.
 
 ### Changed
 
+- **Resources Directory Migration**:
+    - Migrated local workspace configuration and resources directory from `.helomi/` to `resources/` (`resources/settings.yml`, `resources/profiles/`, `resources/models/`).
+    - Updated `.gitignore` patterns and `UserData` search paths to target `resources/`.
 - **Audio Driver Architecture (`AudioDriver`)**:
     - Replaced `start_room_voice()` and `stop_room_voice()` with profile-aware lifecycle hooks `activate(profile: AudioProfile)` and `deactivate()`.
     - Streamlined native Swift `AVFAudio` engine wire protocol (`startRoomVoice` payload with file path, removed deprecated audio device listing).
@@ -27,7 +30,9 @@ All notable changes to Helomi are documented in this file.
     - Added whitespace and empty text validation in `SayText` command handling and `ParrotExtension`, avoiding redundant TTS synthesis.
     - Wrapped audio driver activation in `PipelineService` with graceful error recovery to prevent audio playback errors from blocking assistant activation.
 - **Documentation & Examples Overhaul**:
-    - Updated all documentation (`README.md`, `docs/profiles.md`, `docs/settings.md`, `docs/audio.md`, `docs/apps.md`, `docs/api.md`, `docs/examples.md`) to reflect `alexa` as the default profile, `avfaudio.voice_processing`, ambient audio, and system tray shortcuts.
+    - Added Hugging Face CLI (`hf` / `huggingface-cli`) prerequisite and model download guide with explicit disk size requirements (`~7.5 GB` default stack) to `README.md` and `docs/models.md`.
+    - Promoted macOS system tray application (`helomi_tray` / `make run-tray`) as the primary user-facing application across `README.md`, `docs/apps.md`, and `docs/examples.md`, framing `helomi_cli` as developer and automation tooling.
+    - Updated all documentation (`README.md`, `docs/profiles.md`, `docs/settings.md`, `docs/audio.md`, `docs/apps.md`, `docs/api.md`, `docs/examples.md`) to reflect `resources/` workspace directory, `alexa` as the default profile, `avfaudio.voice_processing`, ambient audio, and system tray shortcuts.
     - Updated TypeScript demo client (`demo/README.md`) to pair with `prompts/profiles/alexa.md`.
 
 ### Fixed

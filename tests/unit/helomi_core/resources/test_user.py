@@ -21,7 +21,7 @@ def test_user_data_home_env_var(tmp_path: Path) -> None:
 
 
 def test_user_data_local_dir_discovery(tmp_path: Path) -> None:
-    helomi_dir = tmp_path / ".helomi"
+    helomi_dir = tmp_path / "resources"
     helomi_dir.mkdir()
     sub_dir = tmp_path / "sub" / "deep"
     sub_dir.mkdir(parents=True)

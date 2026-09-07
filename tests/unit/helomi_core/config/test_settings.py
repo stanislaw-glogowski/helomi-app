@@ -21,7 +21,7 @@ def test_settings_load_missing_raises_error(tmp_path: Path) -> None:
 
 
 def test_settings_override(tmp_path: Path) -> None:
-    store = tmp_path / ".helomi"
+    store = tmp_path / "resources"
     store.mkdir()
     (store / "settings.yml").write_text(
         "audio:\n  adapter: avfaudio\n", encoding="utf-8"

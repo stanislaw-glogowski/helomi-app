@@ -172,8 +172,8 @@ def mock_tts_adapter() -> MockTTSAdapter:
 
 @pytest.fixture
 def temp_helomi_store(tmp_path: Path) -> Path:
-    """Create a temporary .helomi directory tree with valid YAML config files."""
-    store_dir = tmp_path / ".helomi"
+    """Create a temporary resources directory tree with valid YAML config files."""
+    store_dir = tmp_path / "resources"
     store_dir.mkdir(parents=True)
 
     models_dir = store_dir / "models"

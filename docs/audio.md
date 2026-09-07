@@ -8,7 +8,7 @@ The native audio engine bridge handles real-time microphone capture, synthesized
 
 ### Apple Voice Processing (Echo Cancellation)
 
-You can enable macOS system-level hardware acoustic echo cancellation (AEC) and automatic gain control in `.helomi/settings.yml`:
+You can enable macOS system-level hardware acoustic echo cancellation (AEC) and automatic gain control in `resources/settings.yml`:
 
 ```yaml
 audio:

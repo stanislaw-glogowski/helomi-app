@@ -2,9 +2,21 @@
 
 Here are some common usage examples for configuring and running Helomi.
 
-## Running a Specific Profile
+## Running the System Tray Application (Primary Interface)
 
-To run the CLI with a custom profile named `my_assistant`:
+To launch the primary macOS menu bar assistant:
+
+```bash
+make run-tray
+# or
+uv run helomi-tray
+```
+
+From the menu bar icon, you can switch active voice profiles (shortcuts `0`–`8`), start the API server for client integrations (`a`), enable Parrot mode (`p`), and quit the application (`q`).
+
+## Running a Specific Profile via Developer CLI
+
+To run the developer CLI with a custom profile named `my_assistant`:
 
 ```bash
 uv run helomi-cli parrot my_assistant
@@ -12,7 +24,7 @@ uv run helomi-cli parrot my_assistant
 
 ## Overriding the Server Port
 
-Create `settings.override.yml` in your `.helomi` directory:
+Create `settings.override.yml` in your `resources` directory:
 
 ```yaml
 server:

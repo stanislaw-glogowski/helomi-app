@@ -8,7 +8,7 @@ from helomi_core.runtime import Runtime
 
 def test_runtime_configuration_with_local_store(tmp_path: Path):
     """Integration test: UserData directory structure -> Runtime initialization."""
-    store_dir = tmp_path / ".helomi"
+    store_dir = tmp_path / "resources"
     store_dir.mkdir(parents=True)
 
     models_dir = store_dir / "models"

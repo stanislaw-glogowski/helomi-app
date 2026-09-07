@@ -31,7 +31,7 @@ def test_profile_catalog_load(temp_helomi_store: Path) -> None:
 
 
 def test_profile_catalog_defaults_merging_and_filtering(tmp_path: Path) -> None:
-    store = tmp_path / ".helomi"
+    store = tmp_path / "resources"
     store.mkdir()
     settings_file = store / "settings.yml"
     settings_file.write_text(
