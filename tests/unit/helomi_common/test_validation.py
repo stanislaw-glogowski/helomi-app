@@ -143,8 +143,10 @@ def test_hf_model_exceptions():
         "helomi_common.validation.hf.snapshot_download",
         side_effect=LocalEntryNotFoundError("Not cached"),
     ):
-        with pytest.raises(ValueError, match="was not found in the local cache"):
+        with pytest.raises(ValidationError) as exc_info:
             HFModel("org/not-cached")
+        assert exc_info.value.errors()[0]["type"] == "hf_model_not_found"
+        assert "was not found in the local cache" in str(exc_info.value)
 
     with patch(
         "helomi_common.validation.hf.snapshot_download",

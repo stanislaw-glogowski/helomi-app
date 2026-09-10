@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 
-from ..audio import AudioChunk, AudioDriver, RawAudio
+from ..audio import AudioDriver, RawAudio
 from ..detection import (
     ConversationEnded,
     DetectionMode,
@@ -263,9 +263,7 @@ class PipelineService(PipelineComponent):
                             self._stt_queue.put_nowait(
                                 PipelineRequest(
                                     data=STTRequest(
-                                        audio=res.audio
-                                        if isinstance(res.audio, AudioChunk)
-                                        else AudioChunk.from_raw(res.audio),
+                                        audio=res.audio,
                                     ),
                                 ),
                             )
@@ -381,8 +379,12 @@ class PipelineService(PipelineComponent):
 
         try:
             await self._audio_driver.activate(profile.audio)
-        except Exception:
-            self._logger.warning("Failed to activate audio for profile {}", profile.id)
+        except Exception as err:
+            self._logger.warning(
+                "Failed to activate audio for profile {}: {}",
+                profile.id,
+                err,
+            )
 
         await self._detection_worker.change_mode(DetectionMode.UTTERANCE)
 

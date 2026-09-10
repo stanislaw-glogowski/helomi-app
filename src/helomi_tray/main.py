@@ -4,7 +4,7 @@ import warnings
 
 from helomi_common import LogLevel, configure_logger
 from helomi_core import Runtime
-from helomi_tray.app import TrayApp
+from helomi_tray import App
 
 warnings.filterwarnings(
     "ignore",
@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
 
 def run(_: argparse.Namespace) -> None:
     runtime = Runtime()
-    app = TrayApp(runtime=runtime)
+    app = App(runtime=runtime)
 
     def _signal_handler(_sig: int, _frame: object) -> None:
         app.quit()

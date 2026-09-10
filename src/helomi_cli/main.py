@@ -1,9 +1,9 @@
 import argparse
 import asyncio
 import signal
+from contextlib import suppress
 
-from helomi_cli.commands import run_install_cmd, run_parrot_cmd, run_serve_cmd
-from helomi_cli.widgets import Spinner
+from helomi_cli import Spinner, run_install_cmd, run_parrot_cmd, run_serve_cmd
 from helomi_common import LogLevel, configure_logger
 from helomi_core import Runtime
 
@@ -60,29 +60,38 @@ def parse_args(default_cmd="install") -> argparse.Namespace:
 
 
 async def run(args: argparse.Namespace) -> None:
+    debug = args.debug
+
+    logger = configure_logger(LogLevel.DEBUG if debug else LogLevel.INFO)
     runtime = Runtime()
-    spinner = Spinner(args.debug)
+    spinner = Spinner(debug)
     shutdown = asyncio.Event()
     loop = asyncio.get_running_loop()
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, shutdown.set)
 
-    profile_id = args.profile_id if isinstance(args.profile_id, str) else None
+    try:
+        with suppress(asyncio.exceptions.CancelledError, TimeoutError):
+            profile_id = args.profile_id if isinstance(args.profile_id, str) else None
 
-    async with runtime:
-        match args.command:
-            case "install":
-                await run_install_cmd(runtime, spinner)
-            case "parrot":
-                await run_parrot_cmd(runtime, shutdown, profile_id, spinner)
-            case "serve" | "server":
-                await run_serve_cmd(runtime, shutdown, spinner)
+            async with runtime:
+                match args.command:
+                    case "install":
+                        await run_install_cmd(runtime, spinner)
+                    case "parrot":
+                        await run_parrot_cmd(runtime, shutdown, profile_id, spinner)
+                    case "serve" | "server":
+                        await run_serve_cmd(runtime, shutdown, spinner)
+    except Exception as err:
+        if debug:
+            raise err
+        else:
+            logger.exception(err)
 
 
 def main():
     args = parse_args()
-    configure_logger(LogLevel.DEBUG if args.debug else LogLevel.INFO)
     asyncio.run(run(args))
 
 

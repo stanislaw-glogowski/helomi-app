@@ -13,9 +13,10 @@ from helomi_core.pipeline import (
     DeactivateProfile,
     ProfileActivated,
     ProfileDeactivated,
+    SynthesisReady,
 )
 from helomi_core.server import ServerExtension
-from helomi_tray.app import TrayApp, TrayState, TrayStatus, TryIcon
+from helomi_tray.app import App, AppIcon, AppState, AppStatus
 from helomi_tray.main import main, parse_args, run
 
 
@@ -46,102 +47,178 @@ def mock_runtime():
 
 
 def test_tray_app_initialization(mock_runtime):
-    """Verify TrayApp initializes menus, default state, and title."""
-    app = TrayApp(runtime=mock_runtime)
+    """Verify App initializes menus, default state, and title."""
+    app = App(runtime=mock_runtime)
 
-    assert app.title == f"{TryIcon.START} Helomi"
-    assert app._state.status == TrayStatus.STARTING
-    assert app._state.profile_id is None
-    assert app._state.extension_key is ServerExtension
+    assert app.title == "Helomi"
+    assert app._state.status == AppStatus.STARTING
+    assert app._state.active_profile is None
+    assert app._state.active_extension is ServerExtension
     assert app._state.server_url is None
+    assert app._state.recording is None
 
     assert "alexa" in app._menu_profiles
     assert "gizmo" in app._menu_profiles
     assert app._menu_profiles["alexa"].key == "0"
     assert app._menu_profiles["gizmo"].key == "1"
-    assert ServerExtension in app._menu_extensions
-    assert ParrotExtension in app._menu_extensions
-    assert app._menu_extensions[ServerExtension].key == "a"
-    assert app._menu_extensions[ParrotExtension].key == "p"
+
+    assert app._menu_server.title == "Starting Server"
+    assert app._menu_parrot.title == "Parrot Mode"
+    assert app._menu_parrot.key == "p"
+    assert app._menu_recording.title == "Recording"
+    assert app._menu_recording.key == "r"
+    assert app._menu_save_recording.title == "Save As …"
+    assert app._menu_save_recording.key == "s"
 
 
-def test_tray_app_render_title():
-    """Verify _render_title formats icons and labels correctly."""
-    assert TrayApp._render_title(TryIcon.START) == f"{TryIcon.START} Helomi"
-    title = TrayApp._render_title(TryIcon.PARROT, "Custom")
-    assert title == f"{TryIcon.PARROT} Custom"
+def test_tray_app_icon_start():
+    """Verify AppIcon.Start cycles through spinner states correctly."""
+    start = AppIcon.Start()
+    assert iter(start) is start
+    assert str(start) == "⠋"
+    assert str(start) == "⠙"
+
+    # Cycle through remaining states
+    cycle = [str(start) for _ in range(8)]
+    assert cycle == ["⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+    # Cycles back to the beginning
+    assert str(start) == "⠋"
 
 
-def test_tray_app_sync_ui_running(mock_runtime):
-    """Verify _sync_ui updates menus, title, and extension states when running."""
-    app = TrayApp(runtime=mock_runtime)
+def test_tray_app_animate_start_icon(mock_runtime):
+    """Verify _animate_start_icon updates title and stops timer when not starting."""
+    app = App(runtime=mock_runtime)
+    assert app.title == "Helomi"
 
-    # Transition from STARTING to RUNNING with SERVER extension
-    # and active alexa profile (with emoji)
-    app._state = TrayState(
-        status=TrayStatus.RUNNING,
-        profile_id="alexa",
-        extension_key=ServerExtension,
+    app._animate_start_icon(None)
+    assert app.title == "⠋ Helomi"
+
+    app._animate_start_icon(None)
+    assert app.title == "⠙ Helomi"
+
+    # When status is no longer STARTING, stops timer
+    mock_timer = MagicMock()
+    app._state = replace(app._state, status=AppStatus.RUNNING)
+    app._animate_start_icon(mock_timer)
+    mock_timer.stop.assert_called_once()
+
+
+def test_tray_app_sync_state_running(mock_runtime):
+    """Verify _sync_state updates menus, title, and extension states when running."""
+    app = App(runtime=mock_runtime)
+
+    # 1. Transition from STARTING to RUNNING with ServerExtension and alexa profile
+    app._state = AppState(
+        status=AppStatus.RUNNING,
+        active_profile="alexa",
+        active_extension=ServerExtension,
         server_url="http://127.0.0.1:8181",
     )
-    app._sync_ui(None)
+    app._sync_state(None)
 
     assert app.title == "👩🏻 Alexa"
     assert app._menu_profiles["alexa"].state == 1
     assert app._menu_profiles["gizmo"].state == 0
-    assert app._menu_extensions[ServerExtension].state == 1
-    assert app._menu_extensions[ParrotExtension].state == 0
-    assert "http://127.0.0.1:8181" in app._menu_extensions[ServerExtension].title
+    assert app._menu_server.title == "API: http://127.0.0.1:8181"
+    assert app._menu_parrot.state == 0
+    assert app._menu_recording.state == 0
+    assert app._menu_save_recording.callback is None
 
-    # Transition with active gizmo profile (emoji is None -> fallback to ROBOT icon)
-    app._state = TrayState(
-        status=TrayStatus.RUNNING,
-        profile_id="gizmo",
-        extension_key=ServerExtension,
+    # Calling again with identical state does nothing
+    with patch.object(app, "_runtime") as mock_rt:
+        app._sync_state(None)
+        mock_rt.profiles.get.assert_not_called()
+
+    # 2. Transition with gizmo profile (emoji is None -> fallback to PROFILE icon)
+    app._state = AppState(
+        status=AppStatus.RUNNING,
+        active_profile="gizmo",
+        active_extension=ServerExtension,
         server_url="http://127.0.0.1:8181",
     )
-    app._sync_ui(None)
-    assert app.title == f"{TryIcon.ROBOT} Gizmo"
-
-    # Transition with active profile and ParrotExtension
-    app._state = TrayState(
-        status=TrayStatus.RUNNING,
-        profile_id="alexa",
-        extension_key=ParrotExtension,
-        server_url="http://127.0.0.1:8181",
-    )
-    app._sync_ui(None)
-    assert app.title == "👩🏻 Alexa 🦜"
-
-    # Switch profile to None (idle -> EAR icon)
-    app._state = TrayState(
-        status=TrayStatus.RUNNING,
-        profile_id=None,
-        extension_key=ParrotExtension,
-        server_url="http://127.0.0.1:8181",
-    )
-    app._sync_ui(None)
-
-    assert app.title == f"{TryIcon.EAR} Helomi"
+    app._sync_state(None)
+    assert app.title == f"{AppIcon.PROFILE} Gizmo"
     assert app._menu_profiles["alexa"].state == 0
-    assert app._menu_extensions[ServerExtension].state == 0
-    assert app._menu_extensions[ParrotExtension].state == 1
+    assert app._menu_profiles["gizmo"].state == 1
+
+    # 3. Transition with active profile and ParrotExtension
+    app._state = AppState(
+        status=AppStatus.RUNNING,
+        active_profile="alexa",
+        active_extension=ParrotExtension,
+        server_url="http://127.0.0.1:8181",
+    )
+    app._sync_state(None)
+    assert app.title == f"{AppIcon.PARROT} Alexa"
+    assert app._menu_server.title == "API Disabled"
+    assert app._menu_parrot.state == 1
+
+    # 4. Switch profile to None (idle -> EAR icon, Helomi label)
+    app._state = AppState(
+        status=AppStatus.RUNNING,
+        active_profile=None,
+        active_extension=ParrotExtension,
+        server_url="http://127.0.0.1:8181",
+    )
+    app._sync_state(None)
+    assert app.title == f"{AppIcon.EAR} Helomi"
+    assert app._menu_profiles["alexa"].state == 0
+    assert app._menu_profiles["gizmo"].state == 0
+    assert app._menu_parrot.state == 1
+
+    # 5. Recording enabled with empty buffer
+    app._state = AppState(
+        status=AppStatus.RUNNING,
+        active_profile=None,
+        active_extension=ServerExtension,
+        server_url="http://127.0.0.1:8181",
+        recording=[],
+    )
+    app._sync_state(None)
+    assert app.title == f"{AppIcon.EAR} Helomi {AppIcon.RECORDING}"
+    assert app._menu_recording.state == 1
+    assert app._menu_save_recording.callback is None
+
+    # 6. Recording with data enables Save As callback
+    chunk = MagicMock(spec=RawAudio)
+    app._state = AppState(
+        status=AppStatus.RUNNING,
+        active_profile=None,
+        active_extension=ServerExtension,
+        server_url="http://127.0.0.1:8181",
+        recording=[chunk],
+    )
+    app._sync_state(None)
+    assert app.title == f"{AppIcon.EAR} Helomi {AppIcon.RECORDING}"
+    assert app._menu_recording.state == 1
+    assert app._menu_save_recording.callback == app._handle_save_recording
 
 
-def test_tray_app_sync_ui_quiting(mock_runtime):
-    """Verify _sync_ui sets EXIT icon and clears callbacks on quiting."""
-    app = TrayApp(runtime=mock_runtime)
-    app._last_state = TrayState(status=TrayStatus.RUNNING)
-    app._state = TrayState(status=TrayStatus.QUITING)
+def test_tray_app_sync_state_quiting(mock_runtime):
+    """Verify _sync_state sets EXIT icon and clears callbacks on quiting."""
+    app = App(runtime=mock_runtime)
+    app._last_state = AppState(status=AppStatus.RUNNING)
+    app._state = AppState(status=AppStatus.QUITING)
 
-    app._sync_ui(None)
+    app._sync_state(None)
 
-    assert app.title == f"{TryIcon.EXIT} Helomi"
+    assert app.title == f"{AppIcon.QUITING} Helomi"
+    assert app._menu_server.title == "Stopping Server"
+    assert app._menu_parrot.state == 0
+    assert app._menu_parrot.callback is None
+    assert app._menu_recording.state == 0
+    assert app._menu_recording.callback is None
+    assert app._menu_save_recording.callback is None
+
+    for menu_item in app._menu_profiles.values():
+        assert menu_item.state == 0
+        assert menu_item.callback is None
 
 
 def test_tray_app_handle_toggle_profile(mock_runtime):
     """Verify clicking profile menu items activates or deactivates profiles."""
-    app = TrayApp(runtime=mock_runtime)
+    app = App(runtime=mock_runtime)
     app._pipeline_execute_command = MagicMock()
 
     # If item is currently active (state == 1), clicking deactivates
@@ -161,52 +238,54 @@ def test_tray_app_handle_toggle_profile(mock_runtime):
     assert cmd.profile_id == "alexa"
 
 
-def test_tray_app_handle_toggle_extension(mock_runtime):
-    """Verify clicking extension menu item dispatches extension selection."""
-    app = TrayApp(runtime=mock_runtime)
-    app._loop = MagicMock()
-    app._pipeline_set_activate_extension = MagicMock()
+def test_tray_app_handle_toggle_parrot(mock_runtime):
+    """Verify clicking parrot menu item dispatches extension selection."""
+    app = App(runtime=mock_runtime)
+    app._set_activate_extension = MagicMock()
 
-    parrot_item = app._menu_extensions[ParrotExtension]
-    app._handle_toggle_extension(parrot_item)
+    # When state is 0, switches to ParrotExtension
+    app._menu_parrot.state = 0
+    app._handle_toggle_parrot(app._menu_parrot)
+    app._set_activate_extension.assert_called_once_with(ParrotExtension)
 
-    app._pipeline_set_activate_extension.assert_called_once_with(ParrotExtension)
-    assert app._state.extension_key is ParrotExtension
-
-    # Without loop, does nothing
-    app._loop = None
-    app._pipeline_set_activate_extension.reset_mock()
-    app._handle_toggle_extension(parrot_item)
-    app._pipeline_set_activate_extension.assert_not_called()
+    # When state is 1, switches back to ServerExtension
+    app._set_activate_extension.reset_mock()
+    app._menu_parrot.state = 1
+    app._handle_toggle_parrot(app._menu_parrot)
+    app._set_activate_extension.assert_called_once_with(ServerExtension)
 
 
-def test_tray_app_pipeline_set_activate_extension(mock_runtime):
-    """Verify _pipeline_set_activate_extension runs on event loop."""
-    app = TrayApp(runtime=mock_runtime)
+def test_tray_app_set_activate_extension(mock_runtime):
+    """Verify _set_activate_extension updates state and runs on event loop."""
+    app = App(runtime=mock_runtime)
     app._pipeline = MagicMock()
     mock_loop = MagicMock()
     mock_loop.is_closed.return_value = False
     app._loop = mock_loop
 
     with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
-        app._pipeline_set_activate_extension(ParrotExtension)
+        app._set_activate_extension(ParrotExtension)
+        assert app._state.active_extension is ParrotExtension
         mock_run_coro.assert_called_once()
 
     # Without pipeline or loop, does nothing
     app._pipeline = None
-    app._pipeline_set_activate_extension(ParrotExtension)
+    with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
+        app._set_activate_extension(ServerExtension)
+        assert app._state.active_extension is ServerExtension
+        mock_run_coro.assert_not_called()
 
     # When loop is closed, does nothing
     app._pipeline = MagicMock()
     mock_loop.is_closed.return_value = True
     with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
-        app._pipeline_set_activate_extension(ParrotExtension)
+        app._set_activate_extension(ParrotExtension)
         mock_run_coro.assert_not_called()
 
 
 def test_tray_app_pipeline_execute_command(mock_runtime):
     """Verify _pipeline_execute_command runs pipeline command on event loop."""
-    app = TrayApp(runtime=mock_runtime)
+    app = App(runtime=mock_runtime)
     app._pipeline = MagicMock()
     mock_loop = MagicMock()
     mock_loop.is_closed.return_value = False
@@ -231,12 +310,12 @@ def test_tray_app_pipeline_execute_command(mock_runtime):
 
 def test_tray_app_handle_quit_and_exit(mock_runtime):
     """Verify quit flow signals shutdown and exits cleanly."""
-    app = TrayApp(runtime=mock_runtime)
+    app = App(runtime=mock_runtime)
     mock_timer_item = MagicMock()
 
     with patch("rumps.Timer") as mock_timer_cls:
         app._handle_quit(mock_timer_item)
-        assert app._state.status == TrayStatus.QUITING
+        assert app._state.status == AppStatus.QUITING
         assert mock_timer_cls.called
 
     # Test _handle_exit
@@ -262,15 +341,111 @@ def test_tray_app_handle_quit_and_exit(mock_runtime):
         mock_quit_app.assert_called_once()
 
 
+def test_tray_app_update_state(mock_runtime):
+    """Verify _update_state updates state fields and handles options."""
+    app = App(runtime=mock_runtime)
+
+    # enabled_recording=True sets recording=[]
+    app._update_state(enabled_recording=True)
+    assert app._state.recording == []
+
+    # recording_chunk appends chunk when recording is active
+    chunk = MagicMock(spec=RawAudio)
+    app._update_state(recording_chunk=chunk)
+    assert app._state.recording == [chunk]
+
+    # enabled_recording=False resets recording to None
+    app._update_state(enabled_recording=False)
+    assert app._state.recording is None
+
+    # recording_chunk does nothing if recording is None
+    app._update_state(recording_chunk=chunk)
+    assert app._state.recording is None
+
+    # force_sync calls _sync_state
+    with patch.object(app, "_sync_state") as mock_sync:
+        app._update_state(force_sync=True)
+        mock_sync.assert_called_once_with(None)
+
+    # When status is QUITING, updates are ignored
+    app._state = replace(app._state, status=AppStatus.QUITING)
+    app._update_state(server_url="http://new-url")
+    assert app._state.server_url is None
+
+
+def test_tray_app_toggle_recording(mock_runtime):
+    """Verify toggle recording turns on/off."""
+    app = App(runtime=mock_runtime)
+    assert app._state.recording is None
+
+    # Turn on (state == 0 -> recording=[])
+    app._menu_recording.state = 0
+    app._handle_toggle_recording(app._menu_recording)
+    assert app._state.recording == []
+
+    # Turn off (state == 1 -> recording=None)
+    app._menu_recording.state = 1
+    app._handle_toggle_recording(app._menu_recording)
+    assert app._state.recording is None
+
+
+def test_tray_app_handle_save_empty(mock_runtime):
+    """Verify _handle_save_recording does nothing if recording is empty or None."""
+    app = App(runtime=mock_runtime)
+    assert app._state.recording is None
+    with patch("AppKit.NSSavePanel") as mock_panel_cls:
+        app._handle_save_recording(app._menu_save_recording)
+        mock_panel_cls.assert_not_called()
+
+    app._state = replace(app._state, recording=[])
+    with patch("AppKit.NSSavePanel") as mock_panel_cls:
+        app._handle_save_recording(app._menu_save_recording)
+        mock_panel_cls.assert_not_called()
+
+
+def test_tray_app_handle_save_cancelled_and_success(mock_runtime, tmp_path):
+    """Verify _handle_save_recording handles cancel and success writing file."""
+    app = App(runtime=mock_runtime)
+    chunk = RawAudio(format=AudioFormat.MONO_16, data=b"\x00" * 32)
+    app._state = replace(app._state, recording=[chunk])
+
+    # 1. Cancelled save dialog
+    mock_panel = MagicMock()
+    mock_panel.runModal.return_value = 0  # Not OK
+    mock_appkit = MagicMock()
+    mock_appkit.NSModalResponseOK = 1
+    mock_appkit.NSSavePanel.savePanel.return_value = mock_panel
+
+    with patch.dict(sys.modules, {"AppKit": mock_appkit}):
+        app._handle_save_recording(app._menu_save_recording)
+        # Recording should NOT be cleared if user cancelled
+        assert app._state.recording == [chunk]
+
+    # 2. Successful save dialog
+    out_file = tmp_path / "saved_test.wav"
+    mock_panel.runModal.return_value = 1  # OK
+    mock_url = MagicMock()
+    mock_url.path.return_value = str(out_file)
+    mock_panel.URL.return_value = mock_url
+
+    with patch.dict(sys.modules, {"AppKit": mock_appkit}):
+        app._handle_save_recording(app._menu_save_recording)
+        assert app._state.recording == []
+        assert out_file.exists()
+
+
 @pytest.mark.asyncio
 async def test_tray_app_pipeline_loop(mock_runtime):
     """Verify _pipeline_loop listens to pipeline events and updates state."""
-    app = TrayApp(runtime=mock_runtime)
+    app = App(runtime=mock_runtime)
+    app._state = replace(app._state, recording=[])
 
     mock_pipeline = MagicMock()
+    chunk = MagicMock(spec=RawAudio)
 
     async def mock_subscribe():
         yield ProfileActivated(profile_id="gizmo")
+        yield SynthesisReady(profile_id="gizmo", text="hello", audio=chunk)
         yield ProfileDeactivated(profile_id="gizmo")
 
     mock_pipeline.subscribe_event = mock_subscribe
@@ -278,16 +453,22 @@ async def test_tray_app_pipeline_loop(mock_runtime):
 
     await app._pipeline_loop()
 
-    assert app._state.profile_id is None
+    assert app._state.active_profile is None
+    assert app._state.recording == [chunk]
+
+    # Without pipeline, returns early
+    app._pipeline = None
+    await app._pipeline_loop()
 
 
 @pytest.mark.asyncio
 async def test_tray_app_runtime_loop(mock_runtime):
     """Verify _runtime_loop initializes components and awaits shutdown."""
-    app = TrayApp(runtime=mock_runtime)
+    app = App(runtime=mock_runtime)
 
     mock_pipeline = MagicMock()
-    mock_pipeline.active_profile = None
+    mock_profile = MagicMock(id="prof1")
+    mock_pipeline.active_profile = mock_profile
 
     async def empty_events():
         if False:
@@ -309,8 +490,9 @@ async def test_tray_app_runtime_loop(mock_runtime):
     await asyncio.sleep(0.05)
 
     assert app._pipeline is mock_pipeline
-    assert app._state.status == TrayStatus.RUNNING
+    assert app._state.status == AppStatus.RUNNING
     assert app._state.server_url == "http://localhost:8181"
+    assert app._state.active_profile == "prof1"
 
     app._shutdown_signal.set()
     await loop_task
@@ -318,7 +500,7 @@ async def test_tray_app_runtime_loop(mock_runtime):
 
 def test_tray_app_thread_worker(mock_runtime):
     """Verify _thread_worker initializes event loop and executes runtime loop."""
-    app = TrayApp(runtime=mock_runtime)
+    app = App(runtime=mock_runtime)
     with patch.object(app, "_runtime_loop", new_callable=AsyncMock) as mock_r_loop:
         app._thread_worker()
         assert app._loop is not None
@@ -327,7 +509,7 @@ def test_tray_app_thread_worker(mock_runtime):
 
 def test_tray_app_thread_worker_exception(mock_runtime):
     """Verify _thread_worker logs exception when runtime loop fails."""
-    app = TrayApp(runtime=mock_runtime)
+    app = App(runtime=mock_runtime)
     with (
         patch.object(app, "_runtime_loop", side_effect=RuntimeError("boom")),
         patch.object(app._logger, "exception") as mock_log,
@@ -338,7 +520,7 @@ def test_tray_app_thread_worker_exception(mock_runtime):
 
 def test_tray_app_thread_worker_cancelled(mock_runtime):
     """Verify _thread_worker cleanly suppresses CancelledError and KeyboardInterrupt."""
-    app = TrayApp(runtime=mock_runtime)
+    app = App(runtime=mock_runtime)
     with patch.object(app, "_runtime_loop", side_effect=asyncio.CancelledError):
         app._thread_worker()
 
@@ -357,7 +539,7 @@ def test_tray_app_many_profiles_keys():
     profiles.get.return_value = mock_profiles[0]
     runtime.profiles = profiles
 
-    app = TrayApp(runtime=runtime)
+    app = App(runtime=runtime)
     assert app._menu_profiles["prof_0"].key == "0"
     assert app._menu_profiles["prof_8"].key == "8"
     assert not app._menu_profiles["prof_9"].key
@@ -366,7 +548,7 @@ def test_tray_app_many_profiles_keys():
 
 def test_tray_app_run(mock_runtime):
     """Verify run starts worker thread and calls rumps.App.run."""
-    app = TrayApp(runtime=mock_runtime)
+    app = App(runtime=mock_runtime)
     with (
         patch.object(app, "_before_run") as mock_before_run,
         patch("rumps.App.run") as mock_super_run,
@@ -397,10 +579,10 @@ def test_tray_main_and_run():
 
 
 def test_tray_run_function():
-    """Verify run instantiates Runtime and TrayApp and handles signals."""
+    """Verify run instantiates Runtime and App and handles signals."""
     with (
         patch("helomi_tray.main.Runtime") as mock_runtime_cls,
-        patch("helomi_tray.main.TrayApp") as mock_tray_cls,
+        patch("helomi_tray.main.App") as mock_tray_cls,
         patch("signal.signal") as mock_signal,
     ):
         mock_app = mock_tray_cls.return_value
@@ -420,7 +602,7 @@ def test_tray_run_function():
     # Test KeyboardInterrupt
     with (
         patch("helomi_tray.main.Runtime"),
-        patch("helomi_tray.main.TrayApp") as mock_tray_cls,
+        patch("helomi_tray.main.App") as mock_tray_cls,
         patch("signal.signal"),
     ):
         mock_app = mock_tray_cls.return_value
@@ -432,7 +614,7 @@ def test_tray_run_function():
 
 def test_tray_quit_calls_handle_quit(mock_runtime):
     """Verify app.quit delegates to _handle_quit."""
-    app = TrayApp(runtime=mock_runtime)
+    app = App(runtime=mock_runtime)
     with patch.object(app, "_handle_quit") as mock_handle:
         app.quit()
         mock_handle.assert_called_once_with(None)
@@ -446,94 +628,3 @@ def test_tray_package_main_execution():
     ):
         runpy.run_module("helomi_tray", run_name="__main__")
         mock_run.assert_called_once()
-
-
-def test_tray_app_toggle_recording(mock_runtime):
-    """Verify toggle recording turns on/off without discarding existing recording."""
-    app = TrayApp(runtime=mock_runtime)
-    assert app._state.is_recording is False
-    assert app._state.recording == []
-
-    # Turn on
-    app._handle_toggle_recording(app._menu_recording)
-    assert app._state.is_recording is True
-    assert app._state.recording == []
-
-    # Add mock audio chunk
-    chunk = MagicMock(spec=RawAudio)
-    app._update_state(audio=chunk)
-    assert app._state.recording == [chunk]
-
-    # Turn off (should keep recording buffer intact)
-    app._handle_toggle_recording(app._menu_recording)
-    assert app._state.is_recording is False
-    assert app._state.recording == [chunk]
-
-
-def test_tray_app_sync_recording(mock_runtime):
-    """Verify _sync_recording updates menu item states."""
-    app = TrayApp(runtime=mock_runtime)
-
-    # Idle state
-    app._sync_recording()
-    assert app._menu_recording.state == 0
-    assert app._menu_save.callback is None
-
-    # Recording with no data yet
-    app._state = replace(app._state, is_recording=True, recording=[])
-    app._sync_recording()
-    assert app._menu_recording.state == 1
-    assert app._menu_save.callback is None
-
-    # Recording with data
-    chunk = MagicMock(spec=RawAudio)
-    app._state = replace(app._state, is_recording=True, recording=[chunk])
-    app._sync_recording()
-    assert app._menu_recording.state == 1
-    assert app._menu_save.callback is not None
-
-    # Stopped recording with data (save should remain enabled!)
-    app._state = replace(app._state, is_recording=False, recording=[chunk])
-    app._sync_recording()
-    assert app._menu_recording.state == 0
-    assert app._menu_save.callback is not None
-
-
-def test_tray_app_handle_save_empty(mock_runtime):
-    """Verify _handle_save does nothing if recording is empty."""
-    app = TrayApp(runtime=mock_runtime)
-    assert app._state.recording == []
-    with patch("AppKit.NSSavePanel") as mock_panel_cls:
-        app._handle_save(app._menu_save)
-        mock_panel_cls.assert_not_called()
-
-
-def test_tray_app_handle_save_cancelled_and_success(mock_runtime, tmp_path):
-    """Verify _handle_save handles cancel without clearing and success writes file."""
-    app = TrayApp(runtime=mock_runtime)
-    chunk = RawAudio(format=AudioFormat.MONO_16, data=b"\x00" * 32)
-    app._state = replace(app._state, recording=[chunk])
-
-    # 1. Cancelled save dialog
-    mock_panel = MagicMock()
-    mock_panel.runModal.return_value = 0  # Not OK
-    mock_appkit = MagicMock()
-    mock_appkit.NSModalResponseOK = 1
-    mock_appkit.NSSavePanel.savePanel.return_value = mock_panel
-
-    with patch.dict(sys.modules, {"AppKit": mock_appkit}):
-        app._handle_save(app._menu_save)
-        # Recording should NOT be cleared if user cancelled
-        assert app._state.recording == [chunk]
-
-    # 2. Successful save dialog
-    out_file = tmp_path / "saved_test.wav"
-    mock_panel.runModal.return_value = 1  # OK
-    mock_url = MagicMock()
-    mock_url.path.return_value = str(out_file)
-    mock_panel.URL.return_value = mock_url
-
-    with patch.dict(sys.modules, {"AppKit": mock_appkit}):
-        app._handle_save(app._menu_save)
-        assert app._state.recording == []
-        assert out_file.exists()

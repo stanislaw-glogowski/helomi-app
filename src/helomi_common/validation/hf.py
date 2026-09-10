@@ -9,6 +9,7 @@ from huggingface_hub.errors import (
 )
 from huggingface_hub.utils import disable_progress_bars
 from pydantic import BaseModel, Field, model_validator
+from pydantic_core import PydanticCustomError
 
 
 class HFModel(BaseModel):
@@ -57,10 +58,11 @@ class HFModel(BaseModel):
                     "namespace": namespace,
                     "path": Path(local_path),
                 }
-        except LocalEntryNotFoundError as err:
-            raise ValueError(
-                f"Hugging Face model '{repo_id}' was not found in the local cache."
-            ) from err
+        except LocalEntryNotFoundError:
+            raise PydanticCustomError(
+                "hf_model_not_found",
+                "Hugging Face model was not found in the local cache",
+            ) from None
         except (RepositoryNotFoundError, HFValidationError) as err:
             raise ValueError(
                 f"Invalid Hugging Face model ID '{repo_id}': {err}"
