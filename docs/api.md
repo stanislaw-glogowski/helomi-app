@@ -88,9 +88,12 @@ Sends a command to the speech pipeline within an active session.
       ```json
       {
         "type": "activate_profile",
-        "profile_id": "alexa"
+        "profile_id": "alexa",
+        "greet": true
       }
       ```
+        - `greet` (optional, boolean, default `true`): Whether to synthesize and speak the profile's greeting reaction
+          upon activation. Pass `false` to activate silently.
     - **`DeactivateProfile`**: Deactivate current profile:
       ```json
       {

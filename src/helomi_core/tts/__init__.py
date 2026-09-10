@@ -1,6 +1,7 @@
 from .config import TTSProfile, TTSSettings
 from .domain import TTSChunk, TTSRequest
 from .ports import TTSAdapter
+from .tags import TTS_TAGS
 from .worker import TTSWorker
 
 
@@ -20,6 +21,7 @@ def get_tts_adapter(settings: TTSSettings) -> TTSAdapter:
 
 
 __all__ = [
+    "TTS_TAGS",
     "TTSAdapter",
     "TTSChunk",
     "TTSProfile",

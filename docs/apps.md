@@ -24,43 +24,55 @@ uv run helomi-tray
 
 ### Status Bar Indicators
 
-The tray icon changes dynamically based on the current state of the assistant:
+The tray icon and title change dynamically based on the current state of the assistant:
 
-| Icon        | State                                                    |
-|-------------|----------------------------------------------------------|
-| `🚀`        | Assistant runtime is starting up                         |
-| `👂`        | Idle, listening for wake-words (no profile locked)       |
-| `👩🏻` / `🦆` | Active profile (displays the profile's configured emoji) |
-| `🤖`        | Active profile (fallback when no emoji is configured)    |
-| `🦜`        | Parrot Mode extension is active (appended to title)      |
-| `🎙️`        | Recording active (appended to title)                     |
-| `💤`        | Application is shutting down                             |
+| Icon            | State                                                            |
+|-----------------|------------------------------------------------------------------|
+| `⠋` … `⠏`       | Assistant runtime is starting up (animated spinner)              |
+| `👂`            | Idle, listening for wake-words (no profile locked)               |
+| *Profile Emoji* | Active profile (displays configured emoji, e.g. `👩🏻`, `🦆`)      |
+| `👤`            | Active profile (fallback when no emoji is configured in profile) |
+| `🦜`            | Parrot Mode extension is active                                  |
+| `🗣️`            | Text-to-Speech (TTS) mode is active                              |
+| `☾`            | Application is shutting down                                     |
+
+The menu bar title follows the format `<Icon> <Label>`, where `<Label>` displays the active profile name (e.g.
+`👩🏻 Alexa`, `🗣️ Alexa`, `🦜 Alexa`) or `Helomi` when no profile is locked (e.g. `👂 Helomi`, `☾ Helomi`).
 
 ### Menu & Keyboard Shortcuts
 
 The tray menu provides rapid hotkey navigation:
 
 - **Profile Switching (`0` – `8`):** Quickly switch between available voice profiles.
+- **Settings Submenu:**
+    - **Room Voice:** Toggle ambient background audio playback for profiles that define `audio.room_voice_path`.
+    - **Wake Word:** Toggle wake-word listening. When unchecked, wake-word detection is disabled, the active profile
+      remains active across conversations without auto-deactivating, and initial greeting reactions are suppressed.
+    - *(Note: Settings are dynamically disabled while TTS mode is active).*
 - **Toggle API Server (`a`):** Enable or toggle the FastAPI HTTP/SSE server extension for external integrations (such as
   the TypeScript web demo).
 - **Toggle Parrot Mode (`p`):** Enable or toggle Parrot repetition mode for testing STT and TTS live.
-- **Toggle Recording (`r`):** Start or pause recording synthesized assistant speech. When recording is active, the `🎙️`
-  indicator appears in the menu bar title.
-- **Save As … (`s`):** Open the native macOS save dialog (`NSSavePanel`) to export accumulated recording audio as a
-  `.wav` file.
+- **Text to Speech (`t`):** Open the dedicated Text-to-Speech (TTS) synthesis window. Automatically pauses other
+  extension modes while open and restores the previous mode upon close.
 - **Quit Application (`q`):** Gracefully stops audio drivers, background threads, and shuts down the runtime. Can also
   be interrupted via `SIGINT` (`Ctrl+C`) or `SIGTERM`.
 
-### Audio Recording & Export
+### Dedicated TTS Window & Audio Export
 
-The system tray application includes built-in audio recording for synthesized assistant responses:
+Selecting **Text to Speech** (`t`) opens a native macOS Cocoa window (`TTSWindow`) for interactive speech synthesis and
+audio file export:
 
-1. Press **`r`** (or select **Recording** from the menu) to begin recording. The menu bar title will show the `🎙️`
-   indicator.
-2. Interact with the assistant or let it speak responses. Each synthesized speech chunk is captured in memory.
-3. Toggle **`r`** again to stop recording. The recording remains buffered in memory.
-4. Press **`s`** (or select **Save As …**) to open a native macOS `NSSavePanel` and save the recording to your desired
-   location as a 48 kHz mono `.wav` file.
+- **Multi-line Text Editor:** Supports tag auto-completion (e.g. `[laugh]`, `[sigh]`, `[whisper]`, `[gasp]`).
+- **Native Clipboard & Editing:** Full Cocoa Edit menu support for `Cmd+V` (paste), `Cmd+C` (copy), `Cmd+A` (select
+  all), `Cmd+Z` (undo), and `Cmd+X` (cut).
+- **Speaker Feedback Isolation:** While TTS mode is active, microphone capture is bypassed so that speaker output does
+  not cause false barge-in self-interruptions (`"Tak?"`).
+- **Send Button:** Synthesizes and plays the input text using the currently active profile without playing unintended
+  greeting reactions.
+- **Save to … Button:** Accumulates synthesized speech into an audio buffer and triggers a native macOS `NSSavePanel`
+  dialog to export the audio as a 48 kHz mono `.wav` file (`<profile_id>_<YYYYMMDD_HHMMSS>.wav`).
+- **Close Button:** Closes the window and automatically restores the previous operating mode (`Server`, `Parrot`, or
+  idle).
 
 ---
 

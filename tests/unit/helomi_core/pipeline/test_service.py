@@ -174,11 +174,19 @@ async def test_pipeline_service_activation_flow(mock_service) -> None:
 async def test_pipeline_service_say_text(mock_service) -> None:
     service, _, _, _, _ = mock_service
 
-    # SayText when active profile is None automatically activates default profile
+    # Configure greeting reaction on prof1
+    service._profiles.get("prof1").get_reaction = MagicMock(
+        side_effect=lambda kind: "Cześć!" if kind == ReactionKind.GREETING else None
+    )
+
+    # SayText when active profile is None activates profile without greeting
     res = await service.execute_command(SayText(text="Hello world"))
     assert res is True
     assert service.active_profile.id == "prof1"
     assert not service._tts_queue.empty()
+    req = service._tts_queue.get_nowait()
+    assert req.data.text == "Hello world"
+    assert service._tts_queue.empty()
 
     # SayText with mismatching profile returns False
     res = await service.execute_command(SayText(text="Mismatch", profile_id="prof2"))

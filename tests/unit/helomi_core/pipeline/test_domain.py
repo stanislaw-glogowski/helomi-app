@@ -15,6 +15,7 @@ def test_pipeline_commands() -> None:
     assert act.type == "activate_profile"
     assert act.profile_id == "p1"
     assert act.trace_id == "tr1"
+    assert act.greet is True
 
     deact = DeactivateProfile(trace_id="tr2")
     assert deact.type == "deactivate_profile"

@@ -22,8 +22,8 @@ class AppIcon(StrEnum):
 
     EAR = "👂"
     PARROT = "🦜"
-    PROFILE = "🤖"
-    RECORDING = "⦿"
+    PROFILE = "👤"
+    TTS = "🗣️"
     QUITING = "☾"
 
 

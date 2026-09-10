@@ -11,7 +11,7 @@ from .domain import (
     TranscriptionReady,
 )
 from .extension import PipelineExtension, PipelineExtensionKey
-from .service import PipelineService
+from .service import PipelineOptions, PipelineService
 
 __all__ = [
     "ActivateProfile",
@@ -20,6 +20,7 @@ __all__ = [
     "PipelineEvent",
     "PipelineExtension",
     "PipelineExtensionKey",
+    "PipelineOptions",
     "PipelineService",
     "ProfileActivated",
     "ProfileDeactivated",

@@ -1,31 +1,30 @@
 import asyncio
-import atexit
 import threading
 from contextlib import suppress
 from dataclasses import replace
-from pathlib import Path
-from typing import ClassVar, Unpack
+from typing import Any, ClassVar, Unpack
 
 import rumps
 
 from helomi_common import BaseComponent, TaskManager
 from helomi_core import Runtime
-from helomi_core.audio import AudioFile, RawAudio
 from helomi_core.parrot import ParrotExtension
 from helomi_core.pipeline import (
     ActivateProfile,
     DeactivateProfile,
     PipelineCmd,
     PipelineExtensionKey,
+    PipelineOptions,
     PipelineService,
     ProfileActivated,
     ProfileDeactivated,
-    SynthesisReady,
+    SayText,
 )
 from helomi_core.server import ServerExtension
 
 from .icons import AppIcon
-from .state import AppState, AppStatus
+from .state import AppMode, AppState, AppStatus
+from .windows import BaseWindow, TTSWindow
 
 
 class App(rumps.App, BaseComponent):
@@ -53,8 +52,17 @@ class App(rumps.App, BaseComponent):
         self._start_icon = AppIcon.Start()
         self._state = AppState()
         self._last_state = AppState()
+        self._current_window: BaseWindow | None = None
+        self._previous_mode: AppMode = AppMode.SERVER
 
         self._lock = threading.Lock()
+
+        with suppress(Exception):
+            import AppKit
+
+            AppKit.NSApplication.sharedApplication().setActivationPolicy_(
+                AppKit.NSApplicationActivationPolicyAccessory
+            )
 
         # menu
 
@@ -66,37 +74,45 @@ class App(rumps.App, BaseComponent):
             for index, profile in enumerate(runtime.profiles)
         }
 
-        self._menu_server = rumps.MenuItem(
-            title="Starting Server",
+        self._menu_tts = rumps.MenuItem(
+            title="Text-to-Speech",
+            key="t",
         )
         self._menu_parrot = rumps.MenuItem(
             title="Parrot Mode",
             key="p",
         )
-        self._menu_recording = rumps.MenuItem(
-            title="Recording",
-            key="r",
+        self._menu_server = rumps.MenuItem(
+            title="Starting Server",
         )
-        self._menu_save_recording = rumps.MenuItem(
-            title="Save As …",
-            key="s",
+
+        self._menu_room_voice = rumps.MenuItem(
+            title="Room Voice",
+        )
+        self._menu_wake_word = rumps.MenuItem(
+            title="Wake Word",
         )
 
         menu_profiles = rumps.MenuItem(
             title="Profiles",
         )
+        self._menu_settings = rumps.MenuItem(
+            title="Settings",
+        )
         for menu_item in self._menu_profiles.values():
             menu_profiles.add(menu_item)
+        self._menu_settings.add(self._menu_room_voice)
+        self._menu_settings.add(self._menu_wake_word)
 
         self.menu = [
             menu_profiles,
             rumps.separator,
+            self._menu_tts,
             self._menu_parrot,
             rumps.separator,
-            self._menu_server,
+            self._menu_settings,
             rumps.separator,
-            self._menu_recording,
-            self._menu_save_recording,
+            self._menu_server,
             rumps.separator,
             rumps.MenuItem(
                 title="Quit",
@@ -131,67 +147,69 @@ class App(rumps.App, BaseComponent):
         match self._state.status:
             case AppStatus.RUNNING:
                 if last_state.status == AppStatus.STARTING:
-                    self._menu_parrot.set_callback(self._handle_toggle_parrot)
-                    self._menu_recording.set_callback(self._handle_toggle_recording)
+                    self._menu_parrot.set_callback(self._handle_parrot_toggle)
+                    self._menu_tts.set_callback(self._handle_tts_open)
+                    self._menu_room_voice.state = 1 if self._state.room_voice else 0
+                    self._menu_room_voice.set_callback(self._handle_room_voice_toggle)
+                    self._menu_wake_word.state = 1 if self._state.wake_word else 0
+                    self._menu_wake_word.set_callback(self._handle_wake_word_toggle)
 
                     for menu_item in self._menu_profiles.values():
                         menu_item.state = 0
-                        menu_item.set_callback(self._handle_toggle_profile)
+                        menu_item.set_callback(self._handle_profile_toggle)
 
-                if last_state.active_profile != self._state.active_profile:
-                    if last_state.active_profile:
-                        self._menu_profiles[last_state.active_profile].state = 0
+                if last_state.profile_id != self._state.profile_id:
+                    if last_state.profile_id:
+                        self._menu_profiles[last_state.profile_id].state = 0
 
-                    if self._state.active_profile:
-                        self._menu_profiles[self._state.active_profile].state = 1
+                    if self._state.profile_id:
+                        self._menu_profiles[self._state.profile_id].state = 1
 
                 self._menu_server.title = (
                     f"API: {self._state.server_url}"
-                    if self._state.active_extension is ServerExtension
-                    and self._state.server_url
+                    if self._state.mode == AppMode.SERVER and self._state.server_url
                     else "API Disabled"
                 )
-                self._menu_parrot.state = (
-                    1 if self._state.active_extension is ParrotExtension else 0
-                )
-                self._menu_recording.state = (
-                    1 if self._state.recording is not None else 0
-                )
-                self._menu_save_recording.set_callback(
-                    self._handle_save_recording if self._state.recording else None
-                )
+                self._menu_parrot.state = 1 if self._state.mode is AppMode.PARROT else 0
+
+                if self._state.mode == AppMode.TTS:
+                    self._menu_room_voice.state = 0
+                    self._menu_wake_word.state = 0
+                    self._menu_room_voice.set_callback(None)
+                    self._menu_wake_word.set_callback(None)
+                else:
+                    self._menu_room_voice.state = 1 if self._state.room_voice else 0
+                    self._menu_wake_word.state = 1 if self._state.wake_word else 0
+                    self._menu_room_voice.set_callback(self._handle_room_voice_toggle)
+                    self._menu_wake_word.set_callback(self._handle_wake_word_toggle)
 
                 profile = (
-                    self._runtime.profiles.get(self._state.active_profile)
-                    if self._state.active_profile
+                    self._runtime.profiles.get(self._state.profile_id)
+                    if self._state.profile_id
                     else None
                 )
 
                 label = profile.name if profile else self._TITLE
 
-                if not profile:
-                    icon = AppIcon.EAR
+                if self._state.mode == AppMode.PARROT:
+                    icon = AppIcon.PARROT
+                elif self._state.mode == AppMode.TTS:
+                    icon = AppIcon.TTS
+                elif profile:
+                    icon = profile.emoji or AppIcon.PROFILE
                 else:
-                    if self._state.active_extension is ParrotExtension:
-                        icon = AppIcon.PARROT
-                    else:
-                        icon = profile.emoji or AppIcon.PROFILE
+                    icon = AppIcon.EAR
 
-                title = f"{icon} {label}"
-
-                if self._state.recording is not None:
-                    title = f"{title} {AppIcon.RECORDING}"
-
-                self.title = title
+                self.title = f"{icon} {label}"
 
             case AppStatus.QUITING:
                 if last_state.status == AppStatus.RUNNING:
                     self._menu_server.title = "Stopping Server"
                     self._menu_parrot.state = 0
                     self._menu_parrot.set_callback(None)
-                    self._menu_recording.state = 0
-                    self._menu_recording.set_callback(None)
-                    self._menu_save_recording.set_callback(None)
+                    self._menu_tts.set_callback(None)
+                    self._menu_room_voice.set_callback(None)
+                    self._menu_wake_word.set_callback(None)
 
                     for menu_item in self._menu_profiles.values():
                         menu_item.state = 0
@@ -201,27 +219,71 @@ class App(rumps.App, BaseComponent):
 
     def _update_state(
         self,
-        force_sync=False,
-        enabled_recording: bool | None = None,
-        recording_chunk: RawAudio | None = None,
+        force_sync: bool = False,
         **kwargs: Unpack[AppState.Update],
     ) -> None:
         if self._state.status == AppStatus.QUITING:
             return
 
         with self._lock:
-            if enabled_recording is not None:
-                kwargs["recording"] = [] if enabled_recording else None
-
-            if recording_chunk is not None and self._state.recording is not None:
-                kwargs["recording"] = [*self._state.recording, recording_chunk]
-
             self._state = replace(self._state, **kwargs)
 
             if force_sync:
                 self._sync_state(None)
 
-    def _handle_toggle_profile(self, sender: rumps.MenuItem):
+    def _set_mode(self, mode: AppMode) -> None:
+        ext: PipelineExtensionKey | None
+        match mode:
+            case AppMode.SERVER:
+                ext = ServerExtension
+            case AppMode.PARROT:
+                ext = ParrotExtension
+            case AppMode.TTS:
+                ext = None
+
+        self._update_state(mode=mode)
+
+        if self._pipeline is None or self._loop is None or self._loop.is_closed():
+            return
+
+        asyncio.run_coroutine_threadsafe(
+            self._pipeline.set_active_extension(ext),
+            self._loop,
+        )
+
+    def _open_window(self, window: BaseWindow, mode: AppMode) -> None:
+        if self._current_window is not None and self._current_window is not window:
+            self._current_window.close()
+
+        if self._state.mode != mode:
+            self._previous_mode = self._state.mode
+            self._set_mode(mode)
+
+        self._current_window = window
+        window.show()
+
+    def _handle_tts_open(self, _: rumps.MenuItem | None = None) -> None:
+        if isinstance(self._current_window, TTSWindow):
+            self._current_window.activate()
+            return
+
+        window = TTSWindow(
+            on_send=self._handle_tts_send,
+            on_close=self._handle_tts_close,
+            get_profile_id=lambda: self._state.profile_id,
+        )
+        self._open_window(window, AppMode.TTS)
+
+    def _handle_tts_close(self) -> None:
+        self._current_window = None
+        self._set_mode(self._previous_mode)
+
+    def _handle_tts_send(self, text: str) -> None:
+        self._pipeline_execute_command(
+            SayText(text=text, profile_id=self._state.profile_id)
+        )
+
+    def _handle_profile_toggle(self, sender: rumps.MenuItem) -> None:
         match sender.state:
             case 1:
                 self._pipeline_execute_command(DeactivateProfile())
@@ -233,50 +295,26 @@ class App(rumps.App, BaseComponent):
                         )
                         return
 
-    def _handle_toggle_parrot(self, sender: rumps.MenuItem):
+    def _handle_parrot_toggle(self, sender: rumps.MenuItem) -> None:
+        if self._current_window is not None:
+            self._current_window.close()
+            self._current_window = None
+
         match sender.state:
             case 1:
-                self._set_activate_extension(ServerExtension)
+                self._set_mode(AppMode.SERVER)
             case 0:
-                self._set_activate_extension(ParrotExtension)
+                self._set_mode(AppMode.PARROT)
 
-    def _handle_toggle_recording(self, sender: rumps.MenuItem):
-        match sender.state:
-            case 1:
-                self._update_state(recording=None)
-            case 0:
-                self._update_state(recording=[])
+    def _handle_room_voice_toggle(self, sender: rumps.MenuItem) -> None:
+        new_val = not (sender.state == 1)
+        self._update_state(room_voice=new_val)
+        self._pipeline_set_option("room_voice", new_val)
 
-    def _handle_save_recording(self, _: rumps.MenuItem):
-        if not self._state.recording:
-            return
-
-        # noinspection PyUnresolvedReferences
-        from AppKit import NSApp, NSModalResponseOK, NSSavePanel
-
-        NSApp.setActivationPolicy_(0)
-        NSApp.activateIgnoringOtherApps_(True)
-
-        panel = NSSavePanel.savePanel()
-        panel.setFloatingPanel_(True)
-        panel.orderFrontRegardless()
-        panel.setTitle_("Save Recording")
-        panel.setNameFieldStringValue_("recording.wav")
-        panel.setCanCreateDirectories_(True)
-        panel.setAllowedFileTypes_(["wav", "wave"])
-        panel.center()
-
-        response = panel.runModal()
-        if response != NSModalResponseOK:
-            return
-
-        recording = self._state.recording
-        self._update_state(recording=[])
-
-        path: str = panel.URL().path()
-
-        with suppress(Exception):
-            AudioFile(Path(path)).write(RawAudio.concat(recording))
+    def _handle_wake_word_toggle(self, sender: rumps.MenuItem) -> None:
+        new_val = not (sender.state == 1)
+        self._update_state(wake_word=new_val)
+        self._pipeline_set_option("wake_word", new_val)
 
     def _handle_quit(self, sender: rumps.MenuItem | None = None) -> None:
         if sender is not None:
@@ -291,19 +329,19 @@ class App(rumps.App, BaseComponent):
     def _handle_exit(self, sender: rumps.Timer) -> None:
         sender.stop()
 
+        if self._current_window is not None:
+            self._current_window.close()
+            self._current_window = None
+
+        self._menu_room_voice.set_callback(None)
+        self._menu_wake_word.set_callback(None)
+
         if self._loop and self._shutdown_signal and not self._loop.is_closed():
             self._loop.call_soon_threadsafe(self._shutdown_signal.set)
 
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5.0)
 
-        with suppress(Exception):
-            from joblib.externals.loky import get_reusable_executor
-
-            get_reusable_executor().shutdown(wait=True, kill_workers=True)
-
-        with suppress(Exception):
-            atexit._run_exitfuncs()
         rumps.quit_application()
 
     def _before_run(self) -> None:
@@ -337,13 +375,19 @@ class App(rumps.App, BaseComponent):
         async with self._runtime:
             pipeline = await self._runtime.get_pipeline_service()
             server_extension = await self._runtime.get_server_extension(
-                self._state.active_extension is ServerExtension
+                self._state.mode is AppMode.SERVER
             )
-            await self._runtime.get_parrot_extension(
-                self._state.active_extension is ParrotExtension
-            )
+            await self._runtime.get_parrot_extension(self._state.mode is AppMode.PARROT)
 
             self._pipeline = pipeline
+
+            if hasattr(pipeline, "options") and isinstance(
+                pipeline.options, PipelineOptions
+            ):
+                if self._state.room_voice != pipeline.options.room_voice:
+                    await pipeline.set_option("room_voice", self._state.room_voice)
+                if self._state.wake_word != pipeline.options.wake_word:
+                    await pipeline.set_option("wake_word", self._state.wake_word)
 
             async with TaskManager() as tasks:
                 tasks.add_task(self._pipeline_loop())
@@ -351,7 +395,7 @@ class App(rumps.App, BaseComponent):
                 self._update_state(
                     status=AppStatus.RUNNING,
                     server_url=server_extension.url,
-                    active_profile=profile.id
+                    profile_id=profile.id
                     if (profile := pipeline.active_profile) is not None
                     else None,
                 )
@@ -365,22 +409,14 @@ class App(rumps.App, BaseComponent):
         async for event in self._pipeline.subscribe_event():
             match event:
                 case ProfileActivated(profile_id=profile_id):
-                    self._update_state(active_profile=profile_id)
+                    self._update_state(profile_id=profile_id)
                 case ProfileDeactivated():
-                    self._update_state(active_profile=None)
-                case SynthesisReady(audio=audio):
-                    self._update_state(recording_chunk=audio)
+                    self._update_state(profile_id=None)
+                case _:
+                    pass
 
-    def _set_activate_extension(self, extension: PipelineExtensionKey) -> None:
-        self._update_state(active_extension=extension)
-
-        if self._pipeline is None or self._loop is None or self._loop.is_closed():
-            return
-
-        asyncio.run_coroutine_threadsafe(
-            self._pipeline.set_active_extension(extension),
-            self._loop,
-        )
+            if self._current_window is not None:
+                self._current_window.handle_event(event)
 
     def _pipeline_execute_command(self, cmd: PipelineCmd) -> None:
         if self._pipeline is None or self._loop is None or self._loop.is_closed():
@@ -388,5 +424,14 @@ class App(rumps.App, BaseComponent):
 
         asyncio.run_coroutine_threadsafe(
             self._pipeline.execute_command(cmd),
+            self._loop,
+        )
+
+    def _pipeline_set_option(self, key: str, value: Any) -> None:
+        if self._pipeline is None or self._loop is None or self._loop.is_closed():
+            return
+
+        asyncio.run_coroutine_threadsafe(
+            self._pipeline.set_option(key, value),
             self._loop,
         )

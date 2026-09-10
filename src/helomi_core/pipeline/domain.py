@@ -29,6 +29,7 @@ class PipelineMessage(BaseModel):
 class ActivateProfile(PipelineMessage):
     type: Literal["activate_profile"] = "activate_profile"
     profile_id: str | None = None
+    greet: bool = True
 
 
 class DeactivateProfile(PipelineMessage):

@@ -12,12 +12,26 @@ All notable changes to Helomi are documented in this file.
     - Implemented instant barge-in upon speech onset (`UtteranceStarted` from `SmartTurnAdapter`), immediately halting
       ongoing audio playback, bumping pipeline generation, and triggering interruption reactions.
     - Added spoken greeting reactions (`ReactionKind.GREETING`) upon assistant activation.
-- **macOS System Tray Audio Recording & Native WAV Export (`helomi_tray`)**:
-    - Added audio recording of synthesized assistant speech in `helomi_tray` with hotkeys `r` (toggle recording) and `s`
-      (save as).
-    - Integrated native macOS `NSSavePanel` modal dialog for exporting recordings to `.wav` files, safely preserving
-      buffers on dialog cancel.
-    - Added dynamic `🎙️` recording indicator in the menu bar title.
+    - Added `greet: bool = True` parameter to `ActivateProfile` command, allowing profile activation while suppressing
+      greeting reactions.
+- **Dedicated Text-to-Speech (TTS) Window (`helomi_tray`)**:
+    - Added standalone Cocoa `TTSWindow` with multi-line text input, keyboard shortcut (`t`), and dedicated Close button.
+    - Integrated voice emotion/action tags with autocomplete suggestions (`TTS_TAGS` in `helomi_core.tts.tags`).
+    - Added native clipboard shortcuts (`Cmd+V`, `Cmd+C`, `Cmd+A`, `Cmd+Z`, `Cmd+X`) via standard Cocoa Edit menu
+      installation.
+    - Integrated audio capture and export with "Save to …" button using native macOS save dialog (`NSSavePanel`) to export
+      synthesized `.wav` files named `<profile_id>_<YYYYMMDD_HHMMSS>.wav`.
+- **Pipeline Runtime Options & Settings Menu**:
+    - Added `PipelineOptions` dataclass (`room_voice: bool = True`, `wake_word: bool = True`) to `PipelineService` with
+      dynamic updates via `set_option(key, value)`.
+    - Added `Settings` submenu to `helomi_tray` menu bar with checkable toggles for `Room Voice` and `Wake Word`, synced on
+      startup and dynamically disabled during `TTS` mode.
+    - Added wake word deactivation suppression: when `wake_word` is disabled, profiles remain active across multiple turns
+      and greeting reactions are suppressed.
+- **macOS Tray Application Modes & Window Management (`helomi_tray`)**:
+    - Introduced `AppMode` state machine (`SERVER`, `PARROT`, `TTS`) with single active window tracking (`_current_window`)
+      and automatic previous mode restoration (`_previous_mode`) upon window close.
+    - Added dynamic `🗣️` status bar mode icon when TTS mode is active.
 - **Pipeline Events**:
     - Added `SynthesisReady` pipeline event carrying synthesized audio and text.
     - Added optional `audio` field to `TranscriptionReady` (excluded from JSON serialization for network efficiency).
@@ -34,12 +48,20 @@ All notable changes to Helomi are documented in this file.
 - **Enhanced macOS System Tray (`helomi_tray`) UX**:
     - Added keyboard shortcuts for rapid menu actions: profile selection (`0`–`8`), API Server (`a`), Parrot Mode (`p`),
       and quitting (`q`).
-    - Added dynamic status bar icons: active profile emoji (or `🤖` fallback), idle listening (`👂`), parrot mode (`🦜`),
-      and exiting (`💤`).
+    - Added dynamic status bar icons: active profile emoji (or `👤` fallback), idle listening (`👂`), parrot mode (`🦜`),
+      TTS mode (`🗣️`), startup spinner (`⠋`…`⠏`), and exiting (`☾`).
     - Implemented clean signal handling for `SIGINT` (`Ctrl+C`) and `SIGTERM`.
 
 ### Changed
 
+- **Audio Export Scoped to TTS Window**:
+    - Replaced global menu bar recording shortcuts (`r`, `s`) with dedicated recording buffer and "Save to …" button
+      inside `TTSWindow`.
+- **System Tray Menu Action Handling**:
+    - Renamed `_handle_open_tts` to `_handle_tts_open` for naming consistency with `_handle_tts_close` and
+      `_handle_tts_send`.
+    - Standardized menu item enable/disable state management using idiomatic `set_callback(None)` rather than private
+      Cocoa methods.
 - **Resources Directory Migration**:
     - Migrated local workspace configuration and resources directory from `.helomi/` to `resources/`
       (`resources/settings.yml`, `resources/profiles/`, `resources/models/`).
@@ -67,10 +89,15 @@ All notable changes to Helomi are documented in this file.
 
 ### Fixed
 
+- Fixed backspace on `[` bracket in `TTSWindow` text editor tags input.
+- Fixed clipboard paste (`Cmd+V`) in `TTSWindow` by installing standard Cocoa Edit menu shortcuts.
+- Fixed barge-in false interruption in TTS mode: microphone audio capture is now bypassed during TTS-only sessions,
+  preventing speaker output from triggering self-interruptions (`"Tak?"`).
+- Fixed unintended greeting reactions on `SayText` command invocations when no profile was previously active.
 - Implemented `activate` and `deactivate` in `MockAudioDriver` test fixture to satisfy abstract interface requirements.
 - Updated `TrayApp._render_title` test invocations to match the new positional parameter signature.
 - Fixed `Profile.model_post_init` to safely handle missing or non-dict initialization context.
-- Expanded automated unit test suite to 174 passing tests with 95.97% branch coverage.
+- Expanded automated unit test suite to 222 passing tests with 96.04% branch coverage.
 
 ## [0.6.0] - 2026-09-04
 

@@ -2,7 +2,9 @@ import asyncio
 from asyncio import Queue
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from pydantic import BaseModel
 
 from ..audio import AudioDriver, RawAudio
 from ..detection import (
@@ -36,6 +38,11 @@ if TYPE_CHECKING:
     from ..config import Profile, ProfileCatalog
 
 
+class PipelineOptions(BaseModel):
+    room_voice: bool = True
+    wake_word: bool = True
+
+
 @dataclass(frozen=True, slots=True)
 class PipelineRequest[TData]:
     _current_generation: ClassVar[int] = 0
@@ -67,6 +74,7 @@ class PipelineService(PipelineComponent):
         detection_worker: DetectionWorker,
         stt_worker: STTWorker,
         tts_worker: TTSWorker,
+        options: PipelineOptions | None = None,
     ) -> None:
         super().__init__()
 
@@ -84,6 +92,7 @@ class PipelineService(PipelineComponent):
         self._playback_queue: Queue[PipelineRequest[RawAudio]] = Queue()
 
         self._profiles = profiles
+        self._options = options or PipelineOptions()
         self._extensions: dict[PipelineExtensionKey, PipelineExtension] = {}
 
         self._active_profile: Profile | None = None
@@ -97,6 +106,10 @@ class PipelineService(PipelineComponent):
         return self._profiles
 
     @property
+    def options(self) -> PipelineOptions:
+        return self._options
+
+    @property
     def active_profile(self) -> Profile | None:
         return self._active_profile
 
@@ -104,10 +117,91 @@ class PipelineService(PipelineComponent):
     def active_extension(self) -> PipelineExtensionKey | None:
         return self._active_extension
 
-    async def set_active_extension(self, key: PipelineExtensionKey) -> bool:
+    @property
+    def _is_active_or_no_extensions(self) -> bool:
+        return self._active_extension is not None or not self._extensions
+
+    async def set_option(self, key: str, value: Any) -> bool:
+        if not hasattr(self._options, key):
+            raise AttributeError(f"Unknown pipeline option: {key}")
+
+        current = getattr(self._options, key)
+        if current == value:
+            return False
+
+        setattr(self._options, key, value)
+
+        match key:
+            case "room_voice":
+                if (
+                    self._active_profile is not None
+                    and self._is_active_or_no_extensions
+                ):
+                    if value:
+                        try:
+                            await self._audio_driver.activate(
+                                self._active_profile.audio
+                            )
+                        except Exception as err:
+                            self._logger.warning(
+                                "Failed to activate room voice for {}: {}",
+                                self._active_profile.id,
+                                err,
+                            )
+                    else:
+                        await self._audio_driver.deactivate()
+
+            case "wake_word":
+                if value:
+                    if (
+                        self._active_profile is None
+                        and self._is_active_or_no_extensions
+                    ):
+                        await self._detection_worker.change_mode(DetectionMode.PROFILE)
+                else:
+                    if (
+                        self._active_profile is not None
+                        and self._is_active_or_no_extensions
+                    ):
+                        await self._detection_worker.change_mode(
+                            DetectionMode.UTTERANCE
+                        )
+
+        return True
+
+    async def set_active_extension(self, key: PipelineExtensionKey | None) -> bool:
         if self._active_extension is key:
             return False
+
+        previous_extension = self._active_extension
         self._active_extension = key
+
+        # Entering TTS mode (no extension active)
+        if key is None:
+            if self._active_profile is not None:
+                await self._audio_driver.deactivate()
+        # Returning from TTS mode to an active extension
+        elif previous_extension is None:
+            if self._active_profile is not None and self._options.room_voice:
+                try:
+                    await self._audio_driver.activate(self._active_profile.audio)
+                except Exception as err:
+                    self._logger.warning(
+                        "Failed to restore room voice for {}: {}",
+                        self._active_profile.id,
+                        err,
+                    )
+            mode = (
+                DetectionMode.UTTERANCE
+                if self._active_profile is not None
+                else (
+                    DetectionMode.PROFILE
+                    if self._options.wake_word
+                    else DetectionMode.UTTERANCE
+                )
+            )
+            await self._detection_worker.change_mode(mode)
+
         return True
 
     def register_extension(
@@ -197,18 +291,27 @@ class PipelineService(PipelineComponent):
         while True:
             audio = await self._detection_queue.get()
 
+            if not self._is_active_or_no_extensions:
+                continue
+
             try:
                 async for res in self._detection_worker.detect(audio):
                     match res:
                         case ProfileDetected():
-                            await self.execute_command(
-                                ActivateProfile(profile_id=res.profile_id),
-                            )
+                            if self._options.wake_word:
+                                await self.execute_command(
+                                    ActivateProfile(profile_id=res.profile_id),
+                                )
 
                         case ConversationEnded():
-                            await self.execute_command(
-                                DeactivateProfile(),
-                            )
+                            if self._options.wake_word:
+                                await self.execute_command(
+                                    DeactivateProfile(),
+                                )
+                            elif self._active_profile is not None:
+                                await self._detection_worker.change_mode(
+                                    DetectionMode.UTTERANCE
+                                )
 
                     profile = self._active_profile
                     if profile is None:
@@ -377,28 +480,31 @@ class PipelineService(PipelineComponent):
             )
         )
 
-        try:
-            await self._audio_driver.activate(profile.audio)
-        except Exception as err:
-            self._logger.warning(
-                "Failed to activate audio for profile {}: {}",
-                profile.id,
-                err,
-            )
-
-        await self._detection_worker.change_mode(DetectionMode.UTTERANCE)
-
-        reaction = profile.get_reaction(ReactionKind.GREETING)
-
-        if reaction:
-            self._tts_queue.put_nowait(
-                PipelineRequest(
-                    trace_id=cmd.trace_id,
-                    data=TTSRequest(
-                        text=reaction,
-                    ),
+        if self._options.room_voice and self._is_active_or_no_extensions:
+            try:
+                await self._audio_driver.activate(profile.audio)
+            except Exception as err:
+                self._logger.warning(
+                    "Failed to activate audio for profile {}: {}",
+                    profile.id,
+                    err,
                 )
-            )
+
+        if self._is_active_or_no_extensions:
+            await self._detection_worker.change_mode(DetectionMode.UTTERANCE)
+
+        if self._options.wake_word and cmd.greet and self._is_active_or_no_extensions:
+            reaction = profile.get_reaction(ReactionKind.GREETING)
+
+            if reaction:
+                self._tts_queue.put_nowait(
+                    PipelineRequest(
+                        trace_id=cmd.trace_id,
+                        data=TTSRequest(
+                            text=reaction,
+                        ),
+                    )
+                )
 
         return True
 
@@ -408,7 +514,12 @@ class PipelineService(PipelineComponent):
             return False
 
         await self._audio_driver.deactivate()
-        await self._detection_worker.change_mode(DetectionMode.PROFILE)
+        mode = (
+            DetectionMode.PROFILE
+            if self._options.wake_word
+            else DetectionMode.UTTERANCE
+        )
+        await self._detection_worker.change_mode(mode)
 
         self._active_profile = None
         self._dispatch_event(
@@ -433,6 +544,7 @@ class PipelineService(PipelineComponent):
                     ActivateProfile(
                         profile_id=cmd.profile_id,
                         trace_id=cmd.trace_id,
+                        greet=False,
                     ),
                 )
             case profile if cmd.profile_id is not None and profile.id != cmd.profile_id:

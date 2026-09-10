@@ -136,6 +136,7 @@ def create_router() -> APIRouter:
                 final_cmd = ActivateProfile(
                     profile_id=session.profile_id,
                     trace_id=cmd.trace_id,
+                    greet=cmd.greet,
                 )
             case cmd:
                 final_cmd = cmd

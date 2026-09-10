@@ -9,15 +9,15 @@ requires-python = ">=3.14"
 dependencies = [
     "emoji>=2.15.0",
     "fastapi>=0.141.0",
-    "huggingface-hub>=1.30.0",
+    "huggingface-hub>=1.31.0",
     "loguru>=0.7.3",
-    "mlx-audio>=0.5.1",
+    "mlx-audio>=0.5.3",
     "mlx-whisper>=0.4.3",
     "mlx>=0.32.2",
     "numpy>=2.5.3",
     "onnxruntime>=1.29.0,<2",
     "openwakeword==0.6.0",
-    "platformdirs>=4.11.7",
+    "platformdirs>=4.11.8",
     "pydantic>=2.13.5",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
@@ -111,8 +111,8 @@ preset = "default"
 project-includes = ["hatch_build.py", "src"]
 python-platform = "darwin"
 python-version = "3.14"
-replace-imports-with-any = ["mlx.core", "AppKit"]
-search-path = ["src"]
+replace-imports-with-any = ["mlx.core"]
+search-path = ["src", "typings"]
 use-ignore-files = true
 
 [tool.ruff]

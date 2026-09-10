@@ -1,0 +1,27 @@
+TTS_TAGS: dict[str, str] = {
+    "[applause]": "Audience applause",
+    "[breath]": "Audible breath or brief pause",
+    "[chuckle]": "Warm or quiet chuckle",
+    "[cough]": "Slight cough",
+    "[crying]": "Crying or sobbing vocal delivery",
+    "[gasp]": "Sharp inhale of surprise",
+    "[giggle]": "Light giggle",
+    "[groan]": "Exasperated groan",
+    "[laughing]": "Audible laugh",
+    "[laughter]": "Audible laugh",
+    "[pant]": "Panting or heavy breathing",
+    "[pause]": "Brief silence or dramatic pause",
+    "[screaming]": "Screaming or shouting vocal tone",
+    "[shh]": "Hushed pause",
+    "[sigh]": "Weary or relieved sigh",
+    "[sighing]": "Weary or relieved sigh",
+    "[snicker]": "Sarcastic snicker",
+    "[throat-clearing]": "Clearing throat",
+    "[uhm]": "Brief hesitation",
+    "[um]": "Brief hesitation",
+    "[whisper]": "Quiet whisper",
+    "[whispering]": "Quiet whisper",
+    "[yawn]": "Yawn or sleepy vocalization",
+}
+
+__all__ = ["TTS_TAGS"]
