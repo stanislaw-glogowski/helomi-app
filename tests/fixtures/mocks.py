@@ -204,6 +204,3 @@ class MockResourceCatalog(ResourceCatalog):
     @property
     def root_path(self) -> Path:
         return self._root
-
-
-MockLocalCatalog = MockResourceCatalog

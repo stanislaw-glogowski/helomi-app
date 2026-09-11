@@ -1,5 +1,7 @@
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from helomi_core.audio import get_audio_driver
 from helomi_core.audio.config import AudioSettings
@@ -116,3 +118,27 @@ def test_get_tts_adapter_factories():
     with patch("helomi_core.tts.supertonic.adapter.SupertonicAdapter") as mock_sup:
         get_tts_adapter(super_settings)
         assert mock_sup.called
+
+
+def test_factories_unsupported_adapter():
+    """Verify ValueError is raised on unsupported adapter config."""
+    mock_settings = MagicMock()
+    mock_settings.extract_adapter.return_value = "unsupported_adapter"
+
+    with pytest.raises(ValueError, match="Unsupported audio adapter config"):
+        get_audio_driver(mock_settings)
+
+    with pytest.raises(ValueError, match="Unsupported VAD adapter config"):
+        get_vad_adapter(mock_settings)
+
+    with pytest.raises(ValueError, match="Unsupported turn adapter config"):
+        get_turn_adapter(mock_settings)
+
+    with pytest.raises(ValueError, match="Unsupported STT adapter config"):
+        get_stt_adapter(mock_settings)
+
+    with pytest.raises(ValueError, match="Unsupported TTS adapter config"):
+        get_tts_adapter(mock_settings)
+
+    with pytest.raises(ValueError, match="Unsupported wakeword adapter config"):
+        get_wakeword_adapter(mock_settings, {"p": MagicMock()})

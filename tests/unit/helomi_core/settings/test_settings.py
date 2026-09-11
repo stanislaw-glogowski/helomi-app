@@ -33,3 +33,22 @@ def test_settings_override(tmp_path: Path) -> None:
     settings = Settings.load(resources)
     assert settings.audio.adapter == "avfaudio"
     assert settings.profile.default == "custom"
+
+
+def test_production_resources_and_profiles_validity() -> None:
+    """Validate that repository shipped resources/settings.yml and
+    profiles are valid."""
+    from helomi_core.profile.catalog import ProfileCatalog
+
+    repo_root = Path(__file__).resolve().parents[4]
+    resources_dir = repo_root / "resources"
+    if not (resources_dir / "settings.yml").is_file():
+        pytest.skip("Resources directory not found (packaging context)")
+
+    resources = UserData(resources_dir)
+    settings = Settings.load(resources)
+    assert settings.profile.default is not None
+
+    catalog = ProfileCatalog.load(settings, resources)
+    assert len(catalog) > 0
+    assert catalog.get(settings.profile.default) is not None

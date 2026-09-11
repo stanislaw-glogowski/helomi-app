@@ -32,7 +32,7 @@ active:
 
 ```yaml
 audio:
-  room_voice_path: "path://assets/ref_audio.wav"
+  room_voice_path: "path://assets/ambient.wav"
 ```
 
 - **Format:** `.wav` (PCM)

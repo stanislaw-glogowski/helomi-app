@@ -15,6 +15,8 @@ def get_turn_adapter(settings: TurnSettings) -> TurnAdapter:
             from .smart_turn.adapter import SmartTurnAdapter
 
             return SmartTurnAdapter(cfg)
+        case _:
+            raise ValueError(f"Unsupported turn adapter config: {cfg}")
 
 
 __all__ = [

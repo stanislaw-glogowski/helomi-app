@@ -5,8 +5,8 @@ CWD=$(dirname -- "$0")
 REPO_ROOT=$(cd "$CWD/../.." && pwd)
 CACHE_ROOT="${TMPDIR:-/tmp}/helomi-swift-build-cache"
 
-CLANG_MODULE_CACHE_PATH="$CACHE_ROOT/clang"
-SWIFTPM_MODULECACHE_OVERRIDE="$CACHE_ROOT/swiftpm"
+export CLANG_MODULE_CACHE_PATH="$CACHE_ROOT/clang"
+export SWIFTPM_MODULECACHE_OVERRIDE="$CACHE_ROOT/swiftpm"
 
 mkdir -p \
   "$CLANG_MODULE_CACHE_PATH" \

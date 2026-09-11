@@ -29,15 +29,17 @@ The tray icon and title change dynamically based on the current state of the ass
 | Icon            | State                                                            |
 |-----------------|------------------------------------------------------------------|
 | `⠋` … `⠏`       | Assistant runtime is starting up (animated spinner)              |
-| `👂`            | Idle, listening for wake-words (no profile locked)               |
+| `◉`            | Listening for wake-words (wake-word enabled, no profile locked)  |
+| `○`            | Idle (wake-word disabled, no profile locked)                     |
 | *Profile Emoji* | Active profile (displays configured emoji, e.g. `👩🏻`, `🦆`)      |
 | `👤`            | Active profile (fallback when no emoji is configured in profile) |
+| `♫`            | Ambient room soundscape audio is playing                         |
 | `🦜`            | Parrot Mode extension is active                                  |
 | `🗣️`            | Text-to-Speech (TTS) mode is active                              |
 | `☾`            | Application is shutting down                                     |
 
 The menu bar title follows the format `<Icon> <Label>`, where `<Label>` displays the active profile name (e.g.
-`👩🏻 Alexa`, `🗣️ Alexa`, `🦜 Alexa`) or `Helomi` when no profile is locked (e.g. `👂 Helomi`, `☾ Helomi`).
+`👩🏻 Alexa`, `🗣️ Alexa`, `🦜 Alexa`) or `Helomi` when no profile is locked (e.g. `◉ Helomi`, `○ Helomi`, `☾ Helomi`). When ambient room voice is playing, `♫` is prepended to the title (e.g. `♫ 👩🏻 Alexa`).
 
 ### Menu & Keyboard Shortcuts
 
@@ -45,12 +47,12 @@ The tray menu provides rapid hotkey navigation:
 
 - **Profile Switching (`0` – `8`):** Quickly switch between available voice profiles.
 - **Settings Submenu:**
+    - **Greeting:** Toggle spoken greeting reaction upon wake-word activation.
     - **Room Voice:** Toggle ambient background audio playback for profiles that define `audio.room_voice_path`.
     - **Wake Word:** Toggle wake-word listening. When unchecked, wake-word detection is disabled, the active profile
       remains active across conversations without auto-deactivating, and initial greeting reactions are suppressed.
     - *(Note: Settings are dynamically disabled while TTS mode is active).*
-- **Toggle API Server (`a`):** Enable or toggle the FastAPI HTTP/SSE server extension for external integrations (such as
-  the TypeScript web demo).
+- **API Server Status:** Displays the active HTTP/SSE server endpoint (e.g. `API: http://127.0.0.1:4356` or `API Disabled`).
 - **Toggle Parrot Mode (`p`):** Enable or toggle Parrot repetition mode for testing STT and TTS live.
 - **Text to Speech (`t`):** Open the dedicated Text-to-Speech (TTS) synthesis window. Automatically pauses other
   extension modes while open and restores the previous mode upon close.

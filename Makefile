@@ -7,6 +7,7 @@ endif
 
 init:
 	uv sync
+	./native/macos/build.sh
 	uv run helomi-cli install
 
 run-cli:

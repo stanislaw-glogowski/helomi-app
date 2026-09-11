@@ -20,6 +20,7 @@ def test_tagged_stream_proxy_tagging_and_filtering():
 
     # Untagged message should be skipped when skip_untagged is True
     proxy.write("Untagged message")
+    proxy.write("This is untagged and starts with T")
     assert buffer.getvalue() == ""
 
     # Tagged message should have tag stripped and be written

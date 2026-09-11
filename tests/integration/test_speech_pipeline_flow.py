@@ -19,7 +19,7 @@ from helomi_core.tts import TTSChunk
 from tests.fixtures.audio import create_audio_chunk, create_raw_audio
 from tests.fixtures.mocks import (
     MockAudioDriver,
-    MockLocalCatalog,
+    MockResourceCatalog,
     MockSTTAdapter,
     MockTTSAdapter,
     MockTurnAdapter,
@@ -29,7 +29,7 @@ from tests.fixtures.mocks import (
 
 
 @pytest.mark.asyncio
-async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockLocalCatalog):
+async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockResourceCatalog):
     """Integration test: PipelineService end-to-end event loops and message passing."""
     audio_driver = MockAudioDriver()
     turn_adapter = MockTurnAdapter()

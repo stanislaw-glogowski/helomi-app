@@ -95,8 +95,8 @@ hf download mlx-community/whisper-large-v3-turbo
 
 The primary way to use Helomi is via the **macOS System Tray application (`helomi-tray`)**. It runs in your macOS menu
 bar, manages continuous on-device audio processing, displays real-time status indicators, provides hotkeys to switch
-voice profiles and background services (FastAPI server or Parrot mode), and includes built-in audio recording and WAV
-export (`r` to record, `s` to save):
+voice profiles and modes (Parrot mode or API server), and includes an interactive Text-to-Speech window (`t`) with
+speech synthesis and WAV export:
 
 ```bash
 # Launch the macOS system tray application

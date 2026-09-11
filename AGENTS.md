@@ -35,5 +35,5 @@ Targeted test: `UV_CACHE_DIR=/private/tmp/uv-cache uv run pytest tests/unit/test
 - **Async**: Native `asyncio`. Offload blocking audio/C calls to threadpools.
 - **Coverage**: `>=90%` branch coverage required (`--cov-fail-under=90`). Test all branches.
 - **Mocks & Fixtures**: Never access real mic or heavy MLX models in tests. Use `tests/fixtures/audio.py`
-  (`sample_raw_audio`, `sample_silence_raw_audio`, `sample_noise_raw_audio`) and `tests/fixtures/mocks.py`.
+  (`create_raw_audio`, `create_silence_raw_audio`, `create_noise_raw_audio`) and `tests/fixtures/mocks.py`.
 

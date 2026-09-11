@@ -39,9 +39,9 @@ All notable changes to Helomi are documented in this file.
       and automatic previous mode restoration (`_previous_mode`) upon window close.
     - Added dynamic `🗣️` status bar mode icon when TTS mode is active.
 - **Pipeline Events**:
-    - Added `SynthesisReadyEvent` pipeline event carrying synthesized audio and text.
-    - Added optional `audio` field to `TranscriptionReadyEvent` (excluded from JSON serialization for network
+    - Added `SynthesisReadyEvent` pipeline event carrying synthesized audio (excluded from JSON serialization for network
       efficiency).
+    - Added `TranscriptionReadyEvent` carrying transcribed text.
 - **Default Profile (`alexa`)**:
     - Established `alexa` as the official default assistant profile across `resources/settings.yml`,
       `Profile.DEFAULT_ID`, and CLI/API interfaces.
@@ -53,9 +53,9 @@ All notable changes to Helomi are documented in this file.
     - Added `readonly` flag to `Profile` model schema.
     - Added `audio.room_voice_path` to support continuous ambient room soundscapes upon profile activation.
 - **Enhanced macOS System Tray (`helomi_tray`) UX**:
-    - Added keyboard shortcuts for rapid menu actions: profile selection (`0`–`8`), API Server (`a`), Parrot Mode (`p`),
+    - Added keyboard shortcuts for rapid menu actions: profile selection (`0`–`8`), Parrot Mode (`p`), Text-to-Speech window (`t`),
       and quitting (`q`).
-    - Added dynamic status bar icons: active profile emoji (or `👤` fallback), idle listening (`👂`), parrot mode (`🦜`),
+    - Added dynamic status bar icons: active profile emoji (or `👤` fallback), listening (`◉`), idle (`○`), ambient soundscape (`♫`), parrot mode (`🦜`),
       TTS mode (`🗣️`), startup spinner (`⠋`…`⠏`), and exiting (`☾`).
     - Implemented clean signal handling for `SIGINT` (`Ctrl+C`) and `SIGTERM`.
 
@@ -134,7 +134,7 @@ All notable changes to Helomi are documented in this file.
 - **Extended REST & SSE Endpoints**:
     - Added `GET /api/v1/health` for service health checks.
     - Added `GET /api/v1/profile` and `GET /api/v1/profile/{id}` for querying profile configurations.
-    - Extended `GET /api/v1/speech` SSE streaming and `POST /api/v1/speech` command execution (`ActivateProfileCmd`,
+    - Extended `GET /api/v1/profile/{profile_id}/stream` SSE streaming and `POST /api/v1/command` command execution (`ActivateProfileCmd`,
       `DeactivateProfileCmd`, `SayTextCmd`).
 - **Modernized macOS System Tray (`helomi_tray`)**:
     - Rewrote `TrayApp` to embed `Runtime` directly, enabling real-time switching between API Server mode and Parrot

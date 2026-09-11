@@ -19,7 +19,7 @@ class TaggedStreamProxy:
         if self._enabled and isinstance(message, str):
             if message.startswith(self._TAG):
                 return self._target.write(message.removeprefix(self._TAG))
-            elif any(message.startswith(prefix) for prefix in self._TRACEBACK_PREFIX):
+            elif message.startswith(self._TRACEBACK_PREFIX):
                 self._enabled = False
                 return self._target.write(message)
             elif self._skip_untagged:

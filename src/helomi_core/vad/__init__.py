@@ -19,6 +19,8 @@ def get_vad_adapter(settings: VADSettings) -> VADAdapter:
             from .silero_vad.onnx_adapter import SileroVADONNXAdapter
 
             return SileroVADONNXAdapter(cfg)
+        case _:
+            raise ValueError(f"Unsupported VAD adapter config: {cfg}")
 
 
 __all__ = [

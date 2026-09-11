@@ -22,6 +22,8 @@ def get_stt_adapter(settings: STTSettings) -> STTAdapter:
             from .whisper.adapter import WhisperAdapter
 
             return WhisperAdapter(cfg)
+        case _:
+            raise ValueError(f"Unsupported STT adapter config: {cfg}")
 
 
 __all__ = [

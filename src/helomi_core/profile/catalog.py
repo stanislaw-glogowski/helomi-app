@@ -34,14 +34,14 @@ class ProfileCatalog(Iterable[Profile]):
         return len(self._profiles)
 
     @overload
-    def get(self, key: str | None, throw_on_not_found: Literal[True] = True) -> Profile:
-        pass
+    def get(
+        self, key: str | None, throw_on_not_found: Literal[True] = True
+    ) -> Profile: ...
 
     @overload
     def get(
         self, key: str | None, throw_on_not_found: Literal[False]
-    ) -> Profile | None:
-        pass
+    ) -> Profile | None: ...
 
     def get(self, key: str | None, throw_on_not_found=True) -> Profile | None:
         if key is None:

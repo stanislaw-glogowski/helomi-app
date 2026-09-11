@@ -2,12 +2,16 @@
 .agents
 .idea
 .junie
+.vscode/
 .DS_Store
 
 # Python
 __pycache__/
 *.py[oc]
 .coverage*
+htmlcov/
+coverage.xml
+.mypy_cache/
 .pytest_cache/
 .ruff_cache/
 build/

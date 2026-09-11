@@ -27,6 +27,8 @@ def get_wakeword_adapter(
             from .openwakeword.adapter import OpenWakeWordAdapter
 
             return OpenWakeWordAdapter(cfg, words)
+        case _:
+            raise ValueError(f"Unsupported wakeword adapter config: {cfg}")
 
 
 __all__ = [

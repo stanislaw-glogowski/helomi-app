@@ -22,6 +22,8 @@ def get_tts_adapter(settings: TTSSettings) -> TTSAdapter:
             from .voxcpm2.adapter import VoxCPM2Adapter
 
             return VoxCPM2Adapter(cfg)
+        case _:
+            raise ValueError(f"Unsupported TTS adapter config: {cfg}")
 
 
 __all__ = [

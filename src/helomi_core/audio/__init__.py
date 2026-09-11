@@ -25,6 +25,8 @@ def get_audio_driver(
             from .avfaudio.driver import AVFAudioDriver
 
             return AVFAudioDriver(cfg, mode)
+        case _:
+            raise ValueError(f"Unsupported audio adapter config: {cfg}")
 
 
 __all__ = [

@@ -12,8 +12,7 @@ make run-tray
 uv run helomi-tray
 ```
 
-From the menu bar icon, you can switch active voice profiles (shortcuts `0`–`8`), start the API server for client
-integrations (`a`), enable Parrot mode (`p`), and quit the application (`q`).
+From the menu bar icon, you can switch active voice profiles (shortcuts `0`–`8`), monitor the API server status, open the Text-to-Speech window (`t`), toggle Parrot mode (`p`), and quit the application (`q`).
 
 ## Running a Specific Profile via Developer CLI
 
@@ -41,11 +40,14 @@ uv run helomi-cli serve
 
 ## Disabling Wake-Word
 
-If you want to disable wake-word detection globally, update your `settings.override.yml`:
+Wake-word detection can be toggled at runtime directly from the macOS system tray menu under **Settings -> Wake Word**. When unchecked, wake-word detection is disabled and the active profile remains persistent without automatic timeout deactivation.
 
-```yaml
-wakeword:
-  adapter: null
+In programmatic usage or integration testing, wake-word detection can be controlled dynamically via `PipelineOptions`:
+
+```python
+from helomi_core.pipeline.request import PipelineOptions
+
+options = PipelineOptions(wakeword_enabled=False)
 ```
 
 ## Setting a Default Profile
