@@ -1,6 +1,10 @@
-from .config import TurnSettings
+from typing import TYPE_CHECKING
+
 from .domain import TurnPrediction, TurnStatus
 from .ports import TurnAdapter
+
+if TYPE_CHECKING:
+    from .config import TurnSettings
 
 
 def get_turn_adapter(settings: TurnSettings) -> TurnAdapter:
@@ -16,7 +20,6 @@ def get_turn_adapter(settings: TurnSettings) -> TurnAdapter:
 __all__ = [
     "TurnAdapter",
     "TurnPrediction",
-    "TurnSettings",
     "TurnStatus",
     "get_turn_adapter",
 ]

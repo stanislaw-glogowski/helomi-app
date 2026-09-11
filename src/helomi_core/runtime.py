@@ -5,12 +5,13 @@ from types import TracebackType
 from typing import cast
 
 from .audio import AudioDriver, get_audio_driver
-from .config import ProfileCatalog, Settings
 from .detection import DetectionWorker
 from .parrot import ParrotExtension
 from .pipeline import PipelineService
+from .profile import ProfileCatalog
 from .resources import ResourceCatalog, UserData
 from .server import ServerExtension
+from .settings import Settings
 from .stt import STTWorker, get_stt_adapter
 from .tts import TTSWorker, get_tts_adapter
 from .turn import get_turn_adapter
@@ -109,7 +110,7 @@ class Runtime(AbstractAsyncContextManager):
         async def _creator() -> ParrotExtension:
             pipeline = await self.get_pipeline_service()
             extension = ParrotExtension(
-                pipeline=pipeline,
+                service=pipeline,
             )
             pipeline.register_extension(extension, activate=activate)
             return extension
@@ -124,7 +125,7 @@ class Runtime(AbstractAsyncContextManager):
             pipeline = await self.get_pipeline_service()
             extension = ServerExtension(
                 config=self.settings.server,
-                pipeline=pipeline,
+                service=pipeline,
             )
             pipeline.register_extension(extension, activate=activate)
             return extension

@@ -10,9 +10,9 @@ from helomi_core.audio import (
     AudioDriver,
     AudioFormat,
     AudioMode,
-    AudioProfile,
     RawAudio,
 )
+from helomi_core.audio.config import AudioProfile
 from helomi_core.resources import ResourceCatalog
 from helomi_core.stt import STTAdapter, STTChunk, STTRequest
 from helomi_core.tts import TTSAdapter, TTSChunk, TTSRequest
@@ -64,7 +64,7 @@ class MockAudioDriver(AudioDriver[Any]):
     def play(self, audio: RawAudio) -> None:
         self.played_audio.append(audio)
 
-    async def interrupt(self) -> bool:
+    def interrupt(self) -> bool:
         self.interrupt_count += 1
         return True
 

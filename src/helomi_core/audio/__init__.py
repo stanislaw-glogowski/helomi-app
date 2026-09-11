@@ -1,4 +1,5 @@
-from .config import AudioProfile, AudioSettings
+from typing import TYPE_CHECKING
+
 from .domain import (
     AudioChunk,
     AudioFile,
@@ -8,6 +9,9 @@ from .domain import (
 )
 from .ports import AudioDriver
 from .resampler import AudioResampler
+
+if TYPE_CHECKING:
+    from .config import AudioSettings
 
 
 def get_audio_driver(
@@ -29,9 +33,7 @@ __all__ = [
     "AudioFile",
     "AudioFormat",
     "AudioMode",
-    "AudioProfile",
     "AudioResampler",
-    "AudioSettings",
     "RawAudio",
     "get_audio_driver",
 ]

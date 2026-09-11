@@ -1,4 +1,4 @@
-from helomi_core.reaction import ReactionKind
+from helomi_core.profile import ReactionKind
 
 
 def test_reaction_kind_enum():

@@ -1,6 +1,10 @@
-from .config import VADSettings
+from typing import TYPE_CHECKING
+
 from .domain import VADPrediction
 from .ports import VADAdapter
+
+if TYPE_CHECKING:
+    from .config import VADSettings
 
 
 def get_vad_adapter(settings: VADSettings) -> VADAdapter:
@@ -20,6 +24,5 @@ def get_vad_adapter(settings: VADSettings) -> VADAdapter:
 __all__ = [
     "VADAdapter",
     "VADPrediction",
-    "VADSettings",
     "get_vad_adapter",
 ]

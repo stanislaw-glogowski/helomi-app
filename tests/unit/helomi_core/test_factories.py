@@ -1,12 +1,18 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from helomi_core.audio import AudioSettings, get_audio_driver
-from helomi_core.stt import STTSettings, get_stt_adapter
-from helomi_core.tts import TTSSettings, get_tts_adapter
-from helomi_core.turn import TurnSettings, get_turn_adapter
-from helomi_core.vad import VADSettings, get_vad_adapter
-from helomi_core.wakeword import WakeWordProfile, WakeWordSettings, get_wakeword_adapter
+from helomi_core.audio import get_audio_driver
+from helomi_core.audio.config import AudioSettings
+from helomi_core.stt import get_stt_adapter
+from helomi_core.stt.config import STTSettings
+from helomi_core.tts import get_tts_adapter
+from helomi_core.tts.config import TTSSettings
+from helomi_core.turn import get_turn_adapter
+from helomi_core.turn.config import TurnSettings
+from helomi_core.vad import get_vad_adapter
+from helomi_core.vad.config import VADSettings
+from helomi_core.wakeword import get_wakeword_adapter
+from helomi_core.wakeword.config import WakeWordProfile, WakeWordSettings
 
 
 def test_get_audio_driver_factory():

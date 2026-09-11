@@ -6,6 +6,9 @@ from helomi_tray.app.windows.tts import (
     TTS_TAGS,
     ComposeTextView,
     ComposeTextViewDelegate,
+    RoundedLayoutManager,
+    TagButton,
+    TagButtonsContainer,
     TTSWindow,
 )
 
@@ -20,43 +23,50 @@ def test_tts_tags_content():
     assert list(TTS_TAGS.keys()) == sorted(TTS_TAGS.keys())
 
 
-def test_compose_text_view_range_for_user_completion():
-    """Verify rangeForUserCompletion identifies tag prefixes starting with '['."""
+def test_compose_text_view_find_tag_range_and_backspace():
+    """Verify _find_tag_range finds tag boundaries and backspace deletes entire tag."""
     tv = ComposeTextView.alloc().initWithFrame_(AppKit.NSMakeRect(0, 0, 200, 100))
 
-    # 1. Empty text -> fallback to super
-    tv.setString_("")
-    r = tv.rangeForUserCompletion()
-    assert r.location == 0
+    # 1. Cursor immediately after closing ']' of valid tag
+    tv.setString_("Hello [applause] world")
+    assert tv._find_tag_range(tv.string(), 16) == (6, 16)
 
-    # 2. Cursor after closing tag ']' -> fallback to super
-    tv.setString_("[laughter]")
-    tv.setSelectedRange_(AppKit.NSMakeRange(10, 0))
-    with patch("helomi_tray.app.windows.tts.objc.super") as mock_super:
-        mock_super.return_value.rangeForUserCompletion.return_value = (
-            AppKit.NSMakeRange(10, 0)
-        )
-        r = tv.rangeForUserCompletion()
-        assert r.location == 10
-        mock_super.assert_called_once_with(ComposeTextView, tv)
+    # 2. Cursor inside tag
+    assert tv._find_tag_range(tv.string(), 10) == (6, 16)
+    assert tv._find_tag_range(tv.string(), 7) == (6, 16)
 
-    # 3. Cursor in middle of tag prefix e.g. "Hello [laug"
-    tv.setString_("Hello [laug")
-    tv.setSelectedRange_(AppKit.NSMakeRange(11, 0))
-    r = tv.rangeForUserCompletion()
-    assert r.location == 6
-    assert r.length == 5  # "[laug"
+    # 3. Cursor at start of tag or outside tag
+    assert tv._find_tag_range(tv.string(), 6) is None
+    assert tv._find_tag_range(tv.string(), 5) is None
+    assert tv._find_tag_range(tv.string(), 20) is None
+    assert tv._find_tag_range(tv.string(), 0) is None
+    assert tv._find_tag_range(tv.string(), 999) is None
 
-    # 4. Text with no '[' before cursor -> fallback to super
+    # 4. Unknown tag not in TTS_TAGS
+    tv.setString_("Hello [unknown] world")
+    assert tv._find_tag_range(tv.string(), 15) is None
+
+    # 5. _handle_backspace_tag deletes entire tag when cursor is at ']'
+    tv.setString_("Hello [laughter]")
+    tv.setSelectedRange_(AppKit.NSMakeRange(16, 0))
+    assert tv._handle_backspace_tag() is True
+    assert tv.string() == "Hello "
+
+    # 6. _handle_backspace_tag returns False when selection length > 0
+    tv.setString_("Hello [laughter]")
+    tv.setSelectedRange_(AppKit.NSMakeRange(6, 10))
+    assert tv._handle_backspace_tag() is False
+
+    # 7. _handle_backspace_tag returns False on regular text
     tv.setString_("Hello world")
-    tv.setSelectedRange_(AppKit.NSMakeRange(11, 0))
-    with patch("helomi_tray.app.windows.tts.objc.super") as mock_super:
-        mock_super.return_value.rangeForUserCompletion.return_value = (
-            AppKit.NSMakeRange(11, 0)
-        )
-        r = tv.rangeForUserCompletion()
-        assert r.location == 11
-        mock_super.assert_called_once_with(ComposeTextView, tv)
+    tv.setSelectedRange_(AppKit.NSMakeRange(5, 0))
+    assert tv._handle_backspace_tag() is False
+
+    # 8. deleteBackward_ calls _handle_backspace_tag
+    tv.setString_("Say [sigh]")
+    tv.setSelectedRange_(AppKit.NSMakeRange(10, 0))
+    tv.deleteBackward_(None)
+    assert tv.string() == "Say "
 
 
 def test_compose_text_view_perform_key_equivalent():
@@ -256,56 +266,91 @@ def test_compose_text_view_key_down():
         mock_super.return_value.keyDown_.assert_called_once_with(mock_event_regular)
 
 
-def test_compose_text_view_delegate_completions():
-    """Verify ComposeTextViewDelegate filters tags and handles non-tag words."""
+def test_rounded_layout_manager():
+    """Verify RoundedLayoutManager draws rounded pill paths and returns rect_array."""
+    lm = RoundedLayoutManager.alloc().init()
+    rects = [AppKit.NSMakeRect(10, 10, 50, 20)]
+    color = AppKit.NSColor.textColor()
+    res = lm.fillBackgroundRectArray_count_forCharacterRange_color_(
+        rects, 1, AppKit.NSMakeRange(0, 5), color
+    )
+    assert res == rects
+
+
+def test_tag_button_and_container():
+    """Verify TagButton custom drawing and TagButtonsContainer flow wrapping."""
+    # 1. TagButton custom drawRect_
+    btn = TagButton.alloc().initWithFrame_(AppKit.NSMakeRect(0, 0, 80, 20))
+    btn.setTitle_("[sigh]")
+
+    # Test normal drawing
+    with patch.object(btn, "isHighlighted", return_value=False):
+        btn.drawRect_(btn.bounds())
+
+    # Test highlighted drawing
+    with patch.object(btn, "isHighlighted", return_value=True):
+        btn.drawRect_(btn.bounds())
+
+    # 2. TagButtonsContainer
+    container = TagButtonsContainer.alloc().initWithFrame_(
+        AppKit.NSMakeRect(0, 0, 520, 120)
+    )
+    assert container.isFlipped() is True
+
+    # Empty buttons does not crash
+    container.buttons = []
+    container.relayout_buttons()
+
+    # Wrapped layout with multiple buttons
+    for tag in ["[sigh]", "[applause]", "[breath]", "[chuckle]"]:
+        b = TagButton.alloc().initWithFrame_(AppKit.NSMakeRect(0, 0, 10, 20))
+        b.setTitle_(tag)
+        container.buttons.append(b)
+        container.addSubview_(b)
+
+    container.relayout_buttons()
+    assert container.buttons[0].frame().size.width > 0
+
+    # Resize subviews triggers relayout
+    container.setFrameSize_(AppKit.NSMakeSize(100, 120))
+    container.resizeSubviewsWithOldSize_(AppKit.NSMakeSize(520, 120))
+
+
+def test_compose_text_view_delegate_highlight_tags():
+    """Verify ComposeTextViewDelegate applies tag styling and restores attrs."""
     delegate = ComposeTextViewDelegate(
-        tags=["[applause]", "[laughter]", "[sigh]"],
+        tags=["[sigh]", "[applause]"],
         on_text_change=None,
     )
     tv = ComposeTextView.alloc().initWithFrame_(AppKit.NSMakeRect(0, 0, 200, 100))
 
-    # 1. Completion matching "[l" returns -1 so first match is not auto-inserted
-    tv.setString_("Hello [l")
-    matches, idx = (
-        delegate.textView_completions_forPartialWordRange_indexOfSelectedItem_(
-            tv, [], AppKit.NSMakeRange(6, 2), 0
-        )
-    )
-    assert matches == ["[laughter]"]
-    assert idx == -1
+    # 1. Empty text -> does nothing
+    tv.setString_("")
+    delegate.highlight_tags(tv)
 
-    # 2. Completion matching "[" (all tags) returns -1
-    tv.setString_("Hello [")
-    matches, idx = (
-        delegate.textView_completions_forPartialWordRange_indexOfSelectedItem_(
-            tv, [], AppKit.NSMakeRange(6, 1), 0
-        )
-    )
-    assert matches == ["[applause]", "[laughter]", "[sigh]"]
-    assert idx == -1
+    # 2. Text with emotion tag gets background attribute on tag range
+    tv.setString_("Hello [sigh] world")
+    delegate.highlight_tags(tv)
+    ts = tv.textStorage()
+    assert ts is not None
 
-    # 3. Non-tag partial word range returns words fallback
-    tv.setString_("Hello wor")
-    matches, idx = (
-        delegate.textView_completions_forPartialWordRange_indexOfSelectedItem_(
-            tv, ["world"], AppKit.NSMakeRange(6, 3), 0
-        )
+    val_tag, _ = ts.attribute_atIndex_effectiveRange_(
+        AppKit.NSBackgroundColorAttributeName, 7, None
     )
-    assert matches == ["world"]
-    assert idx == -1
+    assert val_tag is not None
 
-    # 4. Non-tag with words=None returns empty list
-    matches, idx = (
-        delegate.textView_completions_forPartialWordRange_indexOfSelectedItem_(
-            tv, None, AppKit.NSMakeRange(6, 3), 0
-        )
+    val_plain, _ = ts.attribute_atIndex_effectiveRange_(
+        AppKit.NSBackgroundColorAttributeName, 0, None
     )
-    assert matches == []
-    assert idx == -1
+    assert val_plain is None
+
+    # 3. Typing attributes restored with text color
+    typing_attrs = tv.typingAttributes()
+    assert typing_attrs.get(AppKit.NSForegroundColorAttributeName) is not None
 
 
 def test_compose_text_view_delegate_text_did_change():
-    """Verify textDidChange_ triggers completion on '[' when typing, not deleting."""
+    """Verify textDidChange_ triggers tag highlighting and notifies change."""
     text_changed = False
 
     def on_change():
@@ -317,46 +362,21 @@ def test_compose_text_view_delegate_text_did_change():
         on_text_change=on_change,
     )
     tv = ComposeTextView.alloc().initWithFrame_(AppKit.NSMakeRect(0, 0, 200, 100))
-    tv.complete_ = MagicMock()
+    tv.setString_("Say [sigh]")
 
-    # 1. Typing '[' (length increasing) triggers tv.complete_(None)
-    tv.setString_("Say [")
-    tv.setSelectedRange_(AppKit.NSMakeRange(5, 0))
     notification = MagicMock()
     notification.object.return_value = tv
 
     delegate.textDidChange_(notification)
-    tv.complete_.assert_called_once_with(None)
     assert text_changed is True
 
-    # 2. Typing regular letter does not trigger complete_
-    tv.complete_.reset_mock()
-    text_changed = False
-    tv.setString_("Say a")
-    tv.setSelectedRange_(AppKit.NSMakeRange(5, 0))
-
-    delegate.textDidChange_(notification)
-    tv.complete_.assert_not_called()
-    assert text_changed is True
-
-    # 3. Deleting text (length decreasing) does not trigger complete_
-    tv.complete_.reset_mock()
-    text_changed = False
-    delegate._last_len = 10
-    tv.setString_("[")
-    tv.setSelectedRange_(AppKit.NSMakeRange(1, 0))
-
-    delegate.textDidChange_(notification)
-    tv.complete_.assert_not_called()
-    assert text_changed is True
-
-    # 4. Delegate without on_text_change does not crash
+    # Delegate without on_text_change does not crash
     delegate.on_text_change = None
     delegate.textDidChange_(notification)
 
 
 def test_compose_text_view_backspace_on_bracket():
-    """Verify backspace cleanly deletes '[' without infinite completion loop."""
+    """Verify backspace deletes full emotion tag when cursor encounters tag."""
     win = AppKit.NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
         AppKit.NSMakeRect(0, 0, 400, 200),
         AppKit.NSWindowStyleMaskTitled,
@@ -367,14 +387,9 @@ def test_compose_text_view_backspace_on_bracket():
     win.contentView().addSubview_(tv)
     win.makeKeyAndOrderFront_(None)
 
-    delegate = ComposeTextViewDelegate(tags=["[applause]", "[laughter]"])
-    tv.setDelegate_(delegate)
+    tv.setString_("Hello [applause]")
+    tv.setSelectedRange_(AppKit.NSMakeRange(16, 0))
 
-    # 1. Type '['
-    tv.insertText_("[")
-    assert tv.string() == "["
-
-    # 2. Press Backspace (\x7f)
     event_name = (
         "keyEventWithType_location_modifierFlags_timestamp_"
         "windowNumber_context_characters_charactersIgnoringModifiers_"
@@ -394,7 +409,7 @@ def test_compose_text_view_backspace_on_bracket():
         51,
     )
     tv.keyDown_(event)
-    assert tv.string() == ""
+    assert tv.string() == "Hello "
 
 
 def test_tts_window_lifecycle_and_ui():
@@ -418,36 +433,51 @@ def test_tts_window_lifecycle_and_ui():
     assert window_ctrl.status_label.stringValue() == "Ready"
     assert window_ctrl.window.canBecomeKeyWindow() is True
 
-    # Test show() activates regular policy and focuses
+    # Test show() keeps accessory policy and focuses (never elevated to regular)
     window_ctrl.show()
     app = AppKit.NSApplication.sharedApplication()
-    assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyRegular
+    assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
 
-    # Test close() restores accessory policy and triggers callback
+    # Test close() keeps accessory policy and triggers callback
     window_ctrl.close()
     assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
     assert closed is True
 
-    # Test windowWillClose_ delegate method restores accessory policy
+    # Test windowWillClose_ delegate method keeps accessory policy
     # and triggers callback
     closed = False
-    app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyRegular)
     window_ctrl.windowWillClose_(None)
     assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
     assert closed is True
+
+    # Test tag buttons created for each tag
+    assert len(window_ctrl.tag_buttons) == len(TTS_TAGS)
+    first_btn = window_ctrl.tag_buttons[0]
+    assert first_btn.title() == next(iter(TTS_TAGS.keys()))
+    assert isinstance(first_btn, TagButton)
+    assert len(window_ctrl.tag_container.buttons) == len(TTS_TAGS)
+
+    # Test clicking tag button inserts tag at cursor and spaces properly
+    window_ctrl.text_view.setString_("Hello")
+    window_ctrl.text_view.setSelectedRange_(AppKit.NSMakeRange(5, 0))
+    window_ctrl.tagButtonClicked_(first_btn)
+    expected_text = f"Hello {first_btn.title()} "
+    assert window_ctrl.text_view.string() == expected_text
 
     # Test close_btn and closeClicked_
     assert window_ctrl.close_btn.title() == "Close"
     closed = False
     window_ctrl._on_close = on_close
     window_ctrl.show()
-    assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyRegular
     window_ctrl.closeClicked_(None)
     assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
     assert closed is True
 
     # Test window without on_close callback does not crash
     window_ctrl._on_close = None
+    window_ctrl.close()
+    window_ctrl.windowWillClose_(None)
+    window_ctrl.closeClicked_(None)
     window_ctrl.close()
     window_ctrl.windowWillClose_(None)
     window_ctrl.closeClicked_(None)
@@ -513,14 +543,14 @@ def test_tts_window_do_send():
 def test_tts_window_handle_synthesis_ready_and_events():
     """Verify handle_event and on_synthesis_ready enable save button and store audio."""
     from helomi_core.audio import RawAudio
-    from helomi_core.pipeline import SynthesisReady
+    from helomi_core.pipeline import SynthesisReadyEvent
 
     window_ctrl = TTSWindow()
     assert window_ctrl.save_btn.title() == "Save to …"
     assert window_ctrl.save_btn.isEnabled() is False
 
     mock_audio = MagicMock(spec=RawAudio)
-    event = SynthesisReady(
+    event = SynthesisReadyEvent(
         profile_id="test_profile",
         text="Hello",
         audio=mock_audio,
@@ -541,7 +571,7 @@ def test_tts_window_handle_synthesis_ready_and_events():
 
     # 3. SynthesisReady with audio=None does not enable save button
     window_ctrl.save_btn.setEnabled_(False)
-    none_audio_event = SynthesisReady(
+    none_audio_event = SynthesisReadyEvent(
         profile_id="test_profile",
         text="Empty",
         audio=None,

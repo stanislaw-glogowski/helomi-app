@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from helomi_core.pipeline.domain import TranscriptionReady
+from helomi_core.pipeline.domain import TranscriptionReadyEvent
 from helomi_core.server.session import Session, SessionManager
 
 
@@ -21,7 +21,7 @@ async def test_session_lifecycle_and_dispatch() -> None:
     task = asyncio.create_task(listener())
     await asyncio.sleep(0.01)
 
-    evt = TranscriptionReady(profile_id="p1", text="test text")
+    evt = TranscriptionReadyEvent(profile_id="p1", text="test text")
     session.dispatch_event(evt)
     await asyncio.sleep(0.01)
 
@@ -50,7 +50,7 @@ async def test_session_manager_acquire_and_release() -> None:
         assert s3 is not None
 
         # Dispatch event
-        evt = TranscriptionReady(profile_id="p1", text="msg")
+        evt = TranscriptionReadyEvent(profile_id="p1", text="msg")
         sm.dispatch_event(evt)
 
         # Release s1

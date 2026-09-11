@@ -4,7 +4,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from helomi_core.audio import AudioChunk, AudioFormat
-from helomi_core.vad import VADPrediction, VADSettings
+from helomi_core.vad import VADPrediction
+from helomi_core.vad.config import VADSettings
 from helomi_core.vad.silero_vad.config import SileroVADMLXConfig, SileroVADONNXConfig
 from helomi_core.vad.silero_vad.mlx_adapter import SileroVADMLXAdapter
 from helomi_core.vad.silero_vad.onnx_adapter import SileroVADONNXAdapter

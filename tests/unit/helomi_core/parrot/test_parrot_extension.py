@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from helomi_core.parrot.extension import ParrotExtension
-from helomi_core.pipeline.domain import SayText, TranscriptionReady
+from helomi_core.pipeline.domain import SayTextCmd, TranscriptionReadyEvent
 from helomi_core.pipeline.service import PipelineService
 
 
@@ -14,7 +14,7 @@ async def test_parrot_extension_echoes_transcription() -> None:
     mock_pipeline.execute_command = AsyncMock(return_value=True)
 
     async def fake_subscribe(_=None):
-        yield TranscriptionReady(profile_id="p1", text="echo this")
+        yield TranscriptionReadyEvent(profile_id="p1", text="echo this")
 
     mock_pipeline.subscribe_event = fake_subscribe
 
@@ -24,7 +24,7 @@ async def test_parrot_extension_echoes_transcription() -> None:
 
     mock_pipeline.execute_command.assert_called_once()
     called_cmd = mock_pipeline.execute_command.call_args[0][0]
-    assert isinstance(called_cmd, SayText)
+    assert isinstance(called_cmd, SayTextCmd)
     assert called_cmd.text == "echo this"
 
 
@@ -34,8 +34,8 @@ async def test_parrot_extension_ignores_empty_transcription() -> None:
     mock_pipeline.execute_command = AsyncMock(return_value=True)
 
     async def fake_subscribe(_=None):
-        yield TranscriptionReady(profile_id="p1", text="")
-        yield TranscriptionReady(profile_id="p1", text="   ")
+        yield TranscriptionReadyEvent(profile_id="p1", text="")
+        yield TranscriptionReadyEvent(profile_id="p1", text="   ")
 
     mock_pipeline.subscribe_event = fake_subscribe
 

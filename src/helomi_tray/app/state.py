@@ -22,12 +22,14 @@ class AppState:
         mode: AppMode
         profile_id: str | None
         server_url: str | None
-        room_voice: bool
-        wake_word: bool
+        greeting_enabled: bool
+        room_voice_enabled: bool
+        wakeword_enabled: bool
 
     status: AppStatus = AppStatus.STARTING
     mode: AppMode = AppMode.SERVER
     profile_id: str | None = None
     server_url: str | None = None
-    room_voice: bool = True
-    wake_word: bool = True
+    greeting_enabled: bool | None = None
+    room_voice_enabled: bool | None = None
+    wakeword_enabled: bool | None = None

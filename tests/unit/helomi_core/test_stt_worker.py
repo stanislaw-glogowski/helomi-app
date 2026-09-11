@@ -2,11 +2,11 @@ import pytest
 
 from helomi_core.stt import (
     STTChunk,
-    STTProfile,
     STTRequest,
     STTResponse,
     STTWorker,
 )
+from helomi_core.stt.config import STTProfile
 from tests.fixtures.audio import create_audio_chunk
 from tests.fixtures.mocks import MockSTTAdapter
 

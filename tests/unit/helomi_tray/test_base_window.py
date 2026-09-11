@@ -41,10 +41,10 @@ def test_base_window_lifecycle_and_policy():
     mock_focus = AppKit.NSView.alloc().initWithFrame_(AppKit.NSMakeRect(0, 0, 10, 10))
     win.focus_view = mock_focus
 
-    # 1. show() activates regular policy and focuses
+    # 1. show() activates and focuses while keeping accessory policy
     win.show()
     app = AppKit.NSApplication.sharedApplication()
-    assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyRegular
+    assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
 
     # 2. close() deactivates and triggers on_close
     win.close()
@@ -53,7 +53,6 @@ def test_base_window_lifecycle_and_policy():
 
     # 3. windowWillClose_ deactivates and triggers on_close
     closed = False
-    app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyRegular)
     win.windowWillClose_(None)
     assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
     assert closed is True

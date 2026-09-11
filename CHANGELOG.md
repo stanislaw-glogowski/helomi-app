@@ -11,30 +11,37 @@ All notable changes to Helomi are documented in this file.
       string/list normalization.
     - Implemented instant barge-in upon speech onset (`UtteranceStarted` from `SmartTurnAdapter`), immediately halting
       ongoing audio playback, bumping pipeline generation, and triggering interruption reactions.
-    - Added spoken greeting reactions (`ReactionKind.GREETING`) upon assistant activation.
-    - Added `greet: bool = True` parameter to `ActivateProfile` command, allowing profile activation while suppressing
-      greeting reactions.
+    - Added spoken greeting reactions (`ReactionKind.GREETING`) upon assistant activation, controllable via
+      `greeting_enabled` pipeline option.
+    - Added `SayReactionCmd` to trigger pre-configured reaction utterances on demand.
 - **Dedicated Text-to-Speech (TTS) Window (`helomi_tray`)**:
-    - Added standalone Cocoa `TTSWindow` with multi-line text input, keyboard shortcut (`t`), and dedicated Close button.
+    - Added standalone Cocoa `TTSWindow` with multi-line text input, keyboard shortcut (`t`), and dedicated Close
+      button.
     - Integrated voice emotion/action tags with autocomplete suggestions (`TTS_TAGS` in `helomi_core.tts.tags`).
     - Added native clipboard shortcuts (`Cmd+V`, `Cmd+C`, `Cmd+A`, `Cmd+Z`, `Cmd+X`) via standard Cocoa Edit menu
       installation.
-    - Integrated audio capture and export with "Save to …" button using native macOS save dialog (`NSSavePanel`) to export
-      synthesized `.wav` files named `<profile_id>_<YYYYMMDD_HHMMSS>.wav`.
+    - Integrated audio capture and export with "Save to …" button using native macOS save dialog (`NSSavePanel`) to
+      export synthesized `.wav` files named `<profile_id>_<YYYYMMDD_HHMMSS>.wav`.
 - **Pipeline Runtime Options & Settings Menu**:
-    - Added `PipelineOptions` dataclass (`room_voice: bool = True`, `wake_word: bool = True`) to `PipelineService` with
-      dynamic updates via `set_option(key, value)`.
-    - Added `Settings` submenu to `helomi_tray` menu bar with checkable toggles for `Room Voice` and `Wake Word`, synced on
-      startup and dynamically disabled during `TTS` mode.
-    - Added wake word deactivation suppression: when `wake_word` is disabled, profiles remain active across multiple turns
-      and greeting reactions are suppressed.
+    - Added `PipelineOptions` (`greeting_enabled: bool = True`, `room_voice_enabled: bool = True`,
+      `wakeword_enabled: bool = True`) to `PipelineService` with dynamic updates via `SetOptionsCmd` and
+      `OptionsSetEvent`.
+    - Added `Settings` submenu to `helomi_tray` menu bar with checkable toggles for `Room Voice` and `Wake Word`, synced
+      on startup and dynamically disabled during `TTS` mode.
+    - Added wake word deactivation suppression: when `wakeword_enabled` is disabled, profiles remain active across multiple
+      turns and greeting reactions are suppressed.
+- **Declarative System Tray Menu Architecture (`helomi_tray`)**:
+    - Modularized menu hierarchy into `MenuItem`, `MenuAction`, and `MenuGroup` components (`helomi_tray/app/menu/`).
+    - Added structured separators, title-cased labels, and clean action bindings.
 - **macOS Tray Application Modes & Window Management (`helomi_tray`)**:
-    - Introduced `AppMode` state machine (`SERVER`, `PARROT`, `TTS`) with single active window tracking (`_current_window`)
+    - Introduced `AppMode` state machine (`SERVER`, `PARROT`, `TTS`) with single active window tracking
+      (`_current_window`)
       and automatic previous mode restoration (`_previous_mode`) upon window close.
     - Added dynamic `🗣️` status bar mode icon when TTS mode is active.
 - **Pipeline Events**:
-    - Added `SynthesisReady` pipeline event carrying synthesized audio and text.
-    - Added optional `audio` field to `TranscriptionReady` (excluded from JSON serialization for network efficiency).
+    - Added `SynthesisReadyEvent` pipeline event carrying synthesized audio and text.
+    - Added optional `audio` field to `TranscriptionReadyEvent` (excluded from JSON serialization for network
+      efficiency).
 - **Default Profile (`alexa`)**:
     - Established `alexa` as the official default assistant profile across `resources/settings.yml`,
       `Profile.DEFAULT_ID`, and CLI/API interfaces.
@@ -54,6 +61,15 @@ All notable changes to Helomi are documented in this file.
 
 ### Changed
 
+- **Architecture & Module Organization**:
+    - Relocated and consolidated profile models and catalog from `helomi_core.config` into `helomi_core.profile`
+      (`Profile`, `ProfileCatalog`, `ProfileConfig`).
+    - Renamed and restructured configuration system from `helomi_core.config` to `helomi_core.settings` (`Settings`).
+    - Merged spoken reaction models from `helomi_core.reaction` into `helomi_core.profile` (`ReactionKind`).
+    - Standardized pipeline commands and events with explicit `*Cmd` and `*Event` naming conventions
+      (`ActivateProfileCmd`, `DeactivateProfileCmd`, `SayTextCmd`, `SayReactionCmd`, `SetOptionsCmd`,
+      `OptionsSetEvent`, `ProfileActivatedEvent`, `ProfileDeactivatedEvent`, `TranscriptionReadyEvent`,
+      `SynthesisReadyEvent`, `SpeechInterruptedEvent`, `ExtensionActivatedEvent`, `ExtensionDeactivatedEvent`).
 - **Audio Export Scoped to TTS Window**:
     - Replaced global menu bar recording shortcuts (`r`, `s`) with dedicated recording buffer and "Save to …" button
       inside `TTSWindow`.
@@ -72,8 +88,8 @@ All notable changes to Helomi are documented in this file.
     - Streamlined native Swift `AVFAudio` engine wire protocol (`startRoomVoice` payload with file path, removed
       deprecated audio device listing).
 - **Pipeline Robustness & Input Filtering**:
-    - Added whitespace and empty text validation in `SayText` command handling and `ParrotExtension`, avoiding redundant
-      TTS synthesis.
+    - Added whitespace and empty text validation in `SayTextCmd` command handling and `ParrotExtension`, avoiding
+      redundant TTS synthesis.
     - Wrapped audio driver activation in `PipelineService` with graceful error recovery to prevent audio playback errors
       from blocking assistant activation.
 - **Documentation & Examples Overhaul**:
@@ -93,7 +109,7 @@ All notable changes to Helomi are documented in this file.
 - Fixed clipboard paste (`Cmd+V`) in `TTSWindow` by installing standard Cocoa Edit menu shortcuts.
 - Fixed barge-in false interruption in TTS mode: microphone audio capture is now bypassed during TTS-only sessions,
   preventing speaker output from triggering self-interruptions (`"Tak?"`).
-- Fixed unintended greeting reactions on `SayText` command invocations when no profile was previously active.
+- Fixed unintended greeting reactions on `SayTextCmd` command invocations when no profile was previously active.
 - Implemented `activate` and `deactivate` in `MockAudioDriver` test fixture to satisfy abstract interface requirements.
 - Updated `TrayApp._render_title` test invocations to match the new positional parameter signature.
 - Fixed `Profile.model_post_init` to safely handle missing or non-dict initialization context.
@@ -118,8 +134,8 @@ All notable changes to Helomi are documented in this file.
 - **Extended REST & SSE Endpoints**:
     - Added `GET /api/v1/health` for service health checks.
     - Added `GET /api/v1/profile` and `GET /api/v1/profile/{id}` for querying profile configurations.
-    - Extended `GET /api/v1/speech` SSE streaming and `POST /api/v1/speech` command execution (`ActivateProfile`,
-      `DeactivateProfile`, `SayText`).
+    - Extended `GET /api/v1/speech` SSE streaming and `POST /api/v1/speech` command execution (`ActivateProfileCmd`,
+      `DeactivateProfileCmd`, `SayTextCmd`).
 - **Modernized macOS System Tray (`helomi_tray`)**:
     - Rewrote `TrayApp` to embed `Runtime` directly, enabling real-time switching between API Server mode and Parrot
       mode from the menu bar.
@@ -137,8 +153,8 @@ All notable changes to Helomi are documented in this file.
     - Introduced generation tracking (`PipelineRequest`) to invalidate outdated audio synthesis tasks on speech
       interruption.
     - Decoupled audio playback into dedicated `_playback_queue` and `_playback_loop`.
-    - Added `SpeechInterrupted` event dispatched when user speech interrupts ongoing playback.
-    - Added extension lifecycle management (`register_extension`, `set_active_extension`) with extension-scoped command
+    - Added `SpeechInterruptedEvent` event dispatched when user speech interrupts ongoing playback.
+    - Added extension lifecycle management (`register_extension`, `activate_extension`) with extension-scoped command
       and event filtering.
 - Migrated user resources directory from `resources/` to `.helomi/` (`.helomi/settings.yml`, `.helomi/profiles/`).
 - Modularized CLI command handlers into `helomi_cli/commands/` (`install.py`, `parrot.py`, `serve.py`) with rich banner

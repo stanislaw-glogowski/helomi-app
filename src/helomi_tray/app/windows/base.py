@@ -103,10 +103,10 @@ class BaseWindow:
         pass
 
     def activate(self) -> None:
-        """Elevate activation policy to regular, order window front, and set focus."""
+        """Order window front and set focus keeping accessory activation policy."""
         _ensure_edit_menu()
         app = AppKit.NSApplication.sharedApplication()
-        app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyRegular)
+        app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
         app.activateIgnoringOtherApps_(True)
         self.window.makeKeyAndOrderFront_(None)
         self.window.orderFrontRegardless()
@@ -114,7 +114,7 @@ class BaseWindow:
             self.window.makeFirstResponder_(self.focus_view)
 
     def deactivate(self, hide_window: bool = True) -> None:
-        """Restore accessory activation policy and optionally hide the window."""
+        """Optionally hide the window and ensure accessory policy."""
         if hide_window and hasattr(self, "window") and self.window is not None:
             self.window.orderOut_(None)
         app = AppKit.NSApplication.sharedApplication()

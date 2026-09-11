@@ -4,9 +4,10 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from helomi_core.config.profile import Profile, ProfileCatalog, ProfileSettings
-from helomi_core.config.settings import Settings
+from helomi_core.profile import Profile, ProfileCatalog
+from helomi_core.profile.config import ProfileSettings
 from helomi_core.resources.user import UserData
+from helomi_core.settings import Settings
 
 
 def test_profile_catalog_load(temp_helomi_store: Path) -> None:
@@ -167,8 +168,8 @@ def test_profile_readonly_field() -> None:
 
 
 def test_profile_catalog_get_not_found(mock_catalog) -> None:
-    from helomi_core.config.profile import ProfileCatalog
-    from helomi_core.config.settings import Settings
+    from helomi_core.profile import ProfileCatalog
+    from helomi_core.settings import Settings
 
     settings = Settings.load(mock_catalog)
     catalog = ProfileCatalog.load(settings, mock_catalog)
@@ -179,7 +180,7 @@ def test_profile_catalog_get_not_found(mock_catalog) -> None:
 
 
 def test_profile_reactions() -> None:
-    from helomi_core.reaction import ReactionKind
+    from helomi_core.profile import ReactionKind
 
     # Profile with multiple reactions
     p1 = Profile(

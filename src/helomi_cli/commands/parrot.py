@@ -4,9 +4,10 @@ from rich import print
 
 from helomi_core import Runtime
 from helomi_core.pipeline import (
-    ProfileActivated,
-    ProfileDeactivated,
-    TranscriptionReady,
+    ActivateProfileCmd,
+    ProfileActivatedEvent,
+    ProfileDeactivatedEvent,
+    TranscriptionReadyEvent,
 )
 
 from ..widgets import Spinner, print_exit, print_welcome
@@ -24,7 +25,7 @@ async def run_parrot_cmd(
     pipeline = await runtime.get_pipeline_service()
 
     if profile_id:
-        await pipeline.set_active_profile(profile_id)
+        await pipeline.execute_command(ActivateProfileCmd(profile_id=profile_id))
 
     await spinner.stop("Parrot mode ready")
 
@@ -45,13 +46,13 @@ async def run_parrot_cmd(
     async def _monitor_events() -> None:
         async for event in pipeline.subscribe_event():
             match event:
-                case ProfileActivated(profile_id=pid):
+                case ProfileActivatedEvent(profile_id=pid):
                     print(
                         f" [cyan]●[/cyan] Profile activated: [magenta]{pid}[/magenta]"
                     )
-                case ProfileDeactivated():
+                case ProfileDeactivatedEvent():
                     print(" [dim]○ Profile deactivated[/dim]")
-                case TranscriptionReady(text=text):
+                case TranscriptionReadyEvent(text=text):
                     print(f" [bold cyan]🎙 Heard:[/bold cyan] {text}")
                     print(f" [bold green]🦜 Echoing back:[/bold green] {text}")
 

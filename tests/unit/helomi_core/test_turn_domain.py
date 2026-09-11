@@ -1,7 +1,8 @@
 import numpy as np
 
 from helomi_core.audio import AudioChunk, AudioFormat
-from helomi_core.turn import TurnPrediction, TurnSettings, TurnStatus
+from helomi_core.turn import TurnPrediction, TurnStatus
+from helomi_core.turn.config import TurnSettings
 
 
 def test_turn_status_enum():

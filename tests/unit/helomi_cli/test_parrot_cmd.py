@@ -6,9 +6,10 @@ import pytest
 from helomi_cli.commands.parrot import run_parrot_cmd
 from helomi_cli.widgets import Spinner
 from helomi_core.pipeline import (
-    ProfileActivated,
-    ProfileDeactivated,
-    TranscriptionReady,
+    ActivateProfileCmd,
+    ProfileActivatedEvent,
+    ProfileDeactivatedEvent,
+    TranscriptionReadyEvent,
 )
 
 
@@ -31,7 +32,7 @@ def mock_runtime():
     settings.tts.adapter = "voxcpm2"
 
     mock_pipeline = MagicMock()
-    mock_pipeline.set_active_profile = AsyncMock(return_value=True)
+    mock_pipeline.execute_command = AsyncMock(return_value=True)
 
     runtime = MagicMock()
     runtime.profiles = mock_profiles
@@ -47,9 +48,9 @@ async def test_run_parrot_cmd_lifecycle(mock_runtime):
     runtime, mock_pipeline = mock_runtime
 
     async def mock_events():
-        yield ProfileActivated(profile_id="test_profile")
-        yield TranscriptionReady(profile_id="test_profile", text="Hello world")
-        yield ProfileDeactivated(profile_id="test_profile")
+        yield ProfileActivatedEvent(profile_id="test_profile")
+        yield TranscriptionReadyEvent(profile_id="test_profile", text="Hello world")
+        yield ProfileDeactivatedEvent(profile_id="test_profile")
 
     mock_pipeline.subscribe_event = mock_events
 
@@ -66,12 +67,14 @@ async def test_run_parrot_cmd_lifecycle(mock_runtime):
 
     runtime.get_parrot_extension.assert_called_once()
     runtime.get_pipeline_service.assert_called_once()
-    mock_pipeline.set_active_profile.assert_called_once_with("test_profile")
+    mock_pipeline.execute_command.assert_called_once_with(
+        ActivateProfileCmd(profile_id="test_profile")
+    )
 
 
 @pytest.mark.asyncio
 async def test_run_parrot_cmd_no_profile(mock_runtime):
-    """Verify run_parrot_cmd without profile_id does not call set_active_profile."""
+    """Verify run_parrot_cmd without profile_id does not call execute_command."""
     runtime, mock_pipeline = mock_runtime
 
     async def empty_events():
@@ -86,4 +89,4 @@ async def test_run_parrot_cmd_no_profile(mock_runtime):
 
     await run_parrot_cmd(runtime, shutdown, None, spinner)
 
-    mock_pipeline.set_active_profile.assert_not_called()
+    mock_pipeline.execute_command.assert_not_called()

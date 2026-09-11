@@ -1,8 +1,10 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .config import WakeWordProfile, WakeWordSettings
 from .domain import WakeWordPrediction
 from .ports import WakeWordAdapter
+
+if TYPE_CHECKING:
+    from .config import WakeWordProfile, WakeWordSettings
 
 
 def get_wakeword_adapter(
@@ -30,7 +32,5 @@ def get_wakeword_adapter(
 __all__ = [
     "WakeWordAdapter",
     "WakeWordPrediction",
-    "WakeWordProfile",
-    "WakeWordSettings",
     "get_wakeword_adapter",
 ]

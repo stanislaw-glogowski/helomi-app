@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from helomi_core.pipeline.domain import TranscriptionReady
+from helomi_core.pipeline.domain import TranscriptionReadyEvent
 from helomi_core.pipeline.service import PipelineService
 from helomi_core.server.config import ServerSettings
 from helomi_core.server.extension import ServerExtension
@@ -16,7 +16,7 @@ async def test_server_extension_properties_and_events() -> None:
     mock_pipeline = MagicMock(spec=PipelineService)
 
     async def fake_subscribe(_=None):
-        yield TranscriptionReady(profile_id="p1", text="text")
+        yield TranscriptionReadyEvent(profile_id="p1", text="text")
 
     mock_pipeline.subscribe_event = fake_subscribe
 
@@ -25,7 +25,7 @@ async def test_server_extension_properties_and_events() -> None:
 
     server = ServerExtension(
         config=config,
-        pipeline=mock_pipeline,
+        service=mock_pipeline,
         sessions=sessions,
     )
 

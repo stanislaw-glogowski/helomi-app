@@ -5,15 +5,15 @@ from pydantic import Field, PrivateAttr
 
 from helomi_common import BaseConfig, ConfigFile
 
-from ..audio import AudioSettings
+from ..audio.config import AudioSettings
+from ..profile.config import ProfileSettings
 from ..resources import ResourceCatalog
-from ..server import ServerSettings
-from ..stt import STTSettings
-from ..tts import TTSSettings
-from ..turn import TurnSettings
-from ..vad import VADSettings
-from ..wakeword import WakeWordSettings
-from .profile import ProfileSettings
+from ..server.config import ServerSettings
+from ..stt.config import STTSettings
+from ..tts.config import TTSSettings
+from ..turn.config import TurnSettings
+from ..vad.config import VADSettings
+from ..wakeword.config import WakeWordSettings
 
 
 class Settings(BaseConfig):

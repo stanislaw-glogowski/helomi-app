@@ -76,7 +76,7 @@ Sends a command to the speech pipeline within an active session.
 - **Headers:**
     - `X-Session-ID`: The Session ID obtained from the SSE stream connection.
 - **Body:** JSON payload matching the `PipelineCmd` schema:
-    - **`SayText`**: Request TTS engine to synthesize and play speech:
+    - **`SayTextCmd`**: Request TTS engine to synthesize and play speech:
       ```json
       {
         "type": "say_text",
@@ -84,17 +84,21 @@ Sends a command to the speech pipeline within an active session.
         "profile_id": "alexa"
       }
       ```
-    - **`ActivateProfile`**: Activate session profile:
+    - **`ActivateProfileCmd`**: Activate session profile:
       ```json
       {
         "type": "activate_profile",
-        "profile_id": "alexa",
-        "greet": true
+        "profile_id": "alexa"
       }
       ```
-        - `greet` (optional, boolean, default `true`): Whether to synthesize and speak the profile's greeting reaction
-          upon activation. Pass `false` to activate silently.
-    - **`DeactivateProfile`**: Deactivate current profile:
+    - **`SayReactionCmd`**: Trigger a pre-configured reaction utterance (e.g. `greeting`, `interrupted`):
+      ```json
+      {
+        "type": "say_reaction",
+        "reaction": "greeting"
+      }
+      ```
+    - **`DeactivateProfileCmd`**: Deactivate current profile:
       ```json
       {
         "type": "deactivate_profile"

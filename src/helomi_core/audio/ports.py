@@ -29,7 +29,7 @@ class AudioDriver[TConfig](AbstractAsyncComponent, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def interrupt(self) -> bool:
+    def interrupt(self) -> bool:
         raise NotImplementedError
 
     @abstractmethod

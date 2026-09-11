@@ -4,7 +4,15 @@ from typing import ClassVar
 
 import uvicorn
 
-from ..pipeline import PipelineExtension, PipelineService
+from ..pipeline import (
+    ExtensionActivatedEvent,
+    ExtensionDeactivatedEvent,
+    OptionsSetEvent,
+    PipelineExtension,
+    PipelineService,
+    ProfileActivatedEvent,
+    ProfileDeactivatedEvent,
+)
 from .api import create_api
 from .config import ServerSettings
 from .session import SessionManager
@@ -16,10 +24,10 @@ class ServerExtension(PipelineExtension):
     def __init__(
         self,
         config: ServerSettings,
-        pipeline: PipelineService,
+        service: PipelineService,
         sessions: SessionManager | None = None,
     ) -> None:
-        super().__init__(pipeline)
+        super().__init__(service)
 
         if sessions is None:
             sessions = SessionManager()
@@ -59,7 +67,7 @@ class ServerExtension(PipelineExtension):
         self._server.should_exit = False
         thread.start()
 
-        self._tasks.add_task(self._event_loop())
+        self._tasks.add_task(self._pipeline_loop())
 
     async def _post_close(self) -> None:
         self._thread, self._loop, thread = None, None, self._thread
@@ -94,6 +102,29 @@ class ServerExtension(PipelineExtension):
 
         await self._server.shutdown()
 
-    async def _event_loop(self) -> None:
+    async def _pipeline_loop(self) -> None:
         async for event in self._subscribe_event():
+            match event:
+                case OptionsSetEvent():
+                    event = None
+
+                case ExtensionActivatedEvent(active_profile_id=profile_id):
+                    event = (
+                        ProfileActivatedEvent(
+                            profile_id=profile_id,
+                        )
+                        if profile_id
+                        else None
+                    )
+                case ExtensionDeactivatedEvent():
+                    event = (
+                        ProfileDeactivatedEvent(
+                            profile_id=profile.id,
+                        )
+                        if (profile := self.active_profile) is not None
+                        else None
+                    )
+            if event is None:
+                continue
+
             self._sessions.dispatch_event(event)

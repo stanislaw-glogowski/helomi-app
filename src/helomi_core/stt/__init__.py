@@ -1,7 +1,11 @@
-from .config import STTProfile, STTSettings
+from typing import TYPE_CHECKING
+
 from .domain import STTChunk, STTRequest, STTResponse
 from .ports import STTAdapter
 from .worker import STTWorker
+
+if TYPE_CHECKING:
+    from .config import STTSettings
 
 
 def get_stt_adapter(settings: STTSettings) -> STTAdapter:
@@ -23,10 +27,8 @@ def get_stt_adapter(settings: STTSettings) -> STTAdapter:
 __all__ = [
     "STTAdapter",
     "STTChunk",
-    "STTProfile",
     "STTRequest",
     "STTResponse",
-    "STTSettings",
     "STTWorker",
     "get_stt_adapter",
 ]

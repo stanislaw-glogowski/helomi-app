@@ -6,9 +6,10 @@ from fastapi import APIRouter, HTTPException
 from starlette.responses import StreamingResponse
 
 from ...pipeline import (
-    ActivateProfile,
-    PipelineCmd,
-    SayText,
+    ActivateProfileCmd,
+    DeactivateProfileCmd,
+    SayReactionCmd,
+    SayTextCmd,
 )
 from ..session import Session
 from .params import Pipeline, SessionId, Sessions
@@ -96,7 +97,7 @@ def create_router() -> APIRouter:
 
     @router.post("/command")
     async def post_command(
-        cmd: PipelineCmd,
+        cmd: ActivateProfileCmd | DeactivateProfileCmd | SayTextCmd | SayReactionCmd,
         session_id: SessionId,
         sessions: Sessions,
         pipeline: Pipeline,
@@ -109,11 +110,7 @@ def create_router() -> APIRouter:
                 detail=f"Invalid or expired session {session_id}",
             )
 
-        match cmd:
-            case SayText() | ActivateProfile():
-                profile_id = cmd.profile_id
-            case _:
-                profile_id = None
+        profile_id = getattr(cmd, "profile_id", None)
 
         if profile_id is not None and session.profile_id != profile_id:
             raise HTTPException(
@@ -124,22 +121,15 @@ def create_router() -> APIRouter:
                 ),
             )
 
-        final_cmd: PipelineCmd
-        match cmd:
-            case SayText():
-                final_cmd = SayText(
-                    text=cmd.text,
-                    profile_id=session.profile_id,
-                    trace_id=cmd.trace_id,
-                )
-            case ActivateProfile():
-                final_cmd = ActivateProfile(
-                    profile_id=session.profile_id,
-                    trace_id=cmd.trace_id,
-                    greet=cmd.greet,
-                )
-            case cmd:
-                final_cmd = cmd
+        if hasattr(cmd, "profile_id"):
+            final_cmd = cmd.model_copy(
+                deep=True,
+                update={
+                    "profile_id": session.profile_id,
+                },
+            )
+        else:
+            final_cmd = cmd
 
         success = await pipeline.execute_command(final_cmd)
 

@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from helomi_core.config.settings import Settings
 from helomi_core.resources.user import UserData
+from helomi_core.settings import Settings
 
 
 def test_settings_load_success(temp_helomi_store: Path) -> None:

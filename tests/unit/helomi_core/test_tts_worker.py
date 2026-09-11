@@ -1,6 +1,7 @@
 import pytest
 
-from helomi_core.tts import TTSChunk, TTSProfile, TTSRequest, TTSWorker
+from helomi_core.tts import TTSChunk, TTSRequest, TTSWorker
+from helomi_core.tts.config import TTSProfile
 from tests.fixtures.audio import create_raw_audio
 from tests.fixtures.mocks import MockTTSAdapter
 

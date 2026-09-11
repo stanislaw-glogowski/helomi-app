@@ -20,7 +20,9 @@ class AppIcon(StrEnum):
         def __str__(self) -> str:
             return next(self)
 
-    EAR = "👂"
+    LISTEN = "◉"
+    IDLE = "○"
+    MUSIC = "♫"
     PARROT = "🦜"
     PROFILE = "👤"
     TTS = "🗣️"

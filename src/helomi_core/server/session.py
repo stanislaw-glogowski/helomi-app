@@ -68,7 +68,10 @@ class SessionManager(AbstractAsyncComponent):
         return self._sessions.get(session_id)
 
     def dispatch_event(self, event: PipelineEvent) -> None:
-        session_id = self._profile_to_session.get(event.profile_id)
+        profile_id = getattr(event, "profile_id", None)
+        if not profile_id:
+            return
+        session_id = self._profile_to_session.get(profile_id)
         if session_id and (session := self._sessions.get(session_id)):
             session.dispatch_event(event)
 

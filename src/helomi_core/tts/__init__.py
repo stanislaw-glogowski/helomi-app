@@ -1,8 +1,12 @@
-from .config import TTSProfile, TTSSettings
+from typing import TYPE_CHECKING
+
 from .domain import TTSChunk, TTSRequest
 from .ports import TTSAdapter
 from .tags import TTS_TAGS
 from .worker import TTSWorker
+
+if TYPE_CHECKING:
+    from .config import TTSSettings
 
 
 def get_tts_adapter(settings: TTSSettings) -> TTSAdapter:
@@ -24,9 +28,7 @@ __all__ = [
     "TTS_TAGS",
     "TTSAdapter",
     "TTSChunk",
-    "TTSProfile",
     "TTSRequest",
-    "TTSSettings",
     "TTSWorker",
     "get_tts_adapter",
 ]

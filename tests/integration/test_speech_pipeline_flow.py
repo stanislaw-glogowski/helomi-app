@@ -4,13 +4,13 @@ from unittest.mock import patch
 import pytest
 
 from helomi_core.pipeline import (
-    ActivateProfile,
-    DeactivateProfile,
+    ActivateProfileCmd,
+    DeactivateProfileCmd,
     PipelineEvent,
-    ProfileActivated,
-    ProfileDeactivated,
-    SayText,
-    TranscriptionReady,
+    ProfileActivatedEvent,
+    ProfileDeactivatedEvent,
+    SayTextCmd,
+    TranscriptionReadyEvent,
 )
 from helomi_core.pipeline.service import PipelineRequest
 from helomi_core.runtime import Runtime
@@ -65,11 +65,11 @@ async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockLocalCatalog):
             await asyncio.sleep(0.02)
 
             # 1. Simulate Profile Activation
-            await pipeline.execute_command(ActivateProfile(profile_id="alexa"))
+            await pipeline.execute_command(ActivateProfileCmd(profile_id="alexa"))
             await asyncio.sleep(0.05)
 
             assert len(received_events) >= 1
-            assert isinstance(received_events[-1], ProfileActivated)
+            assert isinstance(received_events[-1], ProfileActivatedEvent)
             assert received_events[-1].profile_id == "alexa"
 
             # 2. Simulate Speech-to-Text input directly through queue
@@ -82,13 +82,15 @@ async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockLocalCatalog):
             await asyncio.sleep(0.05)
 
             transcription_events = [
-                e for e in received_events if isinstance(e, TranscriptionReady)
+                e for e in received_events if isinstance(e, TranscriptionReadyEvent)
             ]
             assert len(transcription_events) >= 1
             assert transcription_events[-1].text == "turn on the light"
 
             # 3. Publish SayText command to trigger TTS & Audio playback
-            await pipeline.execute_command(SayText(text="I have turned on the light"))
+            await pipeline.execute_command(
+                SayTextCmd(text="I have turned on the light")
+            )
             await asyncio.sleep(0.05)
 
             # Verify TTS playback occurred
@@ -96,10 +98,10 @@ async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockLocalCatalog):
             assert audio_driver.played_audio[0] == synth_raw
 
             # 4. Deactivate Profile
-            await pipeline.execute_command(DeactivateProfile())
+            await pipeline.execute_command(DeactivateProfileCmd())
             await asyncio.sleep(0.05)
 
-            assert isinstance(received_events[-1], ProfileDeactivated)
+            assert isinstance(received_events[-1], ProfileDeactivatedEvent)
 
             sub_task.cancel()
             await asyncio.gather(sub_task, return_exceptions=True)

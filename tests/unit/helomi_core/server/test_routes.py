@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from helomi_core.config.profile import Profile
 from helomi_core.pipeline.extension import PipelineExtension
+from helomi_core.profile import Profile
 from helomi_core.server.api.app import create_api
 from helomi_core.server.session import SessionManager
 
@@ -135,7 +135,7 @@ async def test_speech_sse_and_post_cmd(mock_api_setup) -> None:
 
 @pytest.mark.asyncio
 async def test_profile_sse_stream_events(mock_api_setup) -> None:
-    from helomi_core.pipeline.domain import ProfileActivated
+    from helomi_core.pipeline.domain import ProfileActivatedEvent
     from helomi_core.server.api.router import create_router
 
     _, mock_pipeline, sessions = mock_api_setup
@@ -160,7 +160,7 @@ async def test_profile_sse_stream_events(mock_api_setup) -> None:
     first = await anext(gen)
     assert "event: session" in first
 
-    session.dispatch_event(ProfileActivated(profile_id="p1"))
+    session.dispatch_event(ProfileActivatedEvent(profile_id="p1"))
     second = await anext(gen)
     assert "event: profile_activated" in second
 

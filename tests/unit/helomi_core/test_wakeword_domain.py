@@ -7,9 +7,11 @@ from pydantic import ValidationError
 from helomi_core.audio import AudioChunk, AudioFormat
 from helomi_core.wakeword import (
     WakeWordPrediction,
+    get_wakeword_adapter,
+)
+from helomi_core.wakeword.config import (
     WakeWordProfile,
     WakeWordSettings,
-    get_wakeword_adapter,
 )
 from helomi_core.wakeword.openwakeword.adapter import OpenWakeWordAdapter
 from helomi_core.wakeword.openwakeword.config import (

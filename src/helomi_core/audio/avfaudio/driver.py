@@ -58,13 +58,13 @@ class AVFAudioDriver(AudioDriver[AVFAudioConfig]):
         self._playback_counter += 1
         self._send(MessageKind.PLAY, AudioPacked.encode(audio))
 
-    async def interrupt(self) -> bool:
+    def interrupt(self) -> bool:
         self._require_ready(AudioMode.DUPLEX)
         if self._playback_counter == 0:
             return False
 
         self._playback_counter = 0
-        await self._send_wait(MessageKind.STOP_PLAYBACK)
+        self._send(MessageKind.STOP_PLAYBACK)
         return True
 
     async def activate(self, profile: AudioProfile) -> None:

@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from helomi_core.pipeline.domain import SayText
+from helomi_core.pipeline.domain import SayTextCmd
 from helomi_core.pipeline.extension import PipelineExtension
 from helomi_core.pipeline.service import PipelineService
 
@@ -34,11 +34,11 @@ async def test_pipeline_extension_execute_command() -> None:
     mock_pipeline.execute_command = AsyncMock(return_value=True)
 
     ext = DummyExtension(mock_pipeline)
-    cmd = SayText(text="hello")
+    cmd = SayTextCmd(text="hello")
     res = await ext.execute_command(cmd)
 
     assert res is True
-    mock_pipeline.execute_command.assert_called_once_with(cmd, ext)
+    mock_pipeline.execute_command.assert_called_once_with(cmd, DummyExtension)
 
 
 def test_pipeline_extension_subscribe_event() -> None:
@@ -49,4 +49,4 @@ def test_pipeline_extension_subscribe_event() -> None:
     sub = ext._subscribe_event()
 
     assert sub == "mock_iterator"
-    mock_pipeline.subscribe_event.assert_called_once_with(ext)
+    mock_pipeline.subscribe_event.assert_called_once_with(DummyExtension)
