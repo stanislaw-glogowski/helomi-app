@@ -17,7 +17,7 @@ type PipelineExtensionLike = PipelineExtensionType | PipelineExtension
 class PipelineOptions(BaseModel):
     greeting_enabled: bool = True
     room_voice_enabled: bool = True
-    wakeword_enabled: bool = True
+    wakeword_enabled: bool = False
 
 
 type PipelineCmd = Annotated[

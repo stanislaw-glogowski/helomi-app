@@ -145,11 +145,11 @@ async def test_pipeline_service_activation_flow(mock_service) -> None:
     assert audio_driver.activate.call_count == 2
     audio_driver.activate.assert_called_with(service.profiles.get("prof2").audio)
 
-    # Deactivating profile
+    # Deactivating profile (wakeword disabled by default -> driver not deactivated)
     res = await service.execute_command(DeactivateProfileCmd())
     assert res is True
     assert service.active_profile is None
-    assert audio_driver.deactivate.call_count == 2
+    assert audio_driver.deactivate.call_count == 1
 
     # Deactivating when already None returns False
     res = await service.execute_command(DeactivateProfileCmd())

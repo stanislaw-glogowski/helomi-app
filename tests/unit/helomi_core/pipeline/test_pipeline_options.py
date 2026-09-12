@@ -74,7 +74,7 @@ def test_pipeline_options_defaults():
     options = PipelineOptions()
     assert options.greeting_enabled is True
     assert options.room_voice_enabled is True
-    assert options.wakeword_enabled is True
+    assert options.wakeword_enabled is False
 
 
 @pytest.mark.asyncio
@@ -232,18 +232,22 @@ async def test_pipeline_service_wakeword_toggle_and_modes(mock_pipeline_dependen
     )
     service._active_extension = DummyExtensionA(service)
 
-    # 1. wakeword_enabled = True (default) -> deactivation mode is PROFILE
+    # 1. wakeword_enabled = False (default) -> deactivation mode is UTTERANCE
     await service.execute_command(ActivateProfileCmd(profile_id="alexa"))
     detection_worker.change_mode.reset_mock()
-    await service.execute_command(DeactivateProfileCmd())
-    detection_worker.change_mode.assert_called_once_with(DetectionMode.PROFILE)
-
-    # 2. wakeword_enabled = False -> deactivation mode is UTTERANCE
-    await service.execute_command(SetOptionsCmd(wakeword_enabled=False))
-    await service.execute_command(ActivateProfileCmd(profile_id="alexa"))
-    detection_worker.change_mode.reset_mock()
+    audio_driver.deactivate.reset_mock()
     await service.execute_command(DeactivateProfileCmd())
     detection_worker.change_mode.assert_called_once_with(DetectionMode.UTTERANCE)
+    audio_driver.deactivate.assert_not_called()
+
+    # 2. wakeword_enabled = True -> deactivation mode is PROFILE
+    await service.execute_command(SetOptionsCmd(wakeword_enabled=True))
+    await service.execute_command(ActivateProfileCmd(profile_id="alexa"))
+    detection_worker.change_mode.reset_mock()
+    audio_driver.deactivate.reset_mock()
+    await service.execute_command(DeactivateProfileCmd())
+    detection_worker.change_mode.assert_called_once_with(DetectionMode.PROFILE)
+    audio_driver.deactivate.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -263,8 +267,7 @@ async def test_pipeline_service_detection_loop_wakeword_handling(
     )
     service.execute_command = AsyncMock()
 
-    # Case 1: wakeword_enabled is True
-    # ProfileDetected triggers ActivateProfileCmd
+    # Case 1: wakeword_enabled is False (default) -> ProfileDetected is ignored
     service._detection_worker.detect = MagicMock()
 
     async def mock_detect_profile(_):
@@ -280,13 +283,11 @@ async def test_pipeline_service_detection_loop_wakeword_handling(
                 await service.execute_command(
                     ActivateProfileCmd(profile_id=res.profile_id),
                 )
-    service.execute_command.assert_called_once_with(
-        ActivateProfileCmd(profile_id="alexa"),
-    )
+    service.execute_command.assert_not_called()
 
-    # Case 2: wakeword_enabled is False -> ProfileDetected is ignored
+    # Case 2: wakeword_enabled is True -> ProfileDetected triggers ActivateProfileCmd
     service.execute_command.reset_mock()
-    await service.set_options(wakeword_enabled=False)
+    await service.set_options(wakeword_enabled=True)
 
     async for res in service._detection_worker.detect(raw):
         if isinstance(res, ProfileDetected):
@@ -294,10 +295,14 @@ async def test_pipeline_service_detection_loop_wakeword_handling(
                 await service.execute_command(
                     ActivateProfileCmd(profile_id=res.profile_id),
                 )
-    service.execute_command.assert_not_called()
+    service.execute_command.assert_called_once_with(
+        ActivateProfileCmd(profile_id="alexa"),
+    )
 
     # Case 3: ConversationEnded when wakeword_enabled is False
     # does NOT deactivate profile
+    service.execute_command.reset_mock()
+    await service.set_options(wakeword_enabled=False)
     service._active_profile = mock_profile
     detection_worker.change_mode.reset_mock()
 
