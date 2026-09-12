@@ -9,7 +9,7 @@ export function printBanner(options: {
   apiUrl: string;
   llmModel: string;
   llmBaseUrl?: string;
-  profiles: Profile[];
+  profiles: Array<Partial<Profile> & Pick<Profile, 'id' | 'isActive'>>;
 }): void {
   print();
   print(['╭────────────────────────────────────────────────────────────╮', 'cyan']);

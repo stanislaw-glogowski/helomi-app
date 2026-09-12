@@ -122,6 +122,7 @@ def test_pipeline_request_generation() -> None:
 @pytest.mark.asyncio
 async def test_pipeline_service_activation_flow(mock_service) -> None:
     service, audio_driver, det_worker, _, _ = mock_service
+    service._active_extension = MockExtensionA(service)
     assert service.active_profile is None
     assert service.profiles is not None
 
@@ -196,6 +197,7 @@ async def test_pipeline_service_say_text(mock_service) -> None:
 @pytest.mark.asyncio
 async def test_pipeline_service_start_room_voice_error(mock_service) -> None:
     service, audio_driver, _, _, _ = mock_service
+    service._active_extension = MockExtensionA(service)
     audio_driver.activate.side_effect = RuntimeError("audio_conversion_failed")
 
     # Initial activation handles activate failure gracefully
@@ -458,6 +460,7 @@ async def test_pipeline_service_utterance_started_barge_in(mock_service) -> None
 @pytest.mark.asyncio
 async def test_pipeline_service_greeting_reaction(mock_service) -> None:
     service, _, _, _, _ = mock_service
+    service._active_extension = MockExtensionA(service)
 
     # Configure greeting reaction
     service._profiles.get("prof1").get_reaction = MagicMock(

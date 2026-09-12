@@ -5,7 +5,7 @@ from contextlib import suppress
 
 from helomi_cli import Spinner, run_install_cmd, run_parrot_cmd, run_serve_cmd
 from helomi_common import LogLevel, configure_logger
-from helomi_core import Runtime
+from helomi_core import Runtime, __version__
 
 
 def parse_args(default_cmd="install") -> argparse.Namespace:
@@ -13,6 +13,15 @@ def parse_args(default_cmd="install") -> argparse.Namespace:
         prog="helomi-cli",
         description="Helomi CLI",
     )
+
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show program's version number and exit",
+    )
+
     parser.add_argument(
         "-d",
         "--debug",

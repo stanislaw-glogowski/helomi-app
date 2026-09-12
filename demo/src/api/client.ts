@@ -1,5 +1,5 @@
 import { ClientError } from './client.error';
-import { toCamelCase, toSnakeCase } from './helpers';
+import { camelToSnake, toCamelCase, toSnakeCase } from './helpers';
 import { Session } from './session';
 import type { CallOptions, Profile, RequestOptions } from './types';
 
@@ -24,13 +24,40 @@ export class Client {
     return new Session(profileId, this);
   }
 
-  /**
-   * Fetches metadata for a single profile by ID.
-   * Returns null if the profile does not exist.
-   */
-  async getProfile(profileId: string, options?: CallOptions): Promise<Profile | null> {
+  async getProfile(
+    profileId: string,
+    require_prompt: string,
+    options?: CallOptions,
+  ): Promise<Profile<string> | null>;
+  async getProfile(
+    profileId: string,
+    options?: CallOptions,
+  ): Promise<Profile<null> | null>;
+  async getProfile(
+    profileId: string,
+    ...args: [string, CallOptions?] | [CallOptions?]
+  ): Promise<unknown> {
+    let require_prompt: string | undefined;
+    let options: CallOptions = {};
+
+    for (const arg of args) {
+      switch (typeof arg) {
+        case 'string':
+          require_prompt = arg;
+          break;
+        case 'object':
+          options = arg;
+          break;
+      }
+    }
+
     try {
-      return await this.send(`/profile/${profileId}`, options);
+      return await this.send(`/profile/${profileId}`, {
+        ...options,
+        query: {
+          require_prompt,
+        },
+      });
     } catch (err) {
       if (err instanceof ClientError && err.isNotFound) {
         return null;
@@ -39,11 +66,32 @@ export class Client {
     }
   }
 
-  /**
-   * Lists all available profiles loaded in the Helomi server.
-   */
-  async getProfiles(options?: CallOptions): Promise<Profile[]> {
-    return await this.send('/profile', options);
+  async getProfiles(
+    require_prompt: string,
+    options?: CallOptions,
+  ): Promise<Profile<string>[]>;
+  async getProfiles(options?: CallOptions): Promise<Profile<null>[]>;
+  async getProfiles(...args: [string, CallOptions?] | [CallOptions?]): Promise<unknown> {
+    let require_prompt: string | undefined;
+    let options: CallOptions = {};
+
+    for (const arg of args) {
+      switch (typeof arg) {
+        case 'string':
+          require_prompt = arg;
+          break;
+        case 'object':
+          options = arg;
+          break;
+      }
+    }
+
+    return await this.send('/profile', {
+      ...options,
+      query: {
+        require_prompt,
+      },
+    });
   }
 
   /**
@@ -51,7 +99,17 @@ export class Client {
    */
   async fetch(path: string, options: RequestOptions = {}): Promise<Response> {
     const url = new URL(`/api/v${Client.VERSION}${path}`, this.baseURL);
-    const { headers, command, abort, trace_id } = options;
+    const { headers, command, abort, trace_id, query } = options;
+
+    if (query) {
+      for (const [key, value] of Object.entries(query)) {
+        if (!value) {
+          continue;
+        }
+
+        url.searchParams.append(camelToSnake(key), value);
+      }
+    }
 
     let method: 'POST' | undefined;
 

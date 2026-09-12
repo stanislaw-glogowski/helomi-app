@@ -6,6 +6,21 @@ All notable changes to Helomi are documented in this file.
 
 ### Added
 
+- **Centralized Prompt Template Engine (`PromptReader`)**:
+    - Added `PromptReader` in `helomi_common.prompt` providing markdown prompt loading and dynamic template parameter
+      interpolation (`{{ key }}`).
+    - Added support for profile prompts located in `resources/profiles/<profile_id>/prompts/<prompt_name>.md` and shared
+      instruction templates in `resources/prompts/<namespace>/`.
+    - Added `require_prompt` query parameter to `GET /api/v1/profile` and `GET /api/v1/profile/{profile_id}` endpoints for
+      on-the-fly prompt delivery and filtering.
+- **Profile Enhancements (`priority`, `description`, default emoji)**:
+    - Added `priority: int = 1` field to `Profile` model schema and `ProfileCatalog` sorting (higher priority profiles sorted
+      first).
+    - Added `description: str | None = None` field to `Profile` model schema and prompt parameter contexts.
+    - Set default profile emoji fallback to `"👤"` in `Profile` schema validation when omitted or empty.
+- **Conversational Termination Tool in TypeScript Demo (`endConversation`)**:
+    - Equipped `LlmProvider` in the TypeScript demo with an `endConversation` tool that yields `null` when invoked,
+      closing the active dialogue session gracefully upon user request.
 - **Spoken Reactions & Instant Barge-In**:
     - Added `ReactionKind` (`GREETING`, `INTERRUPTED`) and `reactions` profile configuration with random selection and
       string/list normalization.
@@ -61,6 +76,17 @@ All notable changes to Helomi are documented in this file.
 
 ### Changed
 
+- **Demo Prompt Relocation to Resources**:
+    - Relocated demo prompt definitions from `demo/prompts/` to centralized `resources/` (`resources/profiles/alexa/prompts/demo.md` and `resources/prompts/demo/instructions.md`).
+    - Updated demo client to fetch prompts via API `requirePrompt: "demo"` instead of reading local filesystem files.
+- **Server API Route Refactor & Root Endpoint**:
+    - Refactored `helomi_core.server.api.router` into `helomi_core.server.api.routes` with full OpenAPI tags, response models, and descriptions.
+    - Added root endpoint `GET /` returning API title, version, description, and docs URL.
+    - Streamlined `Profile.dump(require_prompt=...)` dictionary output, including `id`, `name`, `emoji`, `prompt`, `has_wakeword`, `is_active`, `is_default`, and `is_readonly`.
+- **System Tray Menu Modernization (`helomi_tray`)**:
+    - Refactored menu implementation from `MenuAction` to standard `MenuItem`.
+    - Updated API server menu action to "API Documentation" pointing directly to Swagger `/docs`.
+    - Automatically disables settings menu options when TTS window mode is active.
 - **Architecture & Module Organization**:
     - Relocated and consolidated profile models and catalog from `helomi_core.config` into `helomi_core.profile`
       (`Profile`, `ProfileCatalog`, `ProfileConfig`).
@@ -108,7 +134,7 @@ All notable changes to Helomi are documented in this file.
 - Fixed backspace on `[` bracket in `TTSWindow` text editor tags input.
 - Fixed clipboard paste (`Cmd+V`) in `TTSWindow` by installing standard Cocoa Edit menu shortcuts.
 - Fixed barge-in false interruption in TTS mode: microphone audio capture is now bypassed during TTS-only sessions,
-  preventing speaker output from triggering self-interruptions (`"Tak?"`).
+  preventing speaker output from triggering self-interruptions (`"Yes?"`).
 - Fixed unintended greeting reactions on `SayTextCmd` command invocations when no profile was previously active.
 - Implemented `activate` and `deactivate` in `MockAudioDriver` test fixture to satisfy abstract interface requirements.
 - Updated `TrayApp._render_title` test invocations to match the new positional parameter signature.

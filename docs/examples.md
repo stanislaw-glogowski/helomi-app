@@ -16,10 +16,10 @@ From the menu bar icon, you can switch active voice profiles (shortcuts `0`–`8
 
 ## Running a Specific Profile via Developer CLI
 
-To run the developer CLI with a custom profile named `my_assistant`:
+To run the developer CLI with a specific profile:
 
 ```bash
-uv run helomi-cli parrot my_assistant
+uv run helomi-cli parrot alexa
 ```
 
 ## Overriding the Server Port
@@ -56,7 +56,7 @@ To ensure the CLI or Server always defaults to a specific profile, you can set i
 
 ```yaml
 profile:
-  default: "my_assistant"
+  default: "alexa"
 ```
 
 ## TypeScript Voice Assistant Demo
@@ -69,8 +69,10 @@ with [Bun](https://bun.sh/), TypeScript, and the [Vercel AI SDK](https://sdk.ver
   synthesized sentence lines immediately to `POST /api/v1/command`.
 - **Barge-in / Interruption Handling**: Automatically aborts ongoing LLM generation upon receiving `speech_interrupted`.
 - **Multi-Turn Memory**: Retains rolling conversation history per profile session.
-- **Dynamic Prompts**: Loads persona prompts from `prompts/profiles/<profile_id>.md` (default: `alexa.md`) merged with
-  output formatting instructions in `prompts/instructions.md`.
+- **Dynamic Prompts**: Fetches persona prompts directly from the Helomi API (`require_prompt: "demo"`), rendered from
+  `resources/profiles/<profile_id>/prompts/demo.md` combined with shared formatting instructions in
+  `resources/prompts/demo/instructions.md`.
+- **Conversational Termination**: Uses the `endConversation` tool to gracefully end interactions when requested.
 
 For setup and execution details, refer to the [Demo Documentation](../demo/README.md).
 

@@ -894,7 +894,6 @@ wheels = [
 
 [[package]]
 name = "helomi-app"
-version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "emoji" },

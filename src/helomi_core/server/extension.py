@@ -53,6 +53,10 @@ class ServerExtension(PipelineExtension):
     def url(self) -> str:
         return f"http://{self._config.host}:{self._config.port}"
 
+    @property
+    def docs_url(self) -> str:
+        return f"{self.url}/docs"
+
     def __str__(self) -> str:
         return f"{self.__component__}(url={self.url})"
 

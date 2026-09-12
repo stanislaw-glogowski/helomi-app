@@ -1,8 +1,14 @@
 from typing import Annotated
 
-from fastapi import Depends, Header, Request
+from fastapi import Body, Depends, Header, Path, Query, Request
 
-from ...pipeline import PipelineExtension
+from ...pipeline import (
+    ActivateProfileCmd,
+    DeactivateProfileCmd,
+    PipelineExtension,
+    SayReactionCmd,
+    SayTextCmd,
+)
 from ..session import SessionManager
 
 
@@ -14,11 +20,42 @@ def get_sessions(request: Request) -> SessionManager:
     return request.app.state.sessions
 
 
-SessionId = Annotated[
+SessionHeader = Annotated[
     str,
-    Header(alias="x-session-id", description="Session ID returned by profile SSE"),
+    Header(
+        alias="x-session-id",
+        description=(
+            "Active session identifier returned in the X-Session-ID "
+            "response header of the profile SSE stream."
+        ),
+    ),
 ]
 
-Pipeline = Annotated[PipelineExtension, Depends(get_pipeline)]
 
-Sessions = Annotated[SessionManager, Depends(get_sessions)]
+RequirePromptParam = Annotated[
+    str | None,
+    Query(
+        description="Optional prompt identifier to require or filter profiles by.",
+    ),
+]
+
+ProfileIdPath = Annotated[
+    str,
+    Path(
+        description="Unique identifier of the assistant profile.",
+    ),
+]
+
+CommandBody = Annotated[
+    ActivateProfileCmd | DeactivateProfileCmd | SayTextCmd | SayReactionCmd,
+    Body(
+        description=(
+            "Pipeline command to execute "
+            "(activate profile, deactivate profile, say text, or say reaction)."
+        ),
+    ),
+]
+
+PipelineDep = Annotated[PipelineExtension, Depends(get_pipeline)]
+
+SessionsDep = Annotated[SessionManager, Depends(get_sessions)]

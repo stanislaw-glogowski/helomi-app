@@ -9,6 +9,7 @@ from .foundation import (
 )
 from .fs import AbstractFile, ConfigFile, ConfigKind, TextFile
 from .logger import LogLevel, configure_logger
+from .prompt import PromptReader
 from .task import TaskManager
 from .validation import AdapterConfig, AdapterExtractor, BaseConfig, HFModel
 
@@ -27,6 +28,7 @@ __all__ = [
     "DeepMergeDict",
     "HFModel",
     "LogLevel",
+    "PromptReader",
     "TaskManager",
     "TextFile",
     "configure_logger",

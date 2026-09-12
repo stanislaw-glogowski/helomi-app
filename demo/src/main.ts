@@ -1,9 +1,7 @@
 import * as process from 'node:process';
-import type { SystemModelMessage } from 'ai';
 import type { Profile } from './api';
 import { Client, ClientError } from './api';
-import { MessageManager, PromptLoader } from './conversation';
-import { LlmProvider } from './llm';
+import { LlmProvider, MessageManager } from './conversation';
 import type { Color } from './ui';
 import { print, printBanner } from './ui';
 
@@ -20,13 +18,17 @@ const {
  * triggers streaming LLM replies, and supports barge-in interruption.
  */
 async function subscribeToProfile(
-  profile: Profile,
-  system: SystemModelMessage,
+  profile: Profile<string>,
   api: Client,
   llm: LlmProvider,
 ): Promise<void> {
   const session = api.createSession(profile.id);
-  const messages = new MessageManager({ system });
+  const messages = new MessageManager({
+    system: {
+      role: 'system',
+      content: profile.prompt,
+    },
+  });
 
   // Controller used to abort ongoing LLM generation when the user interrupts
   let abortController = new AbortController();
@@ -58,7 +60,7 @@ async function subscribeToProfile(
 
       case 'transcription_ready': {
         const { text } = event;
-        log(['🎙 User:', 'bold', 'blue'], ` "${text}"`);
+        log(['🗣 User:', 'bold', 'blue'], ` "${text}"`);
 
         // Record user message in conversation history
         messages.append({
@@ -78,6 +80,11 @@ async function subscribeToProfile(
             });
 
             for await (const line of reply) {
+              if (!line) {
+                await session.close();
+                return;
+              }
+
               log(
                 [`🔊 Assistant [#${lines.length + 1}]:`, 'bold', 'green'],
                 ` "${line}"`,
@@ -128,10 +135,9 @@ async function main(): Promise<void> {
     apiKey: LLM_API_KEY,
     modelId: LLM_MODEL_ID,
   });
-  const prompts = new PromptLoader();
 
   // Fetch available profiles from Helomi server
-  const profiles = await api.getProfiles();
+  const profiles = await api.getProfiles('demo');
   printBanner({
     apiUrl: API_BASE_URL,
     llmModel: LLM_MODEL_ID,
@@ -142,16 +148,7 @@ async function main(): Promise<void> {
   const promises: Promise<void>[] = [];
 
   for (const profile of profiles) {
-    const system = await prompts.loadSystemMessage(profile.id);
-    if (!system) {
-      print(
-        ['ℹ [INFO]', 'yellow'],
-        ` Skipping profile '${profile.id}': no prompt found in prompts/profiles/${profile.id}.md`,
-      );
-      continue;
-    }
-
-    promises.push(subscribeToProfile(profile, system, api, llm));
+    promises.push(subscribeToProfile(profile, api, llm));
   }
 
   if (promises.length === 0) {

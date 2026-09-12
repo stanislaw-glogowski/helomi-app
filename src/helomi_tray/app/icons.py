@@ -24,8 +24,7 @@ class AppIcon(StrEnum):
     IDLE = "○"
     MUSIC = "♫"
     PARROT = "🦜"
-    PROFILE = "👤"
-    TTS = "🗣️"
+    TTS = "🗣"
     QUITING = "☾"
 
 

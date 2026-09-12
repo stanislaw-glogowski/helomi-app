@@ -68,12 +68,26 @@ class ProfileCatalog(Iterable[Profile]):
             path=base_path / cls._DEFAULTS_FILE,
         )
 
+        profiles = {
+            profile.id: profile
+            for root_path in base_path.iterdir()
+            if (
+                profile := Profile.load(
+                    root_path,
+                    settings_data,
+                    settings.profile.default,
+                    settings.prompts,
+                    defaults_data,
+                )
+            )
+            is not None
+        }
+
         return cls(
             settings=settings.profile,
-            profiles={
-                profile.id: profile
-                for root_path in base_path.iterdir()
-                if (profile := Profile.load(root_path, settings_data, defaults_data))
-                is not None
-            },
+            profiles=dict(
+                sorted(
+                    profiles.items(), key=lambda item: item[1].priority, reverse=True
+                )
+            ),
         )

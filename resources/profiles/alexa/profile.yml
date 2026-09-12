@@ -1,34 +1,41 @@
-name: Alexa
+name: "Alexa"
 
 emoji: 👩🏻
 
 reactions:
   greeting:
-    - "Dzień dobry! W czym mogę Ci pomóc?"
-    - "Cześć! Słucham Cię uważnie."
-    - "Jestem. Co mogę dla Ciebie dzisiaj zrobić?"
-    - "Dzień dobry! Jak mogę Ci pomóc?"
-    - "Witaj! Jestem gotowa do pomocy."
-    - "Cześć! W czym mogę się dzisiaj przydać?"
-    - "Dzień dobry! Jestem do Twojej dyspozycji."
-    - "Cześć! Jak mogę ułatwić Ci dzień?"
-    - "Witaj! W czym mogę pomóc?"
-    - "Jestem, słucham. Co u Ciebie słychać?"
+    - "Hello! How can I help you?"
+    - "Hi there! I'm listening."
+    - "I'm here. What can I do for you today?"
+    - "Good day! How can I help?"
+    - "Hello! I'm ready to help."
+    - "Hi! What can I help you with today?"
+    - "Hello! I'm at your service."
+    - "Hi! How can I make your day easier?"
+    - "Welcome! How can I help you?"
+    - "I'm here and listening. How are you doing today?"
   interrupted:
-    - "Słucham?"
-    - "Tak, jestem."
-    - "W czym mogę pomóc?"
-    - "Tak, proszę?"
-    - "Słucham Cię."
-    - "Mów śmiało, słucham."
-    - "Tak, o co chodzi?"
-    - "Jestem, co się dzieje?"
-    - "Już słucham."
-    - "Co mogę dla Ciebie zrobić?"
+    - "Yes?"
+    - "Yes, I'm here."
+    - "How can I help?"
+    - "Yes, go ahead."
+    - "I'm listening."
+    - "Go ahead, I'm listening."
+    - "Yes, what's on your mind?"
+    - "I'm here, what do you need?"
+    - "I'm listening, go ahead."
+    - "What can I do for you?"
+
+stt:
+  parakeet:
+    language: "en"
+  whisper:
+    language: "en"
 
 tts:
   supertonic:
     voice_name: "F1"
+    language: "en"
   voxcpm2:
     ref_audio: "path://assets/ref_audio.wav"
 

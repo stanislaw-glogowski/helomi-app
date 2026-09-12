@@ -1,5 +1,6 @@
 import asyncio
 import threading
+import webbrowser
 from contextlib import suppress
 from dataclasses import replace
 from typing import ClassVar, Unpack
@@ -24,7 +25,7 @@ from helomi_core.pipeline import (
 from helomi_core.server import ServerExtension
 
 from .icons import AppIcon
-from .menu import MenuAction, MenuGroup, MenuItem
+from .menu import MenuGroup, MenuItem
 from .state import AppMode, AppState, AppStatus
 from .windows import BaseWindow, TTSWindow
 
@@ -74,11 +75,11 @@ class App(rumps.App, BaseComponent):
 
         for index, profile in enumerate(runtime.profiles):
             self._menu_profiles.add_action(
-                MenuAction(
+                MenuItem(
                     id=profile.id,
                     key=str(index) if index < 9 else None,
-                    title=profile.name,
-                    callback=self._handle_toggle_profile,
+                    title=f"{profile.name} (default)" if index == 0 else profile.name,
+                    callback=self._on_profile_click,
                     checked=profile.id == self._state.profile_id,
                 )
             )
@@ -88,42 +89,43 @@ class App(rumps.App, BaseComponent):
         )
 
         self._menu_settings.add_action(
-            MenuAction(
+            MenuItem(
                 id="greeting_enabled",
                 title="Greeting",
-                callback=self._handle_toggle_setting,
+                callback=self._on_setting_click,
             )
         )
         self._menu_settings.add_action(
-            MenuAction(
+            MenuItem(
                 id="room_voice_enabled",
                 title="Room Voice",
-                callback=self._handle_toggle_setting,
+                callback=self._on_setting_click,
             )
         )
         self._menu_settings.add_action(
-            MenuAction(
+            MenuItem(
                 id="wakeword_enabled",
                 title="Wake Word",
-                callback=self._handle_toggle_setting,
+                callback=self._on_setting_click,
             )
         )
 
-        self._menu_tts = MenuAction(
+        self._menu_tts = MenuItem(
             id="tts_window",
             title="Text-to-Speech",
             key="t",
             callback=self._handle_open_window,
         )
 
-        self._menu_parrot = MenuAction(
+        self._menu_parrot = MenuItem(
             title="Parrot Mode",
             key="p",
-            callback=self._handle_toggle_parrot,
+            callback=self._on_parrot_click,
         )
 
         self._menu_server = MenuItem(
             title="Starting Server",
+            callback=self._on_server_click,
         )
 
         self.menu = [
@@ -138,7 +140,7 @@ class App(rumps.App, BaseComponent):
             rumps.separator,
             rumps.MenuItem(
                 title="Quit",
-                callback=self._handle_quit,
+                callback=self._on_quit_click,
                 key="q",
             ),
         ]
@@ -148,7 +150,7 @@ class App(rumps.App, BaseComponent):
         super().run(**options)
 
     def quit(self) -> None:
-        self._handle_quit(None)
+        self._on_quit_click(None)
 
     @rumps.timer(0.1)
     def _animate_start_icon(self, sender: rumps.Timer | None = None) -> None:
@@ -168,11 +170,7 @@ class App(rumps.App, BaseComponent):
 
         match self._state.status:
             case AppStatus.RUNNING:
-                if last_state.status == AppStatus.STARTING:
-                    self._menu_profiles.set_enabled(True)
-                    self._menu_parrot.set_enabled(True)
-                    self._menu_tts.set_enabled(True)
-                    self._menu_settings.set_enabled(True)
+                self._menu_profiles.set_enabled(True)
 
                 if last_state.profile_id != self._state.profile_id:
                     if last_state.profile_id:
@@ -185,12 +183,19 @@ class App(rumps.App, BaseComponent):
                             self._state.profile_id,
                         ).set_checked(True)
 
-                self._menu_server.title = (
-                    f"API: {self._state.server_url}"
-                    if self._state.mode == AppMode.SERVER and self._state.server_url
-                    else "API Disabled"
-                )
+                if self._state.mode == AppMode.SERVER and self._state.api_url:
+                    self._menu_server.title = "API Documentation"
+                    self._menu_server.set_enabled(True)
+                else:
+                    self._menu_server.title = "API Disabled"
+                    self._menu_server.set_enabled(False)
+
+                self._menu_parrot.set_enabled(True)
                 self._menu_parrot.set_checked(self._state.mode == AppMode.PARROT)
+
+                self._menu_tts.set_enabled(True)
+
+                self._menu_settings.set_enabled(self._state.mode != AppMode.TTS)
                 self._menu_settings.get_action("greeting_enabled").set_checked(
                     self._state.greeting_enabled
                 )
@@ -214,7 +219,7 @@ class App(rumps.App, BaseComponent):
                 elif self._state.mode == AppMode.TTS:
                     icon = AppIcon.TTS
                 elif profile:
-                    icon = profile.emoji or AppIcon.PROFILE
+                    icon = profile.emoji
                 elif self._state.wakeword_enabled:
                     icon = AppIcon.LISTEN
                 else:
@@ -224,6 +229,7 @@ class App(rumps.App, BaseComponent):
 
                 if (
                     profile
+                    and self._state.mode != AppMode.TTS
                     and profile.audio.room_voice_path
                     and self._state.room_voice_enabled
                 ):
@@ -233,10 +239,11 @@ class App(rumps.App, BaseComponent):
 
             case AppStatus.QUITING:
                 if last_state.status == AppStatus.RUNNING:
-                    self._menu_server.title = "Stopping Server"
                     self._menu_profiles.set_enabled(False)
                     self._menu_parrot.set_enabled(False)
                     self._menu_tts.set_enabled(False)
+                    self._menu_server.title = "Stopping Server"
+                    self._menu_server.set_enabled(False)
                     self._menu_settings.set_enabled(False)
 
                 self.title = f"{AppIcon.QUITING} {self._TITLE}"
@@ -277,7 +284,69 @@ class App(rumps.App, BaseComponent):
             self._loop,
         )
 
-    def _handle_open_window(self, sender: MenuAction) -> None:
+    def _on_profile_click(self, sender: MenuItem) -> None:
+        if sender.checked:
+            self._pipeline_execute_command(DeactivateProfileCmd())
+        else:
+            self._pipeline_execute_command(
+                ActivateProfileCmd(
+                    profile_id=sender.id,
+                )
+            )
+
+    def _on_parrot_click(self, sender: MenuItem) -> None:
+        self._handle_close_window()
+
+        if sender.checked:
+            self._set_mode(AppMode.SERVER)
+        else:
+            self._set_mode(AppMode.PARROT)
+
+    def _on_server_click(self, _: MenuItem) -> None:
+        if url := self._state.api_url:
+            webbrowser.open(url)
+
+    def _on_setting_click(self, sender: MenuItem) -> None:
+        self._pipeline_execute_command(
+            SetOptionsCmd(
+                greeting_enabled=not sender.checked
+                if sender.id == "greeting_enabled"
+                else None,
+                room_voice_enabled=not sender.checked
+                if sender.id == "room_voice_enabled"
+                else None,
+                wakeword_enabled=not sender.checked
+                if sender.id == "wakeword_enabled"
+                else None,
+            )
+        )
+
+    def _on_quit_click(self, sender: rumps.MenuItem | None = None) -> None:
+        if sender is not None:
+            sender.set_callback(None)
+
+        self._update_state(
+            status=AppStatus.QUITING,
+            force_sync=True,
+        )
+        rumps.Timer(self._handle_exit, 0.1).start()
+
+    def _handle_exit(self, sender: rumps.Timer) -> None:
+        sender.stop()
+
+        if self._window is not None:
+            self._window.close()
+            self._window = None
+
+        if self._loop and self._shutdown_signal and not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._shutdown_signal.set)
+
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5.0)
+
+        rumps.quit_application()
+
+    def _handle_open_window(self, sender: MenuItem) -> None:
         match sender.id:
             case "tts_window":
                 if isinstance(self._window, TTSWindow):
@@ -289,10 +358,10 @@ class App(rumps.App, BaseComponent):
         if self._window:
             self._window.close()
 
+        previous_mode = self._state.mode
+
         match sender.id:
             case "tts_window":
-                previous_mode = self._state.mode
-
                 self._set_mode(AppMode.TTS)
                 window = TTSWindow(
                     on_send=self._handle_tts_send,
@@ -320,64 +389,6 @@ class App(rumps.App, BaseComponent):
                 profile_id=self._state.profile_id,
             )
         )
-
-    def _handle_toggle_profile(self, sender: MenuAction) -> None:
-        if sender.checked:
-            self._pipeline_execute_command(DeactivateProfileCmd())
-        else:
-            self._pipeline_execute_command(
-                ActivateProfileCmd(
-                    profile_id=sender.id,
-                )
-            )
-
-    def _handle_toggle_parrot(self, sender: MenuAction) -> None:
-        self._handle_close_window()
-
-        if sender.checked:
-            self._set_mode(AppMode.SERVER)
-        else:
-            self._set_mode(AppMode.PARROT)
-
-    def _handle_toggle_setting(self, action: MenuAction) -> None:
-        self._pipeline_execute_command(
-            SetOptionsCmd(
-                greeting_enabled=not action.checked
-                if action.id == "greeting_enabled"
-                else None,
-                room_voice_enabled=not action.checked
-                if action.id == "room_voice_enabled"
-                else None,
-                wakeword_enabled=not action.checked
-                if action.id == "wakeword_enabled"
-                else None,
-            )
-        )
-
-    def _handle_quit(self, sender: rumps.MenuItem | None = None) -> None:
-        if sender is not None:
-            sender.set_callback(None)
-
-        self._update_state(
-            status=AppStatus.QUITING,
-            force_sync=True,
-        )
-        rumps.Timer(self._handle_exit, 0.1).start()
-
-    def _handle_exit(self, sender: rumps.Timer) -> None:
-        sender.stop()
-
-        if self._window is not None:
-            self._window.close()
-            self._window = None
-
-        if self._loop and self._shutdown_signal and not self._loop.is_closed():
-            self._loop.call_soon_threadsafe(self._shutdown_signal.set)
-
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=5.0)
-
-        rumps.quit_application()
 
     def _before_run(self) -> None:
         thread = threading.Thread(
@@ -421,7 +432,7 @@ class App(rumps.App, BaseComponent):
 
                 self._update_state(
                     status=AppStatus.RUNNING,
-                    server_url=server_extension.url,
+                    api_url=server_extension.docs_url,
                     profile_id=profile.id
                     if (profile := pipeline.active_profile) is not None
                     else None,

@@ -1,8 +1,25 @@
 import type { OpenAIProviderSettings } from '@ai-sdk/openai';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel, ModelMessage, SystemModelMessage } from 'ai';
-import { streamText } from 'ai';
+import { jsonSchema, streamText, tool } from 'ai';
 import { cleanLine, ollamaFetch } from './helpers';
+
+export const END_CONVERSATION_TOOL_NAME = 'endConversation';
+
+export const endConversationTool = tool({
+  description:
+    'Call this tool when the user wants to end the conversation, stop talking, finish the interaction, or says goodbye.',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      reason: {
+        type: 'string',
+        description: 'Optional reason why the conversation is ending.',
+      },
+    },
+  }),
+  execute: async () => null,
+});
 
 /**
  * LLM Provider interfacing with OpenAI-compatible APIs (including Ollama, vLLM, etc.).
@@ -12,11 +29,17 @@ export class LlmProvider {
   private readonly model: LanguageModel;
 
   constructor(options: {
-    modelId: string;
+    modelId?: string;
     baseURL?: string;
     apiKey?: string;
+    model?: LanguageModel;
   }) {
-    const { modelId, baseURL, apiKey } = options;
+    const { modelId = 'gpt-5.6-luna', baseURL, apiKey, model } = options;
+
+    if (model) {
+      this.model = model;
+      return;
+    }
 
     const openai = createOpenAI({
       baseURL,
@@ -32,6 +55,7 @@ export class LlmProvider {
   /**
    * Generates a streaming assistant reply to user input, splitting and cleaning line-by-line.
    * Yields clean sentence lines suitable for immediate TTS utterance dispatch.
+   * When the user wants to end the conversation, the endConversation tool is triggered and null is yielded.
    */
   async *streamReply(
     text: string,
@@ -40,7 +64,7 @@ export class LlmProvider {
       messages?: ModelMessage[];
       abort?: AbortSignal;
     } = {},
-  ): AsyncIterable<string> {
+  ): AsyncIterable<string | null> {
     const { system, messages = [], abort } = options;
 
     const { stream } = streamText({
@@ -54,6 +78,9 @@ export class LlmProvider {
         },
       ],
       abortSignal: abort,
+      tools: {
+        [END_CONVERSATION_TOOL_NAME]: endConversationTool,
+      },
     });
 
     let buffer = '';
@@ -81,6 +108,23 @@ export class LlmProvider {
             }
           }
 
+          break;
+        }
+
+        case 'tool-call': {
+          if (part.toolName === END_CONVERSATION_TOOL_NAME) {
+            if (buffer.length > 0) {
+              const line = cleanLine(
+                buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer,
+              );
+              buffer = '';
+              if (line) {
+                yield line;
+              }
+            }
+            yield null;
+            return;
+          }
           break;
         }
       }

@@ -1,13 +1,7 @@
 import type { Client } from './client';
 import { ClientError } from './client.error';
 import { toCamelCase } from './helpers';
-import type {
-  CallOptions,
-  Command,
-  CommandOptions,
-  Profile,
-  SessionEvent,
-} from './types';
+import type { Command, CommandOptions, Reaction, SessionEvent } from './types';
 
 /**
  * Manages an active speech session for a specific voice profile.
@@ -27,42 +21,6 @@ export class Session {
   }
 
   /**
-   * Fetches profile details for the session's bound profile.
-   */
-  async getProfile(options?: CallOptions): Promise<Profile> {
-    const profile = await this.client.getProfile(this.profileId, options);
-    if (!profile) {
-      throw new ClientError('Profile not found');
-    }
-    return profile;
-  }
-
-  /**
-   * Activates this session's profile in the speech pipeline.
-   */
-  async activateProfile(options?: CommandOptions): Promise<boolean> {
-    return this.sendCommand(
-      {
-        type: 'activate_profile',
-        profileId: this.profileId,
-      },
-      options,
-    );
-  }
-
-  /**
-   * Deactivates the active profile in the speech pipeline.
-   */
-  async deactivateProfile(options?: CommandOptions): Promise<boolean> {
-    return this.sendCommand(
-      {
-        type: 'deactivate_profile',
-      },
-      options,
-    );
-  }
-
-  /**
    * Sends synthesized speech text to the audio pipeline for playback.
    */
   async sayText(text: string, options?: CommandOptions): Promise<boolean> {
@@ -71,6 +29,29 @@ export class Session {
         type: 'say_text',
         text,
         profileId: this.profileId,
+      },
+      options,
+    );
+  }
+
+  /**
+   * Sends synthesized speech text to the audio pipeline for playback.
+   */
+  async sayReaction(reaction: Reaction, options?: CommandOptions): Promise<boolean> {
+    return this.sendCommand(
+      {
+        type: 'say_reaction',
+        reaction,
+        profileId: this.profileId,
+      },
+      options,
+    );
+  }
+
+  async close(options?: CommandOptions): Promise<boolean> {
+    return this.sendCommand(
+      {
+        type: 'deactivate_profile',
       },
       options,
     );
@@ -121,15 +102,11 @@ export class Session {
           continue;
         }
 
-        if (type === 'session') {
-          yield {
-            type: 'session_started',
-          };
-          continue;
-        }
-
         try {
-          yield toCamelCase(JSON.parse(data));
+          yield {
+            type,
+            ...toCamelCase<object>(JSON.parse(data)),
+          } as SessionEvent;
         } catch {
           //
         }

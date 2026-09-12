@@ -166,6 +166,7 @@ async def test_pipeline_service_room_voice_activation(mock_pipeline_dependencies
         stt_worker=stt_worker,
         tts_worker=tts_worker,
     )
+    service._active_extension = DummyExtensionA(service)
 
     cmd = ActivateProfileCmd(profile_id="alexa")
     await service.execute_command(cmd)
@@ -193,6 +194,7 @@ async def test_pipeline_service_room_voice_toggle_live(mock_pipeline_dependencie
         stt_worker=stt_worker,
         tts_worker=tts_worker,
     )
+    service._active_extension = DummyExtensionA(service)
     await service.execute_command(ActivateProfileCmd(profile_id="alexa"))
     audio_driver.deactivate.reset_mock()
     audio_driver.activate.reset_mock()
@@ -228,6 +230,7 @@ async def test_pipeline_service_wakeword_toggle_and_modes(mock_pipeline_dependen
         stt_worker=stt_worker,
         tts_worker=tts_worker,
     )
+    service._active_extension = DummyExtensionA(service)
 
     # 1. wakeword_enabled = True (default) -> deactivation mode is PROFILE
     await service.execute_command(ActivateProfileCmd(profile_id="alexa"))
@@ -333,6 +336,7 @@ async def test_pipeline_service_greeting_reaction_respects_options(
         stt_worker=stt_worker,
         tts_worker=tts_worker,
     )
+    service._active_extension = DummyExtensionA(service)
     await service.execute_command(ActivateProfileCmd(profile_id="alexa"))
     assert not service._tts_queue.empty()
     req = service._tts_queue.get_nowait()

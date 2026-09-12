@@ -20,8 +20,8 @@ sentence-by-sentence back to Helomi's Text-to-Speech (TTS) synthesizer for low-l
   `speech_interrupted` event which instantly cancels LLM generation via `AbortController`.
 - **Rolling Conversation History**: Retains the last 10 messages per profile session to provide multi-turn conversation
   memory.
-- **Modular Profile Prompts**: Automatically pairs each Helomi voice profile with its corresponding prompt in
-  `prompts/profiles/<profile_id>.md` combined with TTS formatting instructions.
+- **Modular Profile Prompts via API**: Fetches system prompts directly from Helomi using `require_prompt: "demo"`, rendered by Helomi's on-device prompt template engine (`resources/profiles/<profile_id>/prompts/demo.md`).
+- **Conversational Termination Tool**: Equips the LLM with an `endConversation` tool to gracefully end interactions when the user says goodbye.
 
 ---
 
@@ -113,16 +113,14 @@ terminal and through your speakers.
 
 ## Prompts & Profiles
 
-The demo dynamically pairs each active voice profile with prompt definitions:
+Prompts are managed centrally by Helomi in `resources/` and retrieved on-the-fly by the demo client:
 
-1. **System Persona (`prompts/profiles/<profile_id>.md`)**: Defines the personality, traits, and response style of the
-   profile.
-    - The repository includes the default profile prompt: `prompts/profiles/alexa.md`.
-    - To add personas for custom profiles configured in Helomi, create a markdown file matching your profile ID:
-      `prompts/profiles/<profile_id>.md`.
-2. **Output Formatting (`prompts/instructions.md`)**: Shared rules ensuring LLM output is formatted for real-time speech
-   synthesis (one sentence per line, plain text without markdown, and allowed vocal delivery tags such as `[laughter]`,
-   `[sigh]`, `[breath]`).
+1. **Profile Personas (`resources/profiles/<profile_id>/prompts/demo.md`)**:
+   Defines the personality, traits, and response style of the profile. Helomi's `PromptReader` substitutes parameters such as `{{ name }}` and `{{ description }}` before serving it via the API (`GET /api/v1/profile?require_prompt=demo`).
+2. **Shared Formatting Instructions (`resources/prompts/demo/instructions.md`)**:
+   Shared rules ensuring LLM output is formatted for real-time speech synthesis (plain text without markdown, and allowed vocal delivery tags such as `[laughter]`, `[sigh]`, `[breath]`).
+3. **Conversational Termination (`endConversation`)**:
+   The LLM provider is equipped with an `endConversation` tool. When the user indicates they want to end or exit the chat (e.g., "bye", "goodbye", "stop conversation"), the tool triggers and the provider yields `null`, prompting the session to close gracefully.
 
 ---
 

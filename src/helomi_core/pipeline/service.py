@@ -1,7 +1,7 @@
 import asyncio
 from asyncio import Queue
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Literal
 
 from ..audio import AudioDriver, RawAudio
 from ..detection import (
@@ -119,7 +119,14 @@ class PipelineService(PipelineComponent):
         if self._active_extension is extension:
             return False
 
-        await self.deactivate_extension()
+        if self._active_extension:
+            self._dispatch_event(
+                ExtensionDeactivatedEvent(
+                    extension=self._active_extension,
+                ),
+            )
+        elif self._active_profile and self._options.room_voice_enabled:
+            await self._audio_driver.activate(self._active_profile.audio)
 
         self._active_extension = extension
 
@@ -140,6 +147,9 @@ class PipelineService(PipelineComponent):
             return False
 
         extension, self._active_extension = self._active_extension, None
+
+        if self._active_profile and self._options.room_voice_enabled:
+            await self._audio_driver.deactivate()
 
         self._active_extension = None
         self._dispatch_event(
@@ -234,13 +244,13 @@ class PipelineService(PipelineComponent):
                 async for res in self._detection_worker.detect(audio):
                     match res:
                         case ProfileDetected():
-                            if self._options.wakeword_enabled:
+                            if self._get_option_flag("wakeword_enabled"):
                                 await self.execute_command(
                                     ActivateProfileCmd(profile_id=res.profile_id),
                                 )
 
                         case ConversationEnded():
-                            if self._options.wakeword_enabled:
+                            if self._get_option_flag("wakeword_enabled"):
                                 await self.execute_command(
                                     DeactivateProfileCmd(),
                                 )
@@ -392,6 +402,7 @@ class PipelineService(PipelineComponent):
         if (
             options.room_voice_enabled != self._options.room_voice_enabled
             and self._active_profile
+            and self._active_extension
         ):
             if options.room_voice_enabled:
                 try:
@@ -411,11 +422,7 @@ class PipelineService(PipelineComponent):
 
         return True
 
-    async def _handle_activate_profile(
-        self,
-        cmd: ActivateProfileCmd,
-        greet: bool = True,
-    ) -> bool:
+    async def _handle_activate_profile(self, cmd: ActivateProfileCmd) -> bool:
         profile = self._profiles.get(cmd.profile_id)
 
         if self._active_profile is profile:
@@ -440,7 +447,7 @@ class PipelineService(PipelineComponent):
             )
         )
 
-        if self._options.room_voice_enabled:
+        if self._get_option_flag("room_voice_enabled"):
             try:
                 await self._audio_driver.activate(profile.audio)
             except Exception as err:
@@ -452,7 +459,7 @@ class PipelineService(PipelineComponent):
 
         await self._detection_worker.change_mode(DetectionMode.UTTERANCE)
 
-        if greet and self._options.greeting_enabled:
+        if self._get_option_flag("greeting_enabled"):
             reaction = profile.get_reaction(ReactionKind.GREETING)
 
             if reaction:
@@ -474,13 +481,11 @@ class PipelineService(PipelineComponent):
 
         PipelineRequest.bump_generation()
 
-        await self._audio_driver.deactivate()
-
-        mode = (
-            DetectionMode.PROFILE
-            if self._options.wakeword_enabled
-            else DetectionMode.UTTERANCE
-        )
+        if self._get_option_flag("wakeword_enabled"):
+            await self._audio_driver.deactivate()
+            mode = DetectionMode.PROFILE
+        else:
+            mode = DetectionMode.UTTERANCE
 
         await self._detection_worker.change_mode(mode)
 
@@ -501,8 +506,7 @@ class PipelineService(PipelineComponent):
                     ActivateProfileCmd(
                         profile_id=cmd.profile_id,
                         trace_id=cmd.trace_id,
-                    ),
-                    greet=False,
+                    )
                 )
             case profile if cmd.profile_id is not None and profile.id != cmd.profile_id:
                 return False
@@ -527,6 +531,18 @@ class PipelineService(PipelineComponent):
         )
 
         return True
+
+    def _get_option_flag(
+        self,
+        key: Literal[
+            "greeting_enabled",
+            "room_voice_enabled",
+            "wakeword_enabled",
+        ],
+    ) -> bool:
+        return (
+            self._active_extension is not None and getattr(self._options, key) is True
+        )
 
     def _dispatch_event(
         self,

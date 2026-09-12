@@ -52,7 +52,7 @@ The tray menu provides rapid hotkey navigation:
     - **Wake Word:** Toggle wake-word listening. When unchecked, wake-word detection is disabled, the active profile
       remains active across conversations without auto-deactivating, and initial greeting reactions are suppressed.
     - *(Note: Settings are dynamically disabled while TTS mode is active).*
-- **API Server Status:** Displays the active HTTP/SSE server endpoint (e.g. `API: http://127.0.0.1:4356` or `API Disabled`).
+- **API Documentation:** Displays **API Documentation** (which opens Swagger UI at `/docs` in the default browser when clicked) while the server is active, or **API Disabled** otherwise.
 - **Toggle Parrot Mode (`p`):** Enable or toggle Parrot repetition mode for testing STT and TTS live.
 - **Text to Speech (`t`):** Open the dedicated Text-to-Speech (TTS) synthesis window. Automatically pauses other
   extension modes while open and restores the previous mode upon close.
@@ -68,7 +68,7 @@ audio file export:
 - **Native Clipboard & Editing:** Full Cocoa Edit menu support for `Cmd+V` (paste), `Cmd+C` (copy), `Cmd+A` (select
   all), `Cmd+Z` (undo), and `Cmd+X` (cut).
 - **Speaker Feedback Isolation:** While TTS mode is active, microphone capture is bypassed so that speaker output does
-  not cause false barge-in self-interruptions (`"Tak?"`).
+  not cause false barge-in self-interruptions (`"Yes?"`).
 - **Send Button:** Synthesizes and plays the input text using the currently active profile without playing unintended
   greeting reactions.
 - **Save to … Button:** Accumulates synthesized speech into an audio buffer and triggers a native macOS `NSSavePanel`

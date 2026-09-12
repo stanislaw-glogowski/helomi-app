@@ -3,7 +3,7 @@ from typing import Any, ClassVar, Self
 
 from pydantic import Field, PrivateAttr
 
-from helomi_common import BaseConfig, ConfigFile
+from helomi_common import BaseConfig, ConfigFile, PromptReader
 
 from ..audio.config import AudioSettings
 from ..profile.config import ProfileSettings
@@ -16,7 +16,7 @@ from ..vad.config import VADSettings
 from ..wakeword.config import WakeWordSettings
 
 
-class Settings(BaseConfig):
+class Settings(BaseConfig, PromptReader):
     _CONFIG_FILE: ClassVar[str] = "settings"
 
     profile: ProfileSettings = Field(default_factory=ProfileSettings)
@@ -29,10 +29,15 @@ class Settings(BaseConfig):
     wakeword: WakeWordSettings = Field(default_factory=WakeWordSettings)
 
     _root_path: Path = PrivateAttr()
+    _prompts: dict[str, str] = PrivateAttr()
 
     @property
     def root_path(self) -> Path:
         return self._root_path
+
+    @property
+    def prompts(self) -> dict[str, str]:
+        return self._prompts
 
     @classmethod
     def load(cls, resources: ResourceCatalog) -> Self:
@@ -46,9 +51,10 @@ class Settings(BaseConfig):
             data,
             context={
                 "root_path": root_path,
+                "prompts": cls._read_prompts(root_path),
             },
         )
 
     def model_post_init(self, context: dict[str, Any]) -> None:
-        if isinstance(context, dict):
-            self._set_private_attr("root_path", context.get("root_path"))
+        for key in ("root_path", "prompts"):
+            self._set_private_attr(key, context.get(key))

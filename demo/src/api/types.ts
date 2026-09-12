@@ -1,11 +1,18 @@
 /**
  * Representation of a loaded Helomi voice profile.
  */
-export type Profile = {
+export type Profile<TPrompt = string | null> = {
   id: string;
   name: string;
+  emoji: string;
+  prompt: TPrompt;
+  hasWakeword: boolean;
   isActive: boolean;
+  isDefault: boolean;
+  isReadonly: boolean;
 };
+
+export type Reaction = 'greeting' | 'interrupted';
 
 /**
  * Options for generic API calls.
@@ -27,6 +34,7 @@ export type CommandOptions = CallOptions & {
 export type RequestOptions = CommandOptions & {
   headers?: Record<string, string>;
   command?: Command;
+  query?: Record<string, string | undefined>;
 };
 
 /**
@@ -49,6 +57,13 @@ export type Command =
       {
         profileId: string;
         text: string;
+      }
+    >
+  | Envelope<
+      'say_reaction',
+      {
+        profileId: string;
+        reaction: Reaction;
       }
     >
   | Envelope<

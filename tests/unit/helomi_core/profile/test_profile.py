@@ -133,6 +133,8 @@ def test_profile_with_room_voice_path(tmp_path: Path) -> None:
                 "wakeword": {"adapter": "openwakeword"},
             }
         ),
+        default_id="default",
+        prompt_params={},
     )
     assert profile is not None
     assert profile.name == "Default"
@@ -147,12 +149,12 @@ def test_profile_emoji_validation() -> None:
     p2 = Profile(name="Test2", emoji="🦆")
     assert p2.emoji == "🦆"
 
-    # None and empty string resolve to None
+    # None and empty string resolve to default emoji 👤
     p3 = Profile(name="Test3", emoji=None)
-    assert p3.emoji is None
+    assert p3.emoji == "👤"
 
     p4 = Profile(name="Test4", emoji="")
-    assert p4.emoji is None
+    assert p4.emoji == "👤"
 
     # Invalid non-emoji string raises ValueError
     with pytest.raises(ValueError, match="Input should be a single emoji"):
@@ -203,3 +205,51 @@ def test_profile_reactions() -> None:
     # Non-dict reactions passes through to pydantic validator
     with pytest.raises(ValidationError):
         Profile.model_validate({"name": "Invalid", "reactions": 123})
+
+
+def test_profile_dump_and_prompts(tmp_path: Path) -> None:
+    profile_dir = tmp_path / "prof_test"
+    profile_dir.mkdir()
+    (profile_dir / "profile.yml").write_text(
+        yaml.safe_dump({"name": "Test Prof", "description": "My Desc"}),
+        encoding="utf-8",
+    )
+    prompts_dir = profile_dir / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "demo.md").write_text(
+        "You are {{ name }}. Role: {{ description }}. System: {{ sys_param }}.",
+        encoding="utf-8",
+    )
+
+    from helomi_common import DeepMergeDict
+
+    profile = Profile.load(
+        root_path=profile_dir,
+        settings_data=DeepMergeDict(
+            {
+                "stt": {"adapter": "parakeet", "parakeet": {}},
+                "tts": {"adapter": "voxcpm2", "voxcpm2": {}},
+                "wakeword": {"adapter": "openwakeword", "openwakeword": {}},
+            }
+        ),
+        default_id="prof_test",
+        prompt_params={"sys_param": "active"},
+    )
+    assert profile is not None
+    assert (
+        profile.prompts["demo"] == "You are Test Prof. Role: My Desc. System: active."
+    )
+
+    # Dump with no require_prompt
+    dumped = profile.dump(active_id="prof_test", default_id="prof_test")
+    assert dumped["id"] == "prof_test"
+    assert dumped["prompt"] is None
+    assert dumped["is_active"] is True
+    assert dumped["is_default"] is True
+
+    # Dump with existing require_prompt
+    dumped_demo = profile.dump(require_prompt="demo")
+    assert dumped_demo["prompt"] == profile.prompts["demo"]
+
+    # Dump with non-existing require_prompt returns empty dict
+    assert profile.dump(require_prompt="non_existent") == {}

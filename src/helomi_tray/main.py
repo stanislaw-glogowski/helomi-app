@@ -3,7 +3,7 @@ import signal
 import warnings
 
 from helomi_common import LogLevel, configure_logger
-from helomi_core import Runtime
+from helomi_core import Runtime, __version__
 from helomi_tray import App
 
 warnings.filterwarnings(
@@ -18,6 +18,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="helomi-tray",
         description="Helomi System Tray App",
+    )
+
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show program's version number and exit",
     )
 
     parser.add_argument(

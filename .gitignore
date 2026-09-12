@@ -31,15 +31,13 @@ node_modules
 # Resources
 /resources/models/*
 /resources/profiles/*
+/resources/prompts/*
+!/resources/prompts/demo
 !/resources/profiles/defaults.yml
 !/resources/profiles/alexa
 /resources/profiles/alexa/models/*
 /resources/profiles/alexa/profile.override.yml
 /resources/settings.override.yml
-
-# Demo
-/demo/prompts/profiles/*
-!/demo/prompts/profiles/alexa.md
 
 # Native
 native/**/.build/
