@@ -7,9 +7,9 @@ import AppKit
 import objc
 import PyObjCTools.AppHelper
 
-from helomi_core.audio import AudioFile, RawAudio
-from helomi_core.pipeline import PipelineEvent, SynthesisReadyEvent
-from helomi_core.tts import TTS_TAGS
+from helomi_app.audio import AudioFile, RawAudio
+from helomi_app.pipeline import PipelineEvent, SynthesisReadyEvent
+from helomi_app.tts import TTS_TAGS
 
 from ..dialogs import SaveFileDialog
 from .base import BaseWindow

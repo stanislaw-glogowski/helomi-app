@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from enum import StrEnum, auto
 from typing import TypedDict
 
+from helomi_app.audio import AudioDriverKind
+
 
 class AppStatus(StrEnum):
     STARTING = auto()
@@ -25,6 +27,7 @@ class AppState:
         greeting_enabled: bool
         room_voice_enabled: bool
         wakeword_enabled: bool
+        audio_driver: AudioDriverKind
 
     status: AppStatus = AppStatus.STARTING
     mode: AppMode = AppMode.SERVER
@@ -33,3 +36,4 @@ class AppState:
     greeting_enabled: bool | None = None
     room_voice_enabled: bool | None = None
     wakeword_enabled: bool | None = None
+    audio_driver: AudioDriverKind | None = None

@@ -55,21 +55,20 @@ exclude-dependencies = [
 
 [tool.hatch.build.targets.wheel]
 packages = [
+    "src/helomi_app",
     "src/helomi_cli",
-    "src/helomi_common",
-    "src/helomi_core",
     "src/helomi_tray",
 ]
 artifacts = [
-    "src/helomi_core/audio/avfaudio/bin/avfaudio",
+    "src/helomi_app/audio/avfaudio/bin/avfaudio",
 ]
 
 [tool.hatch.version]
-path = "src/helomi_core/version.py"
+path = "src/helomi_app/version.py"
 
 [tool.hatch.build.targets.sdist]
 artifacts = [
-    "src/helomi_core/audio/avfaudio/bin/avfaudio",
+    "src/helomi_app/audio/avfaudio/bin/avfaudio",
 ]
 [tool.hatch.build.hooks.custom]
 path = "hatch_build.py"

@@ -3,7 +3,7 @@ from typing import Any, Self
 
 import AppKit
 
-from helomi_core.pipeline import PipelineEvent
+from helomi_app.pipeline import PipelineEvent
 
 
 class _WindowDelegate(AppKit.NSObject):

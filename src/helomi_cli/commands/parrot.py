@@ -2,8 +2,8 @@ import asyncio
 
 from rich import print
 
-from helomi_core import Runtime
-from helomi_core.pipeline import (
+from helomi_app import Runtime
+from helomi_app.pipeline import (
     ActivateProfileCmd,
     ProfileActivatedEvent,
     ProfileDeactivatedEvent,

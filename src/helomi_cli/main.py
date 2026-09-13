@@ -4,8 +4,8 @@ import signal
 from contextlib import suppress
 
 from helomi_cli import Spinner, run_install_cmd, run_parrot_cmd, run_serve_cmd
-from helomi_common import LogLevel, configure_logger
-from helomi_core import Runtime, __version__
+from helomi_app import Runtime, __version__
+from helomi_app.common import LogLevel, configure_logger
 
 
 def parse_args(default_cmd="install") -> argparse.Namespace:

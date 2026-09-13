@@ -24,6 +24,8 @@ class AppIcon(StrEnum):
     IDLE = "○"
     MUSIC = "♫"
     PARROT = "🦜"
+    PHONE_ACTIVE = "☎︎"
+    PHONE_IDLE = "☏"
     TTS = "🗣"
     QUITING = "☾"
 

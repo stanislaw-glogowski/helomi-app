@@ -1,0 +1,18 @@
+from pydantic import Field, FilePath
+
+from ...common import BaseConfig
+
+
+class OpenWakeWordSettings(BaseConfig):
+    threshold: float = 0.75
+    patience: int = Field(default=2, ge=1)
+    embedding_path: FilePath
+    melspec_path: FilePath
+    frame_size: int = 1280
+
+
+class OpenWakeWordProfile(BaseConfig):
+    label: str | None = None
+    model_path: FilePath
+    threshold: float | None = None
+    patience: int | None = Field(default=None, ge=1)

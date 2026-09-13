@@ -4,7 +4,7 @@ from urllib.request import urlretrieve
 
 from rich import print
 
-from helomi_core import Profile, Runtime
+from helomi_app import Profile, Runtime
 
 from ..widgets import Spinner
 

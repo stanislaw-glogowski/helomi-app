@@ -7,10 +7,11 @@ from typing import ClassVar, Unpack
 
 import rumps
 
-from helomi_common import BaseComponent, TaskManager
-from helomi_core import Runtime
-from helomi_core.parrot import ParrotExtension
-from helomi_core.pipeline import (
+from helomi_app import Runtime
+from helomi_app.audio import AudioDriverKind
+from helomi_app.common import BaseComponent, TaskManager
+from helomi_app.parrot import ParrotExtension
+from helomi_app.pipeline import (
     ActivateProfileCmd,
     DeactivateProfileCmd,
     OptionsSetEvent,
@@ -22,7 +23,7 @@ from helomi_core.pipeline import (
     SayTextCmd,
     SetOptionsCmd,
 )
-from helomi_core.server import ServerExtension
+from helomi_app.server import ServerExtension
 
 from .icons import AppIcon
 from .menu import MenuGroup, MenuItem
@@ -170,7 +171,73 @@ class App(rumps.App, BaseComponent):
 
         match self._state.status:
             case AppStatus.RUNNING:
-                self._menu_profiles.set_enabled(True)
+                profile = (
+                    self._runtime.profiles.get(self._state.profile_id)
+                    if self._state.profile_id
+                    else None
+                )
+
+                match self._state.audio_driver:
+                    case AudioDriverKind.GSM:
+                        self._menu_profiles.set_enabled(False)
+
+                        self.title = (
+                            f"{AppIcon.PHONE_ACTIVE} {profile.name}"
+                            if profile
+                            else f"{AppIcon.PHONE_IDLE} {self._TITLE}"
+                        )
+
+                    case AudioDriverKind.LOCAL:
+                        self._menu_profiles.set_enabled(True)
+
+                        self._menu_parrot.set_enabled(True)
+                        self._menu_parrot.set_checked(
+                            self._state.mode == AppMode.PARROT
+                        )
+
+                        self._menu_tts.set_enabled(True)
+
+                        self._menu_settings.set_enabled(self._state.mode != AppMode.TTS)
+                        self._menu_settings.get_action("greeting_enabled").set_checked(
+                            self._state.greeting_enabled
+                        )
+                        self._menu_settings.get_action(
+                            "room_voice_enabled"
+                        ).set_checked(self._state.room_voice_enabled)
+                        self._menu_settings.get_action("wakeword_enabled").set_checked(
+                            self._state.wakeword_enabled
+                        )
+
+                        label = profile.name if profile else self._TITLE
+
+                        if self._state.mode == AppMode.PARROT:
+                            icon = AppIcon.PARROT
+                        elif self._state.mode == AppMode.TTS:
+                            icon = AppIcon.TTS
+                        elif profile:
+                            icon = profile.emoji
+                        elif self._state.wakeword_enabled:
+                            icon = AppIcon.LISTEN
+                        else:
+                            icon = AppIcon.IDLE
+
+                        title = f"{icon} {label}"
+
+                        if (
+                            profile
+                            and self._state.mode != AppMode.TTS
+                            and self._state.room_voice_enabled
+                        ):
+                            title = f"{title} {AppIcon.MUSIC}"
+
+                        self.title = title
+
+                if self._state.mode == AppMode.SERVER and self._state.api_url:
+                    self._menu_server.title = "API Documentation"
+                    self._menu_server.set_enabled(True)
+                else:
+                    self._menu_server.title = "API Disabled"
+                    self._menu_server.set_enabled(False)
 
                 if last_state.profile_id != self._state.profile_id:
                     if last_state.profile_id:
@@ -182,60 +249,6 @@ class App(rumps.App, BaseComponent):
                         self._menu_profiles.get_action(
                             self._state.profile_id,
                         ).set_checked(True)
-
-                if self._state.mode == AppMode.SERVER and self._state.api_url:
-                    self._menu_server.title = "API Documentation"
-                    self._menu_server.set_enabled(True)
-                else:
-                    self._menu_server.title = "API Disabled"
-                    self._menu_server.set_enabled(False)
-
-                self._menu_parrot.set_enabled(True)
-                self._menu_parrot.set_checked(self._state.mode == AppMode.PARROT)
-
-                self._menu_tts.set_enabled(True)
-
-                self._menu_settings.set_enabled(self._state.mode != AppMode.TTS)
-                self._menu_settings.get_action("greeting_enabled").set_checked(
-                    self._state.greeting_enabled
-                )
-                self._menu_settings.get_action("room_voice_enabled").set_checked(
-                    self._state.room_voice_enabled
-                )
-                self._menu_settings.get_action("wakeword_enabled").set_checked(
-                    self._state.wakeword_enabled
-                )
-
-                profile = (
-                    self._runtime.profiles.get(self._state.profile_id)
-                    if self._state.profile_id
-                    else None
-                )
-
-                label = profile.name if profile else self._TITLE
-
-                if self._state.mode == AppMode.PARROT:
-                    icon = AppIcon.PARROT
-                elif self._state.mode == AppMode.TTS:
-                    icon = AppIcon.TTS
-                elif profile:
-                    icon = profile.emoji
-                elif self._state.wakeword_enabled:
-                    icon = AppIcon.LISTEN
-                else:
-                    icon = AppIcon.IDLE
-
-                title = f"{icon} {label}"
-
-                if (
-                    profile
-                    and self._state.mode != AppMode.TTS
-                    and profile.audio.room_voice_path
-                    and self._state.room_voice_enabled
-                ):
-                    title = f"{title} {AppIcon.MUSIC}"
-
-                self.title = title
 
             case AppStatus.QUITING:
                 if last_state.status == AppStatus.RUNNING:
@@ -305,6 +318,9 @@ class App(rumps.App, BaseComponent):
     def _on_server_click(self, _: MenuItem) -> None:
         if url := self._state.api_url:
             webbrowser.open(url)
+
+    def _on_audio_click(self, sender: MenuItem) -> None:
+        pass
 
     def _on_setting_click(self, sender: MenuItem) -> None:
         self._pipeline_execute_command(
@@ -439,6 +455,7 @@ class App(rumps.App, BaseComponent):
                     greeting_enabled=pipeline.options.greeting_enabled,
                     room_voice_enabled=pipeline.options.room_voice_enabled,
                     wakeword_enabled=pipeline.options.wakeword_enabled,
+                    audio_driver=pipeline.audio_driver,
                 )
 
                 await shutdown_signal.wait()

@@ -6,9 +6,12 @@ server:
   port: 4356
 
 audio:
-  adapter: "avfaudio"
-  avfaudio:
-    voice_processing: true
+  local:
+    adapter: "avfaudio"
+    avfaudio:
+      voice_processing: true
+  remote:
+    adapter: "none"
 
 stt:
   adapter: "parakeet" # options: parakeet, whisper

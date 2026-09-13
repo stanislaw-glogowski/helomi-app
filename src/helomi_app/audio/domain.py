@@ -1,0 +1,154 @@
+import wave
+from collections.abc import Sequence
+from dataclasses import dataclass
+from enum import StrEnum, auto
+from typing import TYPE_CHECKING, Any, ClassVar, Self
+
+import numpy as np
+from numpy.typing import NDArray
+
+from ..common import AbstractFile
+
+if TYPE_CHECKING:
+    import mlx.core
+
+    type MLXArray = mlx.core.array
+else:
+    type MLXArray = Any
+
+
+class AudioDriverKind(StrEnum):
+    LOCAL = auto()
+    GSM = auto()
+
+
+@dataclass(frozen=True, slots=True)
+class AudioFormat:
+    MONO_16: ClassVar[AudioFormat]
+    MONO_44: ClassVar[AudioFormat]
+    MONO_48: ClassVar[AudioFormat]
+
+    _BLOCK_DURATION: ClassVar[float] = 0.032
+
+    sample_rate: int
+    channels: int = 1
+
+    def __post_init__(self) -> None:
+        if self.sample_rate <= 0:
+            raise ValueError(
+                f"Sample rate must be greater than 0, got {self.sample_rate}"
+            )
+        if self.channels != 1:
+            raise ValueError(
+                f"Only mono audio is supported, got {self.channels} channels"
+            )
+
+    @property
+    def block_size(self) -> int:
+        return round(self.sample_rate * self._BLOCK_DURATION)
+
+
+AudioFormat.MONO_16 = AudioFormat(sample_rate=16_000, channels=1)
+AudioFormat.MONO_44 = AudioFormat(sample_rate=44_100, channels=1)
+AudioFormat.MONO_48 = AudioFormat(sample_rate=48_000, channels=1)
+
+
+@dataclass(frozen=True, slots=True)
+class RawAudio:
+    format: AudioFormat
+    data: bytes
+
+    def __add__(self, other: RawAudio) -> RawAudio:
+        return RawAudio.concat([self, other])
+
+    @classmethod
+    def concat(cls, chunks: list[Self]) -> Self:
+        if not chunks:
+            raise ValueError("Empty sequence of chunks")
+
+        if len(chunks) == 1:
+            return chunks[0]
+
+        return cls(
+            format=chunks[0].format,
+            data=b"".join(chunk.data for chunk in chunks),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class AudioChunk:
+    format: AudioFormat
+    samples: NDArray
+
+    def __add__(self, other: AudioChunk) -> AudioChunk:
+        return AudioChunk.concat([self, other])
+
+    @classmethod
+    def from_raw(cls, raw: RawAudio) -> Self:
+        return cls(
+            format=raw.format,
+            samples=np.frombuffer(raw.data, dtype=np.float32),
+        )
+
+    def to_raw(self) -> RawAudio:
+        return RawAudio(
+            format=self.format,
+            data=self.samples.tobytes(),
+        )
+
+    def to_pcm(self, normalize=False) -> tuple[int, bytes]:
+        samples = self.samples.astype(np.float32).flatten()
+        samples = np.clip(samples, -1.0, 1.0)
+
+        if normalize:
+            peak = np.max(np.abs(samples))
+            if peak > 0:
+                samples = samples / peak
+
+        frame = (samples * 32767).astype(np.int16)
+        return 2, frame.tobytes()
+
+    def to_mlx(self) -> MLXArray:
+        import mlx.core as mx
+
+        return mx.array(self.samples.tolist())
+
+    @classmethod
+    def concat(cls, chunks: Sequence[Self]) -> Self:
+        if not chunks:
+            raise ValueError("Empty sequence of chunks")
+
+        if len(chunks) == 1:
+            return chunks[0]
+
+        return cls(
+            format=chunks[0].format,
+            samples=np.concatenate([c.samples for c in chunks], axis=0),
+        )
+
+
+class AudioFile(AbstractFile):
+    _SUFFIXES: ClassVar[list[str]] = [".wav", ".wave"]
+
+    def read(self) -> RawAudio:
+        with wave.open(str(self.path), "rb") as f:
+            return RawAudio(
+                format=AudioFormat(
+                    sample_rate=f.getframerate(),
+                    channels=f.getnchannels(),
+                ),
+                data=f.readframes(f.getnframes()),
+            )
+
+    def write(self, audio: RawAudio | AudioChunk, normalize=False) -> None:
+        with wave.open(str(self.path), "wb") as f:
+            chunk = (
+                audio if isinstance(audio, AudioChunk) else AudioChunk.from_raw(audio)
+            )
+
+            sample_width, frame = chunk.to_pcm(normalize)
+
+            f.setnchannels(chunk.format.channels)
+            f.setframerate(chunk.format.sample_rate)
+            f.setsampwidth(sample_width)
+            f.writeframes(frame)

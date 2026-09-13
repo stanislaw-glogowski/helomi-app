@@ -1,6 +1,6 @@
 from rich import print
 
-from helomi_core import Runtime
+from helomi_app import Runtime
 
 
 def print_welcome(runtime: Runtime, msg: str, profile_id: str | None = None):

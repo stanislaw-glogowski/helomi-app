@@ -2,8 +2,8 @@ import argparse
 import signal
 import warnings
 
-from helomi_common import LogLevel, configure_logger
-from helomi_core import Runtime, __version__
+from helomi_app import Runtime, __version__
+from helomi_app.common import LogLevel, configure_logger
 from helomi_tray import App
 
 warnings.filterwarnings(
