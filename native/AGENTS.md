@@ -1,6 +1,6 @@
 # Helomi – Native Subsystem (Swift / macOS)
 
-Package: `native/macos/avfaudio` -> Output: `src/helomi_core/audio/avfaudio/bin/avfaudio`
+Package: `native/macos/avfaudio` -> Output: `src/helomi_app/audio/avfaudio/bin/avfaudio`
 
 ## Commands
 

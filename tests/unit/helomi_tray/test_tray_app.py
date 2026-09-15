@@ -6,8 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from helomi_core.parrot import ParrotExtension
-from helomi_core.pipeline import (
+from helomi_app.audio import AudioDriverKind
+from helomi_app.parrot import ParrotExtension
+from helomi_app.pipeline import (
     ActivateProfileCmd,
     DeactivateProfileCmd,
     ProfileActivatedEvent,
@@ -16,7 +17,7 @@ from helomi_core.pipeline import (
     SetOptionsCmd,
     SynthesisReadyEvent,
 )
-from helomi_core.server import ServerExtension
+from helomi_app.server import ServerExtension
 from helomi_tray.app import (
     App,
     AppIcon,
@@ -63,11 +64,11 @@ def test_tray_app_initialization(mock_runtime):
     assert app.title == "Helomi"
     assert app._state.status == AppStatus.STARTING
     assert app._state.profile_id is None
-    assert app._state.mode == AppMode.SERVER
+    assert app._state.kind == AppMode.SERVER
     assert app._state.api_url is None
     assert app._state.room_voice_enabled is None
     assert app._state.wakeword_enabled is None
-    assert app._state.greeting_enabled is None
+    assert app._state.reaction_enabled is None
 
     assert app._menu_profiles.get_action("alexa").key == "0"
     assert app._menu_profiles.get_action("gizmo").key == "1"
@@ -135,7 +136,7 @@ def test_tray_app_sync_state_running(mock_runtime):
     )
     app._sync_state(None)
 
-    assert app.title == "👩🏻 Alexa"
+    assert app.title == f"👩🏻 Alexa {AppIcon.ROOM_VOICE}"
     assert app._menu_profiles.get_action("alexa").checked is True
     assert app._menu_profiles.get_action("gizmo").checked is False
     assert app._menu_server.title == "API Documentation"
@@ -165,7 +166,7 @@ def test_tray_app_sync_state_running(mock_runtime):
         api_url="http://127.0.0.1:8181",
     )
     app._sync_state(None)
-    assert app.title == f"{AppIcon.PARROT} Alexa"
+    assert app.title == f"{AppIcon.PARROT_MODE} Alexa"
     assert app._menu_server.title == "API Disabled"
     assert app._menu_parrot.checked is True
 
@@ -177,7 +178,7 @@ def test_tray_app_sync_state_running(mock_runtime):
         api_url="http://127.0.0.1:8181",
     )
     app._sync_state(None)
-    assert app.title == f"{AppIcon.PARROT} Helomi"
+    assert app.title == f"{AppIcon.PARROT_MODE} Helomi"
     assert app._menu_profiles.get_action("alexa").checked is False
     assert app._menu_profiles.get_action("gizmo").checked is False
     assert app._menu_parrot.checked is True
@@ -190,7 +191,7 @@ def test_tray_app_sync_state_running(mock_runtime):
         api_url="http://127.0.0.1:8181",
     )
     app._sync_state(None)
-    assert app.title == f"{AppIcon.TTS} Helomi"
+    assert app.title == f"{AppIcon.TTS_MODE} Helomi"
     assert app._menu_server.title == "API Disabled"
     assert app._menu_parrot.checked is False
     assert app._menu_settings.get_action("room_voice_enabled").enabled is False
@@ -205,7 +206,7 @@ def test_tray_app_sync_state_running(mock_runtime):
         wakeword_enabled=True,
     )
     app._sync_state(None)
-    assert app.title == f"{AppIcon.LISTEN} Helomi"
+    assert app.title == f"{AppIcon.WAKEWORD_ACTIVE} Helomi"
 
     # 7. Idle in SERVER mode with wakeword_enabled=False and no profile
     app._state = AppState(
@@ -216,7 +217,26 @@ def test_tray_app_sync_state_running(mock_runtime):
         wakeword_enabled=False,
     )
     app._sync_state(None)
-    assert app.title == f"{AppIcon.IDLE} Helomi"
+    assert app.title == f"{AppIcon.WAKEWORD_IDLE} Helomi"
+
+    # 8. GSM driver mode with profile
+    app._state = AppState(
+        status=AppStatus.RUNNING,
+        profile_id="alexa",
+        audio_driver=AudioDriverKind.GSM,
+    )
+    app._sync_state(None)
+    assert app.title == f"{AppIcon.PHONE_ACTIVE} Alexa"
+    assert all(a.enabled is False for a in app._menu_profiles._actions.values())
+
+    # 9. GSM driver mode without profile
+    app._state = AppState(
+        status=AppStatus.RUNNING,
+        profile_id=None,
+        audio_driver=AudioDriverKind.GSM,
+    )
+    app._sync_state(None)
+    assert app.title == f"{AppIcon.PHONE_IDLE} Helomi"
 
 
 def test_tray_app_sync_state_quiting(mock_runtime):
@@ -330,20 +350,20 @@ def test_tray_app_set_mode(mock_runtime):
 
     with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
         app._set_mode(AppMode.PARROT)
-        assert app._state.mode == AppMode.PARROT
+        assert app._state.kind == AppMode.PARROT
         mock_run_coro.assert_called_once()
         app._pipeline.activate_extension.assert_called_once_with(ParrotExtension)
 
     app._pipeline.activate_extension.reset_mock()
     with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
         app._set_mode(AppMode.SERVER)
-        assert app._state.mode == AppMode.SERVER
+        assert app._state.kind == AppMode.SERVER
         mock_run_coro.assert_called_once()
         app._pipeline.activate_extension.assert_called_once_with(ServerExtension)
 
     with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
         app._set_mode(AppMode.TTS)
-        assert app._state.mode == AppMode.TTS
+        assert app._state.kind == AppMode.TTS
         mock_run_coro.assert_called_once()
         app._pipeline.deactivate_extension.assert_called_once()
 

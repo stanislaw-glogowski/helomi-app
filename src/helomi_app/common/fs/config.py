@@ -1,4 +1,5 @@
 import json
+import os
 from enum import IntEnum, auto
 from pathlib import Path
 from typing import Any, ClassVar
@@ -104,5 +105,7 @@ class ConfigFile(AbstractFile):
                 match prefix:
                     case "path":
                         return self._path.parent / v
+                    case "env":
+                        return os.environ.get(v, None)
 
         return value

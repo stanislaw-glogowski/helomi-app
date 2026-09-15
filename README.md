@@ -158,8 +158,7 @@ For more detailed information on configuring and extending Helomi, please refer 
 ```text
 helomi-app/
 ├── src/
-│   ├── helomi_common/   # Shared domain models, foundation components & utilities
-│   ├── helomi_core/     # Audio orchestration, adapters, workers, runtime, pipeline service, server API
+│   ├── helomi_app/      # Core audio orchestration, ML adapters, pipeline service, server API, and common foundation
 │   ├── helomi_tray/     # Primary macOS system tray application (rumps)
 │   └── helomi_cli/      # Developer CLI & terminal UI (install, parrot, serve)
 ├── native/

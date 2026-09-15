@@ -10,10 +10,19 @@ class TaskManager(AbstractAsyncComponent):
         self._group: asyncio.TaskGroup | None = None
         self._tasks: list[asyncio.Task] = []
 
-    def add_task(self, *coro: Coroutine) -> None:
+    def add_task(self, coro: Coroutine) -> asyncio.Task:
+        group = self._require_group()
+        task = group.create_task(coro)
+        self._tasks.append(task)
+        return task
+
+    def add_tasks(self, *coro: Coroutine) -> None:
         group = self._require_group()
         for c in coro:
             self._tasks.append(group.create_task(c))
+
+    async def wait(self) -> None:
+        await asyncio.gather(*self._tasks)
 
     def _require_group(self) -> asyncio.TaskGroup:
         if self._group is None:

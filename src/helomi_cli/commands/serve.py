@@ -14,7 +14,7 @@ async def run_serve_cmd(
 ):
     print()
     await spinner.start("Starting Helomi speech server...")
-    server = await runtime.get_server_extension(True)
+    server = await runtime.get_pipeline_server_extension(True)
     await spinner.stop("Server ready")
 
     url = server.url

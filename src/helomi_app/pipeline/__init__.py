@@ -22,6 +22,7 @@ from .messages import (
     SynthesisReadyEvent,
     TranscriptionReadyEvent,
 )
+from .request import PipelineRequest
 from .service import PipelineService
 
 __all__ = [
@@ -36,6 +37,7 @@ __all__ = [
     "PipelineExtensionLike",
     "PipelineExtensionType",
     "PipelineOptions",
+    "PipelineRequest",
     "PipelineService",
     "ProfileActivatedEvent",
     "ProfileDeactivatedEvent",

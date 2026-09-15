@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from helomi_core.pipeline import (
+from helomi_app.pipeline import (
     ActivateProfileCmd,
     DeactivateProfileCmd,
     PipelineEvent,
@@ -12,10 +12,10 @@ from helomi_core.pipeline import (
     SayTextCmd,
     TranscriptionReadyEvent,
 )
-from helomi_core.pipeline.service import PipelineRequest
-from helomi_core.runtime import Runtime
-from helomi_core.stt import STTChunk, STTRequest
-from helomi_core.tts import TTSChunk
+from helomi_app.pipeline.service import PipelineRequest
+from helomi_app.runtime import Runtime
+from helomi_app.stt import STTChunk, STTRequest
+from helomi_app.tts import TTSChunk
 from tests.fixtures.audio import create_audio_chunk, create_raw_audio
 from tests.fixtures.mocks import (
     MockAudioDriver,
@@ -40,15 +40,15 @@ async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockResourceCatalog
     tts_adapter = MockTTSAdapter(chunks=[TTSChunk(audio=synth_raw)])
 
     with (
-        patch("helomi_core.runtime.get_audio_driver", return_value=audio_driver),
-        patch("helomi_core.runtime.get_turn_adapter", return_value=turn_adapter),
-        patch("helomi_core.runtime.get_vad_adapter", return_value=vad_adapter),
+        patch("helomi_app.runtime.get_audio_driver", return_value=audio_driver),
+        patch("helomi_app.runtime.get_turn_adapter", return_value=turn_adapter),
+        patch("helomi_app.runtime.get_vad_adapter", return_value=vad_adapter),
         patch(
-            "helomi_core.runtime.get_wakeword_adapter",
+            "helomi_app.runtime.get_wakeword_adapter",
             return_value=wakeword_adapter,
         ),
-        patch("helomi_core.runtime.get_stt_adapter", return_value=stt_adapter),
-        patch("helomi_core.runtime.get_tts_adapter", return_value=tts_adapter),
+        patch("helomi_app.runtime.get_stt_adapter", return_value=stt_adapter),
+        patch("helomi_app.runtime.get_tts_adapter", return_value=tts_adapter),
     ):
         runtime = Runtime(mock_catalog)
 
@@ -76,7 +76,7 @@ async def test_speech_pipeline_end_to_end_flow(mock_catalog: MockResourceCatalog
             speech_chunk = create_audio_chunk(sample_rate=16000, num_samples=512)
             pipeline._stt_queue.put_nowait(
                 PipelineRequest(
-                    data=STTRequest(audio=speech_chunk.to_raw()),
+                    data=STTRequest(profile_id="alexa", audio=speech_chunk.to_raw()),
                 )
             )
             await asyncio.sleep(0.05)

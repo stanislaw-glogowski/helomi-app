@@ -2,6 +2,8 @@ import argparse
 import signal
 import warnings
 
+from dotenv import load_dotenv
+
 from helomi_app import Runtime, __version__
 from helomi_app.common import LogLevel, configure_logger
 from helomi_tray import App
@@ -38,7 +40,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run(_: argparse.Namespace) -> None:
+def run(args: argparse.Namespace) -> None:
+    configure_logger(
+        LogLevel.DEBUG if args.debug else LogLevel.INFO,
+    )
     runtime = Runtime()
     app = App(runtime=runtime)
 
@@ -55,10 +60,8 @@ def run(_: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    load_dotenv()
     args = parse_args()
-    configure_logger(
-        LogLevel.DEBUG if args.debug else LogLevel.INFO,
-    )
     run(args)
 
 

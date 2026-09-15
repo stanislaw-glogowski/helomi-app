@@ -8,12 +8,13 @@ from typing import ClassVar, Unpack
 import rumps
 
 from helomi_app import Runtime
-from helomi_app.audio import AudioDriverKind
 from helomi_app.common import BaseComponent, TaskManager
-from helomi_app.parrot import ParrotExtension
+from helomi_app.core.audio import AudioDriverKind
 from helomi_app.pipeline import (
     ActivateProfileCmd,
     DeactivateProfileCmd,
+    ExtensionActivatedEvent,
+    ExtensionDeactivatedEvent,
     OptionsSetEvent,
     PipelineCmd,
     PipelineExtensionType,
@@ -23,7 +24,8 @@ from helomi_app.pipeline import (
     SayTextCmd,
     SetOptionsCmd,
 )
-from helomi_app.server import ServerExtension
+from helomi_app.pipeline.parrot import ParrotExtension
+from helomi_app.pipeline.server import ServerExtension
 
 from .icons import AppIcon
 from .menu import MenuGroup, MenuItem
@@ -91,22 +93,29 @@ class App(rumps.App, BaseComponent):
 
         self._menu_settings.add_action(
             MenuItem(
-                id="greeting_enabled",
-                title="Greeting",
+                id="persistent_profile",
+                title="Persistent Profile",
                 callback=self._on_setting_click,
             )
         )
         self._menu_settings.add_action(
             MenuItem(
-                id="room_voice_enabled",
-                title="Room Voice",
-                callback=self._on_setting_click,
-            )
-        )
-        self._menu_settings.add_action(
-            MenuItem(
-                id="wakeword_enabled",
+                id="wakeword",
                 title="Wake Word",
+                callback=self._on_setting_click,
+            )
+        )
+        self._menu_settings.add_action(
+            MenuItem(
+                id="reactions",
+                title="Reactions",
+                callback=self._on_setting_click,
+            )
+        )
+        self._menu_settings.add_action(
+            MenuItem(
+                id="room_voice",
+                title="Room Voice",
                 callback=self._on_setting_click,
             )
         )
@@ -177,60 +186,86 @@ class App(rumps.App, BaseComponent):
                     else None
                 )
 
+                self._menu_tts.set_enabled(True)
+                self._menu_tts.set_checked(self._state.mode == AppMode.TTS)
+
+                self._menu_parrot.set_enabled(True)
+                self._menu_parrot.set_checked(self._state.mode == AppMode.PARROT)
+
+                match self._state.mode:
+                    case AppMode.SERVER:
+                        mode_icon = None
+                    case AppMode.TTS:
+                        mode_icon = AppIcon.TTS_MODE
+                    case AppMode.PARROT:
+                        mode_icon = AppIcon.PARROT_MODE
+
                 match self._state.audio_driver:
-                    case AudioDriverKind.GSM:
-                        self._menu_profiles.set_enabled(False)
-
-                        self.title = (
-                            f"{AppIcon.PHONE_ACTIVE} {profile.name}"
-                            if profile
-                            else f"{AppIcon.PHONE_IDLE} {self._TITLE}"
-                        )
-
-                    case AudioDriverKind.LOCAL:
+                    case AudioDriverKind.LOCAL | None:
                         self._menu_profiles.set_enabled(True)
 
-                        self._menu_parrot.set_enabled(True)
+                        action = self._menu_settings.get_action("persistent_profile")
+                        action.set_checked(
+                            self._state.persistent_profile_enabled
+                            and self._state.persistent_profile_supported
+                        )
+                        action.set_enabled(self._state.persistent_profile_supported)
+
+                        action = self._menu_settings.get_action("wakeword")
+                        action.set_checked(
+                            self._state.wakeword_enabled
+                            and self._state.wakeword_supported
+                        )
+                        action.set_enabled(self._state.wakeword_supported)
+
+                        action = self._menu_settings.get_action("reactions")
+                        action.set_checked(
+                            self._state.reactions_enabled
+                            and self._state.reactions_supported
+                        )
+                        action.set_enabled(self._state.reactions_supported)
+
+                        action = self._menu_settings.get_action("room_voice")
+                        action.set_checked(
+                            self._state.room_voice_enabled
+                            and self._state.room_voice_supported
+                        )
+                        action.set_enabled(self._state.room_voice_supported)
+
+                        if mode_icon:
+                            icon = mode_icon
+                        elif profile:
+                            icon = profile.emoji
+                        elif self._state.wakeword_enabled:
+                            icon = AppIcon.WAKEWORD_ACTIVE
+                        else:
+                            icon = AppIcon.WAKEWORD_IDLE
+
+                    case AudioDriverKind.GSM:
+                        self._menu_profiles.set_enabled(False)
                         self._menu_parrot.set_checked(
                             self._state.mode == AppMode.PARROT
                         )
 
-                        self._menu_tts.set_enabled(True)
-
-                        self._menu_settings.set_enabled(self._state.mode != AppMode.TTS)
-                        self._menu_settings.get_action("greeting_enabled").set_checked(
-                            self._state.greeting_enabled
-                        )
-                        self._menu_settings.get_action(
-                            "room_voice_enabled"
-                        ).set_checked(self._state.room_voice_enabled)
-                        self._menu_settings.get_action("wakeword_enabled").set_checked(
-                            self._state.wakeword_enabled
-                        )
-
-                        label = profile.name if profile else self._TITLE
-
-                        if self._state.mode == AppMode.PARROT:
-                            icon = AppIcon.PARROT
-                        elif self._state.mode == AppMode.TTS:
-                            icon = AppIcon.TTS
+                        if mode_icon:
+                            icon = mode_icon
                         elif profile:
-                            icon = profile.emoji
-                        elif self._state.wakeword_enabled:
-                            icon = AppIcon.LISTEN
+                            icon = AppIcon.PHONE_ACTIVE
                         else:
-                            icon = AppIcon.IDLE
+                            icon = AppIcon.PHONE_IDLE
 
-                        title = f"{icon} {label}"
+                label = profile.name if profile else self._TITLE
 
-                        if (
-                            profile
-                            and self._state.mode != AppMode.TTS
-                            and self._state.room_voice_enabled
-                        ):
-                            title = f"{title} {AppIcon.MUSIC}"
+                title = f"{icon} {label}"
 
-                        self.title = title
+                if (
+                    profile
+                    and self._state.room_voice_enabled
+                    and profile.has_room_voice
+                ):
+                    title = f"{title} {AppIcon.ROOM_VOICE}"
+
+                self.title = title
 
                 if self._state.mode == AppMode.SERVER and self._state.api_url:
                     self._menu_server.title = "API Documentation"
@@ -325,14 +360,17 @@ class App(rumps.App, BaseComponent):
     def _on_setting_click(self, sender: MenuItem) -> None:
         self._pipeline_execute_command(
             SetOptionsCmd(
-                greeting_enabled=not sender.checked
-                if sender.id == "greeting_enabled"
-                else None,
-                room_voice_enabled=not sender.checked
-                if sender.id == "room_voice_enabled"
+                persistent_profile_enabled=not sender.checked
+                if sender.id == "persistent_profile"
                 else None,
                 wakeword_enabled=not sender.checked
-                if sender.id == "wakeword_enabled"
+                if sender.id == "wakeword"
+                else None,
+                reactions_enabled=not sender.checked
+                if sender.id == "reactions"
+                else None,
+                room_voice_enabled=not sender.checked
+                if sender.id == "room_voice"
                 else None,
             )
         )
@@ -366,7 +404,7 @@ class App(rumps.App, BaseComponent):
         match sender.id:
             case "tts_window":
                 if isinstance(self._window, TTSWindow):
-                    self._window.activate()
+                    self._window.close()
                     return
             case _:
                 return
@@ -374,20 +412,20 @@ class App(rumps.App, BaseComponent):
         if self._window:
             self._window.close()
 
-        previous_mode = self._state.mode
-
         match sender.id:
             case "tts_window":
                 self._set_mode(AppMode.TTS)
                 window = TTSWindow(
                     on_send=self._handle_tts_send,
-                    on_close=lambda: self._handle_close_window(previous_mode),
+                    on_close=lambda: self._handle_close_window(),
                     get_profile_id=lambda: self._state.profile_id,
                 )
                 self._window = window
                 window.show()
 
-    def _handle_close_window(self, mode: AppMode | None = None) -> None:
+    def _handle_close_window(
+        self,
+    ) -> None:
         window, self._window = self._window, None
         if window is None:
             return
@@ -395,8 +433,7 @@ class App(rumps.App, BaseComponent):
         window.close()
         self._window = None
 
-        if mode:
-            self._set_mode(mode)
+        self._set_mode(AppMode.SERVER)
 
     def _handle_tts_send(self, text: str) -> None:
         self._pipeline_execute_command(
@@ -435,11 +472,14 @@ class App(rumps.App, BaseComponent):
         self._shutdown_signal = (shutdown_signal := asyncio.Event())
 
         async with self._runtime:
+            audio_driver = await self._runtime.get_audio_driver()
             pipeline = await self._runtime.get_pipeline_service()
-            server_extension = await self._runtime.get_server_extension(
+            server_extension = await self._runtime.get_pipeline_server_extension(
                 self._state.mode is AppMode.SERVER
             )
-            await self._runtime.get_parrot_extension(self._state.mode is AppMode.PARROT)
+            await self._runtime.get_pipeline_parrot_extension(
+                self._state.mode is AppMode.PARROT
+            )
 
             self._pipeline = pipeline
 
@@ -452,10 +492,15 @@ class App(rumps.App, BaseComponent):
                     profile_id=profile.id
                     if (profile := pipeline.active_profile) is not None
                     else None,
-                    greeting_enabled=pipeline.options.greeting_enabled,
-                    room_voice_enabled=pipeline.options.room_voice_enabled,
+                    persistent_profile_enabled=pipeline.options.persistent_profile_enabled,
+                    persistent_profile_supported=pipeline.options.persistent_profile_supported,
                     wakeword_enabled=pipeline.options.wakeword_enabled,
-                    audio_driver=pipeline.audio_driver,
+                    wakeword_supported=pipeline.options.wakeword_supported,
+                    reactions_enabled=pipeline.options.reactions_enabled,
+                    reactions_supported=pipeline.options.reactions_supported,
+                    room_voice_enabled=pipeline.options.room_voice_enabled,
+                    room_voice_supported=pipeline.options.room_voice_supported,
+                    audio_driver=audio_driver.kind,
                 )
 
                 await shutdown_signal.wait()
@@ -468,15 +513,34 @@ class App(rumps.App, BaseComponent):
             match event:
                 case OptionsSetEvent():
                     self._update_state(
-                        greeting_enabled=self._pipeline.options.greeting_enabled,
-                        room_voice_enabled=self._pipeline.options.room_voice_enabled,
+                        persistent_profile_enabled=self._pipeline.options.persistent_profile_enabled,
                         wakeword_enabled=self._pipeline.options.wakeword_enabled,
+                        reactions_enabled=self._pipeline.options.reactions_enabled,
+                        room_voice_enabled=self._pipeline.options.room_voice_enabled,
                     )
 
                 case ProfileActivatedEvent(profile_id=profile_id):
                     self._update_state(profile_id=profile_id)
+
                 case ProfileDeactivatedEvent():
                     self._update_state(profile_id=None)
+
+                case ExtensionActivatedEvent(options=options):
+                    self._update_state(
+                        persistent_profile_supported=options.persistent_profile_supported,
+                        wakeword_supported=options.wakeword_supported,
+                        reactions_supported=options.reactions_supported,
+                        room_voice_supported=options.room_voice_supported,
+                    )
+
+                case ExtensionDeactivatedEvent(options=options) if options is not None:
+                    self._update_state(
+                        persistent_profile_supported=options.persistent_profile_supported,
+                        wakeword_supported=options.wakeword_supported,
+                        reactions_supported=options.reactions_supported,
+                        room_voice_supported=options.room_voice_supported,
+                    )
+
                 case _:
                     pass
 

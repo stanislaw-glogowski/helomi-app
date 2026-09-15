@@ -9,9 +9,8 @@ reactions:
   interrupted: # optional list
 
 audio:
-  local:
-    avfaudio:
-      room_voice_path: # optional
+  avfaudio:
+    room_voice_path: # optional
 
 stt:
   parakeet:

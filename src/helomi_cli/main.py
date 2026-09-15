@@ -3,9 +3,11 @@ import asyncio
 import signal
 from contextlib import suppress
 
-from helomi_cli import Spinner, run_install_cmd, run_parrot_cmd, run_serve_cmd
+from dotenv import load_dotenv
+
 from helomi_app import Runtime, __version__
 from helomi_app.common import LogLevel, configure_logger
+from helomi_cli import Spinner, run_install_cmd, run_parrot_cmd, run_serve_cmd
 
 
 def parse_args(default_cmd="install") -> argparse.Namespace:
@@ -69,11 +71,9 @@ def parse_args(default_cmd="install") -> argparse.Namespace:
 
 
 async def run(args: argparse.Namespace) -> None:
-    debug = args.debug
-
-    logger = configure_logger(LogLevel.DEBUG if debug else LogLevel.INFO)
+    logger = configure_logger(LogLevel.DEBUG if args.debug else LogLevel.INFO)
     runtime = Runtime()
-    spinner = Spinner(debug)
+    spinner = Spinner(args.debug)
     shutdown = asyncio.Event()
     loop = asyncio.get_running_loop()
 
@@ -93,13 +93,14 @@ async def run(args: argparse.Namespace) -> None:
                     case "serve" | "server":
                         await run_serve_cmd(runtime, shutdown, spinner)
     except Exception as err:
-        if debug:
+        if args.debug:
             raise err
         else:
             logger.exception(err)
 
 
 def main():
+    load_dotenv()
     args = parse_args()
     asyncio.run(run(args))
 

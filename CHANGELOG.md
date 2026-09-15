@@ -11,11 +11,11 @@ All notable changes to Helomi are documented in this file.
       interpolation (`{{ key }}`).
     - Added support for profile prompts located in `resources/profiles/<profile_id>/prompts/<prompt_name>.md` and shared
       instruction templates in `resources/prompts/<namespace>/`.
-    - Added `require_prompt` query parameter to `GET /api/v1/profile` and `GET /api/v1/profile/{profile_id}` endpoints for
-      on-the-fly prompt delivery and filtering.
+    - Added `require_prompt` query parameter to `GET /api/v1/profile` and `GET /api/v1/profile/{profile_id}` endpoints
+      for on-the-fly prompt delivery and filtering.
 - **Profile Enhancements (`priority`, `description`, default emoji)**:
-    - Added `priority: int = 1` field to `Profile` model schema and `ProfileCatalog` sorting (higher priority profiles sorted
-      first).
+    - Added `priority: int = 1` field to `Profile` model schema and `ProfileCatalog` sorting (higher priority profiles
+      sorted first).
     - Added `description: str | None = None` field to `Profile` model schema and prompt parameter contexts.
     - Set default profile emoji fallback to `"👤"` in `Profile` schema validation when omitted or empty.
 - **Conversational Termination Tool in TypeScript Demo (`endConversation`)**:
@@ -27,7 +27,7 @@ All notable changes to Helomi are documented in this file.
     - Implemented instant barge-in upon speech onset (`UtteranceStarted` from `SmartTurnAdapter`), immediately halting
       ongoing audio playback, bumping pipeline generation, and triggering interruption reactions.
     - Added spoken greeting reactions (`ReactionKind.GREETING`) upon assistant activation, controllable via
-      `greeting_enabled` pipeline option.
+      `reaction_enabled` pipeline option.
     - Added `SayReactionCmd` to trigger pre-configured reaction utterances on demand.
 - **Dedicated Text-to-Speech (TTS) Window (`helomi_tray`)**:
     - Added standalone Cocoa `TTSWindow` with multi-line text input, keyboard shortcut (`t`), and dedicated Close
@@ -43,8 +43,8 @@ All notable changes to Helomi are documented in this file.
       `OptionsSetEvent`.
     - Added `Settings` submenu to `helomi_tray` menu bar with checkable toggles for `Room Voice` and `Wake Word`, synced
       on startup and dynamically disabled during `TTS` mode.
-    - Added wake word deactivation suppression: when `wakeword_enabled` is disabled, profiles remain active across multiple
-      turns and greeting reactions are suppressed.
+    - Added wake word deactivation suppression: when `wakeword_enabled` is disabled, profiles remain active across
+      multiple turns and greeting reactions are suppressed.
 - **Declarative System Tray Menu Architecture (`helomi_tray`)**:
     - Modularized menu hierarchy into `MenuItem`, `MenuAction`, and `MenuGroup` components (`helomi_tray/app/menu/`).
     - Added structured separators, title-cased labels, and clean action bindings.
@@ -54,8 +54,8 @@ All notable changes to Helomi are documented in this file.
       and automatic previous mode restoration (`_previous_mode`) upon window close.
     - Added dynamic `🗣️` status bar mode icon when TTS mode is active.
 - **Pipeline Events**:
-    - Added `SynthesisReadyEvent` pipeline event carrying synthesized audio (excluded from JSON serialization for network
-      efficiency).
+    - Added `SynthesisReadyEvent` pipeline event carrying synthesized audio (excluded from JSON serialization for
+      network efficiency).
     - Added `TranscriptionReadyEvent` carrying transcribed text.
 - **Default Profile (`alexa`)**:
     - Established `alexa` as the official default assistant profile across `resources/settings.yml`,
@@ -68,21 +68,33 @@ All notable changes to Helomi are documented in this file.
     - Added `readonly` flag to `Profile` model schema.
     - Added `audio.room_voice_path` to support continuous ambient room soundscapes upon profile activation.
 - **Enhanced macOS System Tray (`helomi_tray`) UX**:
-    - Added keyboard shortcuts for rapid menu actions: profile selection (`0`–`8`), Parrot Mode (`p`), Text-to-Speech window (`t`),
-      and quitting (`q`).
-    - Added dynamic status bar icons: active profile emoji (or `👤` fallback), listening (`◉`), idle (`○`), ambient soundscape (`♫`), parrot mode (`🦜`),
-      TTS mode (`🗣️`), startup spinner (`⠋`…`⠏`), and exiting (`☾`).
+    - Added keyboard shortcuts for rapid menu actions: profile selection (`0`–`8`), Parrot Mode (`p`), Text-to-Speech
+      window (`t`), and quitting (`q`).
+    - Added dynamic status bar icons: active profile emoji (or `👤` fallback), listening (`◉`), idle (`○`), ambient
+      soundscape (`♫`), parrot mode (`🦜`), TTS mode (`🗣️`), startup spinner (`⠋`…`⠏`), and exiting (`☾`).
     - Implemented clean signal handling for `SIGINT` (`Ctrl+C`) and `SIGTERM`.
 
 ### Changed
 
+- **Package Unification (`helomi_app`)**:
+    - Unified `helomi_common` and `helomi_core` packages into a single cohesive `helomi_app` package.
+    - Moved shared foundation and utility modules into `helomi_app.common` (`collections`, `foundation`, `fs`, `logger`,
+      `prompt`, `task`, `validation`).
+    - Standardized detection events with `*Event` naming convention (`WakeWordDetectedEvent`, `UtteranceStartedEvent`,
+      `UtteranceContinuedEvent`, `UtteranceDetectedEvent`, `ConversationEndedEvent`).
+    - Standardized model settings schemas into typed `*Settings` and `*Profile` (`SileroVADMLXSettings`,
+      `SileroVADONNXSettings`, `OpenWakeWordSettings`, `OpenWakeWordProfile`).
+    - Consolidated ML adapters resolution through `helomi_app.adapters` and `Runtime`.
 - **Demo Prompt Relocation to Resources**:
-    - Relocated demo prompt definitions from `demo/prompts/` to centralized `resources/` (`resources/profiles/alexa/prompts/demo.md` and `resources/prompts/demo/instructions.md`).
+    - Relocated demo prompt definitions from `demo/prompts/` to centralized `resources/`
+      (`resources/profiles/alexa/prompts/demo.md` and `resources/prompts/demo/instructions.md`).
     - Updated demo client to fetch prompts via API `requirePrompt: "demo"` instead of reading local filesystem files.
 - **Server API Route Refactor & Root Endpoint**:
-    - Refactored `helomi_core.server.api.router` into `helomi_core.server.api.routes` with full OpenAPI tags, response models, and descriptions.
+    - Refactored `helomi_core.server.api.router` into `helomi_core.server.api.routes` with full OpenAPI tags, response
+      models, and descriptions.
     - Added root endpoint `GET /` returning API title, version, description, and docs URL.
-    - Streamlined `Profile.dump(require_prompt=...)` dictionary output, including `id`, `name`, `emoji`, `prompt`, `has_wakeword`, `is_active`, `is_default`, and `is_readonly`.
+    - Streamlined `Profile.dump(require_prompt=...)` dictionary output, including `id`, `name`, `emoji`, `prompt`,
+      `has_wakeword`, `is_active`, `is_default`, and `is_readonly`.
 - **System Tray Menu Modernization (`helomi_tray`)**:
     - Refactored menu implementation from `MenuAction` to standard `MenuItem`.
     - Updated API server menu action to "API Documentation" pointing directly to Swagger `/docs`.
@@ -160,7 +172,8 @@ All notable changes to Helomi are documented in this file.
 - **Extended REST & SSE Endpoints**:
     - Added `GET /api/v1/health` for service health checks.
     - Added `GET /api/v1/profile` and `GET /api/v1/profile/{id}` for querying profile configurations.
-    - Extended `GET /api/v1/profile/{profile_id}/stream` SSE streaming and `POST /api/v1/command` command execution (`ActivateProfileCmd`,
+    - Extended `GET /api/v1/profile/{profile_id}/stream` SSE streaming and `POST /api/v1/command` command execution
+      (`ActivateProfileCmd`,
       `DeactivateProfileCmd`, `SayTextCmd`).
 - **Modernized macOS System Tray (`helomi_tray`)**:
     - Rewrote `TrayApp` to embed `Runtime` directly, enabling real-time switching between API Server mode and Parrot

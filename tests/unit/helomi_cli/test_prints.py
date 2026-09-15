@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+from helomi_app import Runtime
 from helomi_cli.widgets.prints import (
     _print_adapter,
     _print_adapters,
@@ -7,7 +8,6 @@ from helomi_cli.widgets.prints import (
     print_exit,
     print_welcome,
 )
-from helomi_core import Runtime
 
 
 def test_prints_widgets() -> None:

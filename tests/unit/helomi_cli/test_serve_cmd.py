@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from helomi_app import Runtime
+from helomi_app.server.extension import ServerExtension
 from helomi_cli.commands.serve import run_serve_cmd
 from helomi_cli.widgets import Spinner
-from helomi_core import Runtime
-from helomi_core.server.extension import ServerExtension
 
 
 @pytest.mark.asyncio

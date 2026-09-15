@@ -16,6 +16,7 @@ class PipelineRequest[TData]:
 
     data: TData
     trace_id: str | None = None
+    is_final: bool = False
     generation: int = field(
         default_factory=lambda: PipelineRequest.current_generation(),
     )

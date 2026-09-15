@@ -112,6 +112,9 @@ class ProfileCatalog(Iterable[Profile]):
             is not None
         }
 
+        if not profiles:
+            raise RuntimeError("No supported profile found")
+
         return cls(
             settings=settings.profile,
             profiles=dict(

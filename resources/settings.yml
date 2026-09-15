@@ -1,17 +1,26 @@
 profile:
   default: "alexa"
 
+pipeline:
+  persistent_profile: true
+  wakeword: true
+  reactions: true
+  room_voice: true
+
 server:
   host: "127.0.0.1"
   port: 4356
 
 audio:
-  local:
-    adapter: "avfaudio"
-    avfaudio:
-      voice_processing: true
-  remote:
-    adapter: "none"
+  adapter: "avfaudio" # options: avfaudio, twilio
+  avfaudio:
+    voice_processing: true
+  twilio:
+    auth_token: "env://TWILIO_AUTH_TOKEN" # required
+    public_url: "env://TWILIO_PUBLIC_URL" # required
+    port: 4357
+    allowed_callers: # optional
+    handshake_timeout: 30
 
 stt:
   adapter: "parakeet" # options: parakeet, whisper
@@ -23,7 +32,7 @@ stt:
     language: "en"
 
 tts:
-  adapter: "voxcpm2" # options: supertonic, voxcpm2
+  adapter: "voxcpm2" # options: supertonic, voxcpm2, piper
   supertonic:
     model_id: "Supertone/supertonic-3" # huggingface model id
     language: "en"
@@ -32,6 +41,9 @@ tts:
   voxcpm2:
     model_id: "openbmb/VoxCPM2" # huggingface model id
     load_denoiser: false
+  piper:
+    normalize_audio: true
+    volume: 1.0
 
 turn:
   adapter: "smart_turn"

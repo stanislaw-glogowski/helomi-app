@@ -21,7 +21,7 @@ async def run_parrot_cmd(
 ):
     print()
     await spinner.start("Initializing audio drivers & speech pipeline...")
-    await runtime.get_parrot_extension(True)
+    await runtime.get_pipeline_parrot_extension(True)
     pipeline = await runtime.get_pipeline_service()
 
     if profile_id:

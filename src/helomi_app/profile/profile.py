@@ -5,11 +5,11 @@ from typing import Any, ClassVar, Self
 import emoji
 from pydantic import Field, PrivateAttr, field_validator
 
-from ..audio.config import AudioProfile
 from ..common import BaseConfig, ConfigFile, DeepMergeDict, PromptReader
-from ..stt.config import STTProfile
-from ..tts.config import TTSProfile
-from ..wakeword.config import WakeWordProfile
+from ..core.audio.config import AudioProfile
+from ..core.stt.config import STTProfile
+from ..core.tts.config import TTSProfile
+from ..core.wakeword.config import WakeWordProfile
 from .domain import ReactionKind
 
 
@@ -48,6 +48,12 @@ class Profile(BaseConfig, PromptReader):
     @property
     def prompts(self) -> dict[str, str]:
         return self._prompts
+
+    @property
+    def has_room_voice(self) -> bool:
+        if self.audio.avfaudio.room_voice_path:
+            return True
+        return False
 
     def dump(
         self,
@@ -112,12 +118,22 @@ class Profile(BaseConfig, PromptReader):
 
         if (
             model.disabled
+            or model.audio.extract_adapter(False) is None
             or model.stt.extract_adapter(False) is None
             or model.tts.extract_adapter(False) is None
         ):
             return None
 
         return model
+
+    @field_validator("emoji", mode="before")
+    @classmethod
+    def validate_emoji(cls, value: Any) -> str:
+        if not value:
+            return "👤"
+        if not emoji.is_emoji(value):
+            raise ValueError(f"Input should be a single emoji, got {value!r}")
+        return value
 
     @field_validator("reactions", mode="before")
     @classmethod
@@ -131,15 +147,6 @@ class Profile(BaseConfig, PromptReader):
             else:
                 cleaned[k] = v
         return cleaned
-
-    @field_validator("emoji", mode="before")
-    @classmethod
-    def validate_emoji(cls, value: Any) -> str:
-        if not value:
-            return "👤"
-        if not emoji.is_emoji(value):
-            raise ValueError(f"Input should be a single emoji, got {value!r}")
-        return value
 
     def model_post_init(self, context: Any) -> None:
         if context and isinstance(context, dict):

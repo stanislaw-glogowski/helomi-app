@@ -130,7 +130,7 @@ class BaseWindow:
         if self._on_close:
             self._on_close()
 
-    def windowWillClose_(self, notification: Any) -> None:
+    def windowWillClose_(self, _: Any) -> None:
         """Handle window closed by user and restore accessory policy."""
         self.deactivate(hide_window=False)
         if self._on_close:

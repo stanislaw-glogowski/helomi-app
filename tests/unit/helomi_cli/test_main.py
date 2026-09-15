@@ -99,7 +99,7 @@ def test_cli_main_entrypoint():
 @pytest.mark.asyncio
 async def test_cli_run_logger_configuration():
     """Verify run configures logger based on debug flag."""
-    from helomi_common import LogLevel
+    from helomi_app.common import LogLevel
 
     with (
         patch("helomi_cli.main.configure_logger") as mock_conf,

@@ -2,7 +2,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..audio import RawAudio
+from ..core.audio import RawAudio
 from ..profile import ReactionKind
 from .domain import PipelineExtensionType, PipelineOptions
 
@@ -40,7 +40,8 @@ class _BaseEvent(_BaseMsg):
 
 
 class _OptionsChanges(BaseModel):
-    greeting_enabled: bool | None = None
+    persistent_profile_enabled: bool | None = None
+    reactions_enabled: bool | None = None
     room_voice_enabled: bool | None = None
     wakeword_enabled: bool | None = None
 
@@ -96,6 +97,7 @@ class ExtensionActivatedEvent(_BaseEvent):
 
 class ExtensionDeactivatedEvent(_BaseEvent):
     type: Literal["extension_deactivated"] = "extension_deactivated"
+    options: PipelineOptions | None = None
 
 
 class ProfileActivatedEvent(_ProfileEvent):

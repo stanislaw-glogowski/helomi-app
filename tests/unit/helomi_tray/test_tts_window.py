@@ -542,8 +542,8 @@ def test_tts_window_do_send():
 
 def test_tts_window_handle_synthesis_ready_and_events():
     """Verify handle_event and on_synthesis_ready enable save button and store audio."""
-    from helomi_core.audio import RawAudio
-    from helomi_core.pipeline import SynthesisReadyEvent
+    from helomi_app.audio import RawAudio
+    from helomi_app.pipeline import SynthesisReadyEvent
 
     window_ctrl = TTSWindow()
     assert window_ctrl.save_btn.title() == "Save to …"
@@ -595,7 +595,7 @@ def test_tts_window_do_save():
     """Verify do_save prompts SaveFileDialog, writes audio, and handles cancel/error."""
     from pathlib import Path
 
-    from helomi_core.audio import RawAudio
+    from helomi_app.audio import RawAudio
 
     window_ctrl = TTSWindow(get_profile_id=lambda: "fallback_profile")
 
@@ -662,7 +662,7 @@ def test_tts_window_do_save():
 
 def test_tts_window_resets_on_clear_and_send():
     """Verify clear and do_send reset current audio and disable save button."""
-    from helomi_core.audio import RawAudio
+    from helomi_app.audio import RawAudio
 
     window_ctrl = TTSWindow()
     mock_audio = MagicMock(spec=RawAudio)

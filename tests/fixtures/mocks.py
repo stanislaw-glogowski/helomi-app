@@ -3,85 +3,109 @@ from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
-from helomi_core.audio import (
+from helomi_app.audio import (
     AudioChunk,
+    AudioCmd,
     AudioDriver,
+    AudioDriverKind,
+    AudioEvent,
     AudioFormat,
-    AudioMode,
+    CapturedEvent,
+    DisconnectCmd,
+    DisconnectedEvent,
+    InterruptCmd,
+    InterruptedEvent,
+    PlayCmd,
+    PlayedEvent,
     RawAudio,
+    RoomVoiceStartedEvent,
+    RoomVoiceStoppedEvent,
+    StartRoomVoiceCmd,
+    StopRoomVoiceCmd,
 )
-from helomi_core.audio.config import AudioProfile
-from helomi_core.resources import ResourceCatalog
-from helomi_core.stt import STTAdapter, STTChunk, STTRequest
-from helomi_core.tts import TTSAdapter, TTSChunk, TTSRequest
-from helomi_core.turn import TurnAdapter, TurnPrediction
-from helomi_core.vad import VADAdapter, VADPrediction
-from helomi_core.wakeword import WakeWordAdapter, WakeWordPrediction
+from helomi_app.resources import ResourceCatalog
+from helomi_app.stt import STTAdapter, STTChunk, STTRequest
+from helomi_app.tts import TTSAdapter, TTSChunk, TTSRequest
+from helomi_app.turn import TurnAdapter, TurnPrediction
+from helomi_app.vad import VADAdapter, VADPrediction
+from helomi_app.wakeword import WakeWordAdapter, WakeWordPrediction
 
 
-class MockAudioDriver(AudioDriver[Any]):
+class MockAudioDriver(AudioDriver[Any, Any]):
     def __init__(
         self,
-        config: Any = None,
-        mode: AudioMode | None = None,
+        settings: Any = None,
+        profiles: dict[str, Any] | None = None,
         incoming_chunks: list[RawAudio] | None = None,
     ) -> None:
-        super().__init__(config, mode)
+        super().__init__(settings, profiles or {})
         self.played_audio: list[RawAudio] = []
         self.interrupt_count = 0
         self.room_voice_started = False
-        self.room_voice_path: Path | str | None = None
-        self.activated_profile: AudioProfile | None = None
-        self._initial_chunks: list[RawAudio] = incoming_chunks or []
-        self._incoming_queue: asyncio.Queue[RawAudio] | None = None
+        self.room_voice_profile_id: str | None = None
+        self._queued_chunks: list[RawAudio] = list(incoming_chunks or [])
 
     @property
-    def queue(self) -> asyncio.Queue[RawAudio]:
-        if self._incoming_queue is None:
-            self._incoming_queue = asyncio.Queue()
-            for chunk in self._initial_chunks:
-                self._incoming_queue.put_nowait(chunk)
-            self._initial_chunks = []
-        return self._incoming_queue
+    def kind(self) -> AudioDriverKind:
+        return AudioDriverKind.LOCAL
 
     def enqueue_capture(self, raw: RawAudio) -> None:
-        self.queue.put_nowait(raw)
+        if self._subscriptions:
+            self._dispatch_event(CapturedEvent(audio=raw))
+        else:
+            self._queued_chunks.append(raw)
+
+    async def subscribe_event(self) -> AsyncIterator[AudioEvent]:
+        subscription = asyncio.Queue[AudioEvent | None]()
+        self._subscriptions.add(subscription)
+        while self._queued_chunks:
+            chunk = self._queued_chunks.pop(0)
+            subscription.put_nowait(CapturedEvent(audio=chunk))
+        try:
+            while not self._exit_signal.is_set():
+                event = await subscription.get()
+                if event is None:
+                    break
+                yield event
+                subscription.task_done()
+        finally:
+            self._subscriptions.discard(subscription)
 
     async def capture(self) -> AsyncIterator[RawAudio]:
-        while not self._exit_signal.is_set():
-            try:
-                chunk = await asyncio.wait_for(self.queue.get(), timeout=0.02)
-                yield chunk
-                self.queue.task_done()
-            except TimeoutError:
-                if self._exit_signal.is_set():
-                    break
-            except asyncio.CancelledError:
-                break
+        async for event in self.subscribe_event():
+            if isinstance(event, CapturedEvent):
+                yield event.audio_driver
 
-    def play(self, audio: RawAudio) -> None:
-        self.played_audio.append(audio)
-
-    def interrupt(self) -> bool:
-        self.interrupt_count += 1
-        return True
-
-    async def activate(self, profile: AudioProfile) -> None:
-        self.activated_profile = profile
-        if profile.room_voice_path:
-            self.room_voice_started = True
-            self.room_voice_path = profile.room_voice_path
-
-    async def deactivate(self) -> None:
-        self.activated_profile = None
-        self.room_voice_started = False
+    def execute_command(self, cmd: AudioCmd) -> bool:
+        match cmd:
+            case PlayCmd():
+                self.played_audio.append(cmd.audio_driver)
+                self._dispatch_event(PlayedEvent(profile_id=cmd.profile_id))
+                return True
+            case InterruptCmd():
+                self.interrupt_count += 1
+                self._dispatch_event(InterruptedEvent(profile_id=cmd.profile_id))
+                return True
+            case StartRoomVoiceCmd():
+                self.room_voice_started = True
+                self.room_voice_profile_id = cmd.profile_id
+                self._dispatch_event(RoomVoiceStartedEvent(profile_id=cmd.profile_id))
+                return True
+            case StopRoomVoiceCmd():
+                self.room_voice_started = False
+                self.room_voice_profile_id = None
+                self._dispatch_event(RoomVoiceStoppedEvent())
+                return True
+            case DisconnectCmd():
+                self._dispatch_event(DisconnectedEvent())
+                return True
+            case _:
+                return False
 
 
 class MockVADAdapter(VADAdapter[Any]):
-    def __init__(self, config: Any = None, default_detected: bool = True) -> None:
-        super().__init__(config)
+    def __init__(self, settings: Any = None, default_detected: bool = True) -> None:
+        super().__init__(settings)
         self.detected = default_detected
         self.score = 0.95
         self.predict_hook: Callable[[AudioChunk], VADPrediction] | None = None
@@ -99,11 +123,11 @@ class MockVADAdapter(VADAdapter[Any]):
 class MockWakeWordAdapter(WakeWordAdapter[Any, Any]):
     def __init__(
         self,
-        config: Any = None,
-        words: dict[str, Any] | None = None,
+        settings: Any = None,
+        profiles: dict[str, Any] | None = None,
         matched: str | None = None,
     ) -> None:
-        super().__init__(config, words or {})
+        super().__init__(settings, profiles or {})
         self.matched = matched
         self.scores: dict[str, float] = {}
         self.predict_hook: Callable[[AudioChunk, bool], WakeWordPrediction] | None = (
@@ -123,10 +147,10 @@ class MockWakeWordAdapter(WakeWordAdapter[Any, Any]):
 class MockTurnAdapter(TurnAdapter[Any]):
     def __init__(
         self,
-        config: Any = None,
+        settings: Any = None,
         prediction: TurnPrediction | None = None,
     ) -> None:
-        super().__init__(config)
+        super().__init__(settings)
         self.next_prediction = prediction
         self.predictions: list[TurnPrediction | None] = []
         self.predict_hook: (
@@ -148,19 +172,18 @@ class MockTurnAdapter(TurnAdapter[Any]):
 class MockSTTAdapter(STTAdapter[Any, Any]):
     def __init__(
         self,
-        config: Any = None,
+        settings: Any = None,
+        profiles: dict[str, Any] | None = None,
         chunks: list[STTChunk | Exception] | None = None,
     ) -> None:
-        super().__init__(config)
+        super().__init__(settings, profiles or {})
         self.chunks: list[STTChunk | Exception] = (
             chunks if chunks is not None else [STTChunk(text="Hello world")]
         )
-        self.calls: list[tuple[STTRequest, Any]] = []
+        self.calls: list[STTRequest] = []
 
-    def transcribe(
-        self, request: STTRequest, options: Any = None
-    ) -> Iterator[Exception | STTChunk]:
-        self.calls.append((request, options))
+    def transcribe(self, request: STTRequest) -> Iterator[Exception | STTChunk]:
+        self.calls.append(request)
         yield from self.chunks
         yield StopIteration()
 
@@ -168,24 +191,27 @@ class MockSTTAdapter(STTAdapter[Any, Any]):
 class MockTTSAdapter(TTSAdapter[Any, Any]):
     def __init__(
         self,
-        config: Any = None,
-        chunks: list[TTSChunk] | None = None,
+        settings: Any = None,
+        profiles: dict[str, Any] | None = None,
+        chunks: list[TTSChunk | Exception] | None = None,
     ) -> None:
-        super().__init__(config)
-        self.chunks = chunks or [
-            TTSChunk(
-                audio=AudioChunk(
-                    format=AudioFormat.MONO_16,
-                    samples=np.zeros(512, dtype=np.float32),
+        super().__init__(settings, profiles or {})
+        self.chunks: list[TTSChunk | Exception] = (
+            chunks
+            if chunks is not None
+            else [
+                TTSChunk(
+                    audio=RawAudio(
+                        format=AudioFormat.MONO_16,
+                        data=b"\x00" * 1024,
+                    )
                 )
-            )
-        ]
-        self.calls: list[tuple[TTSRequest, Any]] = []
+            ]
+        )
+        self.calls: list[TTSRequest] = []
 
-    def synthesize(
-        self, request: TTSRequest, options: Any = None
-    ) -> Iterator[Exception | TTSChunk]:
-        self.calls.append((request, options))
+    def synthesize(self, request: TTSRequest) -> Iterator[Exception | TTSChunk]:
+        self.calls.append(request)
         yield from self.chunks
         yield StopIteration()
 

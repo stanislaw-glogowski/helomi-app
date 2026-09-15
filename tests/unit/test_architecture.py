@@ -5,40 +5,55 @@ SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src"
 
 
 def _get_imports_from_file(file_path: Path) -> list[str]:
-    """Parse a python file and extract all imported module names."""
+    """Parse a python file and extract all imported module names
+    (absolute and resolved relative).
+    """
     tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
     imports: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 imports.append(alias.name)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imports.append(node.module)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level > 0:
+                rel_parts = file_path.relative_to(SRC_DIR).parts[:-1]
+                target_parts = rel_parts[: len(rel_parts) - (node.level - 1)]
+                mod = (
+                    f"{'.'.join(target_parts)}.{node.module}"
+                    if node.module
+                    else ".".join(target_parts)
+                )
+                imports.append(mod)
+            elif node.module:
+                imports.append(node.module)
     return imports
 
 
 def test_helomi_common_has_no_inward_dependencies() -> None:
-    """helomi_common must have ZERO internal project dependencies."""
-    common_dir = SRC_DIR / "helomi_common"
+    """helomi_app.common must have ZERO internal dependencies outside common."""
+    common_dir = SRC_DIR / "helomi_app" / "common"
     py_files = list(common_dir.rglob("*.py"))
-    assert len(py_files) > 0, "No files found in helomi_common"
+    assert len(py_files) > 0, "No files found in helomi_app/common"
     for py_file in py_files:
         imports = _get_imports_from_file(py_file)
         for imp in imports:
             assert not imp.startswith(
                 (
-                    "helomi_core",
                     "helomi_cli",
                     "helomi_tray",
                 )
             ), f"Architecture violation: {py_file} illegally imports {imp}"
+            if imp.startswith("helomi_app"):
+                assert imp.startswith("helomi_app.common"), (
+                    f"Architecture violation: {py_file} illegally imports {imp}"
+                )
 
 
-def test_helomi_core_does_not_import_higher_layers() -> None:
-    """helomi_core must not import from cli or tray."""
-    core_dir = SRC_DIR / "helomi_core"
-    py_files = list(core_dir.rglob("*.py"))
-    assert len(py_files) > 0, "No files found in helomi_core"
+def test_helomi_app_does_not_import_higher_layers() -> None:
+    """helomi_app must not import from cli or tray."""
+    app_dir = SRC_DIR / "helomi_app"
+    py_files = list(app_dir.rglob("*.py"))
+    assert len(py_files) > 0, "No files found in helomi_app"
     for py_file in py_files:
         imports = _get_imports_from_file(py_file)
         for imp in imports:

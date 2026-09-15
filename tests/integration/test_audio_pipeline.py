@@ -1,6 +1,6 @@
 import pytest
 
-from helomi_core.audio import AudioFormat, AudioResampler
+from helomi_app.audio import AudioFormat, AudioResampler
 from tests.fixtures.audio import create_raw_audio
 from tests.fixtures.mocks import MockAudioDriver
 

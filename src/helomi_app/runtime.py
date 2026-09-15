@@ -4,7 +4,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import cast
 
-from .adapters import (
+from .core.adapters import (
     get_audio_driver,
     get_stt_adapter,
     get_tts_adapter,
@@ -12,16 +12,16 @@ from .adapters import (
     get_vad_adapter,
     get_wakeword_adapter,
 )
-from .audio import AudioDriver
-from .detection import DetectionWorker
-from .parrot import ParrotExtension
+from .core.audio import AudioDriver
+from .core.detection import DetectionWorker
+from .core.stt import STTWorker
+from .core.tts import TTSWorker
 from .pipeline import PipelineService
+from .pipeline.parrot import ParrotExtension
+from .pipeline.server import ServerExtension
 from .profile import ProfileCatalog
 from .resources import ResourceCatalog, UserData
-from .server import ServerExtension
 from .settings import Settings
-from .stt import STTWorker
-from .tts import TTSWorker
 
 
 class Runtime(AbstractAsyncContextManager):
@@ -61,6 +61,12 @@ class Runtime(AbstractAsyncContextManager):
             self._profiles = ProfileCatalog.load(self.settings, self.resources)
         return cast(ProfileCatalog, self._profiles)
 
+    async def get_audio_driver(self) -> AudioDriver:
+        return await self._get_component(
+            AudioDriver,
+            lambda: get_audio_driver(self),
+        )
+
     async def get_detection_worker(self) -> DetectionWorker:
         return await self._get_component(
             DetectionWorker,
@@ -71,14 +77,31 @@ class Runtime(AbstractAsyncContextManager):
             ),
         )
 
+    async def get_stt_worker(self) -> STTWorker:
+        return await self._get_component(
+            STTWorker,
+            lambda: STTWorker(
+                adapter=get_stt_adapter(self),
+            ),
+        )
+
+    async def get_tts_worker(self) -> TTSWorker:
+        return await self._get_component(
+            TTSWorker,
+            lambda: TTSWorker(
+                adapter=get_tts_adapter(self),
+            ),
+        )
+
     async def get_pipeline_service(self) -> PipelineService:
         async def _creator() -> PipelineService:
-            audio_driver = await self._get_audio_driver()
+            audio_driver = await self.get_audio_driver()
             detection_worker = await self.get_detection_worker()
-            stt_worker = await self._get_stt_worker()
-            tts_worker = await self._get_tts_worker()
+            stt_worker = await self.get_stt_worker()
+            tts_worker = await self.get_tts_worker()
 
             return PipelineService(
+                settings=self.settings.pipeline,
                 profiles=self.profiles,
                 audio_driver=audio_driver,
                 detection_worker=detection_worker,
@@ -91,7 +114,7 @@ class Runtime(AbstractAsyncContextManager):
             _creator,
         )
 
-    async def get_parrot_extension(self, activate=True) -> ParrotExtension:
+    async def get_pipeline_parrot_extension(self, activate=True) -> ParrotExtension:
         async def _creator() -> ParrotExtension:
             pipeline = await self.get_pipeline_service()
             extension = ParrotExtension(
@@ -105,11 +128,11 @@ class Runtime(AbstractAsyncContextManager):
             _creator,
         )
 
-    async def get_server_extension(self, activate=True) -> ServerExtension:
+    async def get_pipeline_server_extension(self, activate=True) -> ServerExtension:
         async def _creator() -> ServerExtension:
             pipeline = await self.get_pipeline_service()
             extension = ServerExtension(
-                config=self.settings.server,
+                settings=self.settings.server,
                 service=pipeline,
             )
             pipeline.register_extension(extension, activate=activate)
@@ -118,28 +141,6 @@ class Runtime(AbstractAsyncContextManager):
         return await self._get_component(
             ServerExtension,
             _creator,
-        )
-
-    async def _get_audio_driver(self) -> AudioDriver:
-        return await self._get_component(
-            AudioDriver,
-            lambda: get_audio_driver(self),
-        )
-
-    async def _get_stt_worker(self) -> STTWorker:
-        return await self._get_component(
-            STTWorker,
-            lambda: STTWorker(
-                adapter=get_stt_adapter(self),
-            ),
-        )
-
-    async def _get_tts_worker(self) -> TTSWorker:
-        return await self._get_component(
-            TTSWorker,
-            lambda: TTSWorker(
-                adapter=get_tts_adapter(self),
-            ),
         )
 
     async def _get_component[T](
@@ -155,4 +156,4 @@ class Runtime(AbstractAsyncContextManager):
                 else component
             )
 
-        return cast(T, self._components[cls])
+        return self._components[cls]

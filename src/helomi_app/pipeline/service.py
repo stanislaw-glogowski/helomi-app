@@ -1,28 +1,28 @@
 import asyncio
 from asyncio import Queue
 from collections.abc import AsyncIterator
-from typing import Any, Literal
+from typing import Any
 
-from ..audio import (
+from ..core.audio import (
     AudioDriver,
-    AudioDriverKind,
     CapturedEvent,
     DisconnectedEvent,
     InterruptedEvent,
     RawAudio,
 )
-from ..detection import (
+from ..core.detection import (
     ConversationEndedEvent,
     DetectionMode,
     DetectionWorker,
-    ProfileDetectedEvent,
     UtteranceDetectedEvent,
     UtteranceStartedEvent,
+    WakeWordDetectedEvent,
 )
+from ..core.stt import STTRequest, STTResponse, STTWorker
+from ..core.tts import TTSChunk, TTSRequest, TTSWorker
 from ..profile import Profile, ProfileCatalog, ReactionKind
-from ..stt import STTRequest, STTResponse, STTWorker
-from ..tts import TTSChunk, TTSRequest, TTSWorker
 from .component import PipelineComponent
+from .config import PipelineSettings
 from .domain import PipelineExtensionLike, PipelineExtensionType, PipelineOptions
 from .extension import PipelineExtension
 from .messages import (
@@ -49,6 +49,7 @@ from .request import PipelineRequest
 class PipelineService(PipelineComponent):
     def __init__(
         self,
+        settings: PipelineSettings,
         profiles: ProfileCatalog,
         audio_driver: AudioDriver,
         detection_worker: DetectionWorker,
@@ -57,6 +58,18 @@ class PipelineService(PipelineComponent):
         options: PipelineOptions | None = None,
     ) -> None:
         super().__init__()
+
+        self._profiles = profiles
+        self._options = options or PipelineOptions(
+            persistent_profile_enabled=settings.persistent_profile,
+            persistent_profile_supported=False,
+            reactions_enabled=settings.reactions,
+            reactions_supported=False,
+            room_voice_enabled=settings.room_voice,
+            room_voice_supported=False,
+            wakeword_enabled=settings.wakeword,
+            wakeword_supported=False,
+        )
 
         self._audio_driver = audio_driver
 
@@ -70,9 +83,6 @@ class PipelineService(PipelineComponent):
         self._tts_queue: Queue[PipelineRequest[TTSRequest]] = Queue()
 
         self._playback_queue: Queue[PipelineRequest[RawAudio]] = Queue()
-
-        self._profiles = profiles
-        self._options = options or PipelineOptions()
 
         self._extensions: set[PipelineExtensionType] = set()
         self._subscriptions: set[Queue[PipelineEvent | None]] = set()
@@ -98,10 +108,6 @@ class PipelineService(PipelineComponent):
     def active_extension(self) -> PipelineExtensionType | None:
         return self._active_extension
 
-    @property
-    def audio_driver(self) -> AudioDriverKind:
-        return self._audio_driver.kind
-
     def register_extension(
         self,
         extension_like: PipelineExtensionLike,
@@ -116,6 +122,7 @@ class PipelineService(PipelineComponent):
 
         if activate:
             self._active_extension = extension
+            self._sync_options()
 
     async def activate_extension(
         self,
@@ -135,12 +142,13 @@ class PipelineService(PipelineComponent):
                     extension=self._active_extension,
                 ),
             )
-        elif self._active_profile and self._options.room_voice_enabled:
+        elif self._active_profile and self._options.is_enabled("room_voice"):
             self._audio_driver.start_room_voice(
                 profile_id=self._active_profile.id,
             )
 
         self._active_extension = extension
+        self._sync_options()
 
         self._dispatch_event(
             ExtensionActivatedEvent(
@@ -164,13 +172,30 @@ class PipelineService(PipelineComponent):
             self._audio_driver.stop_room_voice()
 
         self._active_extension = None
+        self._sync_options()
+
         self._dispatch_event(
             ExtensionDeactivatedEvent(
                 extension=extension,
+                options=self._options.model_copy(deep=True),
             ),
         )
 
         return True
+
+    async def sync_extension(self) -> None:
+        if self._active_extension is None:
+            return
+
+        self._dispatch_event(
+            ExtensionActivatedEvent(
+                active_profile_id=self._active_profile.id
+                if self._active_profile
+                else None,
+                options=self._options.model_copy(deep=True),
+                extension=self._active_extension,
+            )
+        )
 
     async def execute_command(
         self,
@@ -213,8 +238,7 @@ class PipelineService(PipelineComponent):
             self._subscriptions.discard(subscription)
 
     async def _do_open(self) -> None:
-        self._tasks.add_task(
-            self._activate_initial_extension(),
+        self._tasks.add_tasks(
             self._capture_loop(),
             self._detection_loop(),
             self._stt_loop(),
@@ -227,22 +251,6 @@ class PipelineService(PipelineComponent):
         for subscription in self._subscriptions:
             subscription.put_nowait(None)
         self._subscriptions.clear()
-
-    async def _activate_initial_extension(self) -> None:
-        if self._active_extension is None:
-            return
-
-        await asyncio.sleep(2.0)
-
-        self._dispatch_event(
-            ExtensionActivatedEvent(
-                active_profile_id=self._active_profile.id
-                if self._active_profile
-                else None,
-                options=self._options.model_copy(deep=True),
-                extension=self._active_extension,
-            )
-        )
 
     async def _capture_loop(self) -> None:
         async for event in self._audio_driver.subscribe_event():
@@ -271,8 +279,13 @@ class PipelineService(PipelineComponent):
                             )
                         )
 
-                case DisconnectedEvent() if self._active_profile:
-                    await self._handle_deactivate_profile(DeactivateProfileCmd())
+                case DisconnectedEvent() if self._active_profile is not None:
+                    profile, self._active_profile = self._active_profile, None
+                    self._dispatch_event(
+                        ProfileDeactivatedEvent(
+                            profile_id=profile.id,
+                        )
+                    )
 
     async def _detection_loop(self) -> None:
         while True:
@@ -281,20 +294,22 @@ class PipelineService(PipelineComponent):
             try:
                 async for res in self._detection_worker.detect(audio):
                     match res:
-                        case ProfileDetectedEvent():
-                            if self._get_option_flag("wakeword_enabled"):
+                        case WakeWordDetectedEvent():
+                            if self._options.is_enabled("wakeword"):
                                 await self.execute_command(
                                     ActivateProfileCmd(profile_id=res.profile_id),
                                 )
 
                         case ConversationEndedEvent():
-                            if self._get_option_flag("wakeword_enabled"):
+                            if (
+                                not self._options.is_enabled("persistent_profile")
+                                and self._active_profile
+                            ):
+                                await self._detection_worker.change_mode(
+                                    DetectionMode.WAKEWORD
+                                )
                                 await self.execute_command(
                                     DeactivateProfileCmd(),
-                                )
-                            elif self._active_profile is not None:
-                                await self._detection_worker.change_mode(
-                                    DetectionMode.UTTERANCE
                                 )
 
                     if (profile := self._active_profile) is None:
@@ -382,6 +397,7 @@ class PipelineService(PipelineComponent):
                                 PipelineRequest(
                                     trace_id=request.trace_id,
                                     data=chunk.audio,
+                                    is_final=request.is_final,
                                 )
                             )
                         else:
@@ -406,8 +422,9 @@ class PipelineService(PipelineComponent):
             try:
                 if request.is_current_generation and self._active_profile:
                     self._audio_driver.play(
-                        request.data,
-                        self._active_profile.id,
+                        audio=request.data,
+                        profile_id=self._active_profile.id,
+                        is_final=request.is_final,
                     )
             finally:
                 self._playback_queue.task_done()
@@ -430,7 +447,12 @@ class PipelineService(PipelineComponent):
     async def _handle_set_options(self, cmd: SetOptionsCmd) -> bool:
         update: dict[str, Any] = {}
 
-        for key in ("greeting_enabled", "room_voice_enabled", "wakeword_enabled"):
+        for key in (
+            "persistent_profile_enabled",
+            "reactions_enabled",
+            "room_voice_enabled",
+            "wakeword_enabled",
+        ):
             if (enabled := getattr(cmd, key)) is not None and getattr(
                 self._options, key
             ) != enabled:
@@ -442,21 +464,15 @@ class PipelineService(PipelineComponent):
         options = self._options.model_copy(deep=True, update=update)
 
         if (
-            options.room_voice_enabled != self._options.room_voice_enabled
+            self._options.room_voice_supported
+            and options.room_voice_enabled != self._options.room_voice_enabled
             and self._active_profile
             and self._active_extension
         ):
             if options.room_voice_enabled:
-                try:
-                    self._audio_driver.start_room_voice(
-                        profile_id=self._active_profile.id,
-                    )
-                except Exception as err:
-                    self._logger.warning(
-                        "Failed to start room voice profile {}: {}",
-                        self._active_profile.id,
-                        err,
-                    )
+                self._audio_driver.start_room_voice(
+                    profile_id=self._active_profile.id,
+                )
             else:
                 self._audio_driver.stop_room_voice()
 
@@ -475,8 +491,6 @@ class PipelineService(PipelineComponent):
         PipelineRequest.bump_generation()
 
         if self._active_profile is not None:
-            self._audio_driver.disconnect()
-
             self._dispatch_event(
                 ProfileDeactivatedEvent(
                     profile_id=self._active_profile.id,
@@ -492,23 +506,14 @@ class PipelineService(PipelineComponent):
             )
         )
 
-        if self._get_option_flag("room_voice_enabled"):
-            try:
-                self._audio_driver.start_room_voice(
-                    profile_id=profile.id,
-                )
-            except Exception as err:
-                self._logger.warning(
-                    "Failed to start room voice profile {}: {}",
-                    profile.id,
-                    err,
-                )
-        else:
-            self._audio_driver.stop_room_voice()
+        if self._options.is_enabled("room_voice"):
+            self._audio_driver.start_room_voice(
+                profile_id=profile.id,
+            )
 
         await self._detection_worker.change_mode(DetectionMode.UTTERANCE)
 
-        if self._get_option_flag("greeting_enabled"):
+        if self._options.is_enabled("reactions"):
             reaction = profile.get_reaction(ReactionKind.GREETING)
 
             if reaction:
@@ -531,15 +536,31 @@ class PipelineService(PipelineComponent):
 
         PipelineRequest.bump_generation()
 
-        if self._get_option_flag("wakeword_enabled"):
-            self._audio_driver.disconnect()
-            mode = DetectionMode.PROFILE
-        else:
-            mode = DetectionMode.UTTERANCE
+        if self._options.is_enabled("wakeword"):
+            await self._detection_worker.change_mode(DetectionMode.WAKEWORD)
 
-        await self._detection_worker.change_mode(mode)
+        if self._options.is_enabled("room_voice"):
+            self._audio_driver.stop_room_voice()
+
+        if self._options.is_enabled("reactions"):
+            reaction = profile.get_reaction(ReactionKind.FAREWELL)
+
+            if reaction:
+                self._tts_queue.put_nowait(
+                    PipelineRequest(
+                        trace_id=cmd.trace_id,
+                        data=TTSRequest(
+                            text=reaction,
+                            profile_id=profile.id,
+                        ),
+                        is_final=True,
+                    )
+                )
+                return True
 
         self._active_profile = None
+        self._audio_driver.disconnect()
+
         self._dispatch_event(
             ProfileDeactivatedEvent(
                 profile_id=profile.id,
@@ -585,17 +606,17 @@ class PipelineService(PipelineComponent):
 
         return True
 
-    def _get_option_flag(
-        self,
-        key: Literal[
-            "greeting_enabled",
-            "room_voice_enabled",
-            "wakeword_enabled",
-        ],
-    ) -> bool:
-        return (
-            self._active_extension is not None and getattr(self._options, key) is True
-        )
+    def _sync_options(self) -> None:
+        if self._active_extension:
+            self._options.persistent_profile_supported = True
+            self._options.wakeword_supported = self._detection_worker.wakeword_supported
+            self._options.reactions_supported = True
+            self._options.room_voice_supported = self._audio_driver.room_voice_supported
+        else:
+            self._options.persistent_profile_supported = False
+            self._options.wakeword_supported = False
+            self._options.reactions_supported = False
+            self._options.room_voice_supported = False
 
     def _dispatch_event(
         self,

@@ -3,22 +3,24 @@ from typing import Any, ClassVar, Self
 
 from pydantic import Field, PrivateAttr
 
-from ..audio.config import AudioSettings
 from ..common import BaseConfig, ConfigFile, PromptReader
+from ..core.audio.config import AudioSettings
+from ..core.stt.config import STTSettings
+from ..core.tts.config import TTSSettings
+from ..core.turn.config import TurnSettings
+from ..core.vad.config import VADSettings
+from ..core.wakeword.config import WakeWordSettings
+from ..pipeline.config import PipelineSettings
+from ..pipeline.server.config import ServerSettings
 from ..profile.config import ProfileSettings
 from ..resources import ResourceCatalog
-from ..server.config import ServerSettings
-from ..stt.config import STTSettings
-from ..tts.config import TTSSettings
-from ..turn.config import TurnSettings
-from ..vad.config import VADSettings
-from ..wakeword.config import WakeWordSettings
 
 
 class Settings(BaseConfig, PromptReader):
     _CONFIG_FILE: ClassVar[str] = "settings"
 
     profile: ProfileSettings = Field(default_factory=ProfileSettings)
+    pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
     audio: AudioSettings = Field(default_factory=AudioSettings)
     stt: STTSettings = Field(default_factory=STTSettings)

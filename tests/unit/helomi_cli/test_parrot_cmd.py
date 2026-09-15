@@ -3,14 +3,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from helomi_cli.commands.parrot import run_parrot_cmd
-from helomi_cli.widgets import Spinner
-from helomi_core.pipeline import (
+from helomi_app.pipeline import (
     ActivateProfileCmd,
     ProfileActivatedEvent,
     ProfileDeactivatedEvent,
     TranscriptionReadyEvent,
 )
+from helomi_cli.commands.parrot import run_parrot_cmd
+from helomi_cli.widgets import Spinner
 
 
 @pytest.fixture

@@ -20,13 +20,13 @@ class AppIcon(StrEnum):
         def __str__(self) -> str:
             return next(self)
 
-    LISTEN = "◉"
-    IDLE = "○"
-    MUSIC = "♫"
-    PARROT = "🦜"
+    WAKEWORD_ACTIVE = "◉"
+    WAKEWORD_IDLE = "○"
+    ROOM_VOICE = "♫"
     PHONE_ACTIVE = "☎︎"
     PHONE_IDLE = "☏"
-    TTS = "🗣"
+    PARROT_MODE = "🦜"
+    TTS_MODE = "🗣"
     QUITING = "☾"
 
 

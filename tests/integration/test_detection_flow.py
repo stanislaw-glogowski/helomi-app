@@ -1,14 +1,14 @@
 import pytest
 
-from helomi_core.detection.domain import (
-    ConversationEnded,
+from helomi_app.detection import (
+    ConversationEndedEvent,
     DetectionMode,
-    ProfileDetected,
-    UtteranceContinued,
-    UtteranceDetected,
+    DetectionWorker,
+    ProfileDetectedEvent,
+    UtteranceContinuedEvent,
+    UtteranceDetectedEvent,
 )
-from helomi_core.detection.worker import DetectionWorker
-from helomi_core.turn import TurnPrediction, TurnStatus
+from helomi_app.turn import TurnPrediction, TurnStatus
 from tests.fixtures.audio import create_audio_chunk, create_raw_audio
 from tests.fixtures.mocks import (
     MockTurnAdapter,
@@ -37,7 +37,7 @@ async def test_full_detection_flow_lifecycle():
         events_wake = [ev async for ev in worker.detect(raw_audio_wake)]
 
         assert len(events_wake) == 1
-        assert isinstance(events_wake[0], ProfileDetected)
+        assert isinstance(events_wake[0], ProfileDetectedEvent)
         assert events_wake[0].profile_id == "gizmo"
         assert worker.current_mode == DetectionMode.UTTERANCE
 
@@ -47,7 +47,7 @@ async def test_full_detection_flow_lifecycle():
         events_cont = [ev async for ev in worker.detect(raw_audio_speech)]
 
         assert len(events_cont) == 1
-        assert isinstance(events_cont[0], UtteranceContinued)
+        assert isinstance(events_cont[0], UtteranceContinuedEvent)
 
         # Phase 3: User finishes speaking (completed turn)
         completed_chunk = create_audio_chunk(sample_rate=16000, num_samples=512)
@@ -59,13 +59,13 @@ async def test_full_detection_flow_lifecycle():
         events_done = [ev async for ev in worker.detect(raw_audio_speech)]
 
         assert len(events_done) == 1
-        assert isinstance(events_done[0], UtteranceDetected)
-        assert events_done[0].audio == completed_chunk
+        assert isinstance(events_done[0], UtteranceDetectedEvent)
+        assert events_done[0].audio_driver == completed_chunk
 
         # Phase 4: Inactivity timeout triggers conversation end and resets mode
         turn_adapter.next_prediction = TurnPrediction(status=TurnStatus.TIMEOUT)
         events_timeout = [ev async for ev in worker.detect(raw_audio_speech)]
 
         assert len(events_timeout) == 1
-        assert isinstance(events_timeout[0], ConversationEnded)
-        assert worker.current_mode == DetectionMode.PROFILE
+        assert isinstance(events_timeout[0], ConversationEndedEvent)
+        assert worker.current_mode == DetectionMode.WAKEWORD
