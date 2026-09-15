@@ -37,7 +37,7 @@ def mock_runtime():
     runtime = MagicMock()
     runtime.profiles = mock_profiles
     runtime.settings = settings
-    runtime.get_parrot_extension = AsyncMock()
+    runtime.get_pipeline_parrot_extension = AsyncMock()
     runtime.get_pipeline_service = AsyncMock(return_value=mock_pipeline)
     return runtime, mock_pipeline
 
@@ -65,7 +65,7 @@ async def test_run_parrot_cmd_lifecycle(mock_runtime):
     await run_parrot_cmd(runtime, shutdown, "test_profile", spinner)
     await task
 
-    runtime.get_parrot_extension.assert_called_once()
+    runtime.get_pipeline_parrot_extension.assert_called_once()
     runtime.get_pipeline_service.assert_called_once()
     mock_pipeline.execute_command.assert_called_once_with(
         ActivateProfileCmd(profile_id="test_profile")

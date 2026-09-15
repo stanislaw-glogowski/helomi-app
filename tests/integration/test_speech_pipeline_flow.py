@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
+from helomi_app.core.stt import STTChunk, STTRequest
+from helomi_app.core.tts import TTSChunk
 from helomi_app.pipeline import (
     ActivateProfileCmd,
     DeactivateProfileCmd,
@@ -14,8 +16,6 @@ from helomi_app.pipeline import (
 )
 from helomi_app.pipeline.service import PipelineRequest
 from helomi_app.runtime import Runtime
-from helomi_app.stt import STTChunk, STTRequest
-from helomi_app.tts import TTSChunk
 from tests.fixtures.audio import create_audio_chunk, create_raw_audio
 from tests.fixtures.mocks import (
     MockAudioDriver,

@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-from helomi_app.audio import (
+from helomi_app.core.audio import (
     AudioChunk,
     AudioCmd,
     AudioDriver,
@@ -23,12 +23,12 @@ from helomi_app.audio import (
     StartRoomVoiceCmd,
     StopRoomVoiceCmd,
 )
+from helomi_app.core.stt import STTAdapter, STTChunk, STTRequest
+from helomi_app.core.tts import TTSAdapter, TTSChunk, TTSRequest
+from helomi_app.core.turn import TurnAdapter, TurnPrediction
+from helomi_app.core.vad import VADAdapter, VADPrediction
+from helomi_app.core.wakeword import WakeWordAdapter, WakeWordPrediction
 from helomi_app.resources import ResourceCatalog
-from helomi_app.stt import STTAdapter, STTChunk, STTRequest
-from helomi_app.tts import TTSAdapter, TTSChunk, TTSRequest
-from helomi_app.turn import TurnAdapter, TurnPrediction
-from helomi_app.vad import VADAdapter, VADPrediction
-from helomi_app.wakeword import WakeWordAdapter, WakeWordPrediction
 
 
 class MockAudioDriver(AudioDriver[Any, Any]):
@@ -48,6 +48,10 @@ class MockAudioDriver(AudioDriver[Any, Any]):
     @property
     def kind(self) -> AudioDriverKind:
         return AudioDriverKind.LOCAL
+
+    @property
+    def room_voice_supported(self) -> bool:
+        return True
 
     def enqueue_capture(self, raw: RawAudio) -> None:
         if self._subscriptions:
@@ -74,12 +78,12 @@ class MockAudioDriver(AudioDriver[Any, Any]):
     async def capture(self) -> AsyncIterator[RawAudio]:
         async for event in self.subscribe_event():
             if isinstance(event, CapturedEvent):
-                yield event.audio_driver
+                yield event.audio
 
     def execute_command(self, cmd: AudioCmd) -> bool:
         match cmd:
             case PlayCmd():
-                self.played_audio.append(cmd.audio_driver)
+                self.played_audio.append(cmd.audio)
                 self._dispatch_event(PlayedEvent(profile_id=cmd.profile_id))
                 return True
             case InterruptCmd():

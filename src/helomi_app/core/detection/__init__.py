@@ -4,10 +4,10 @@ from .domain import (
 from .messages import (
     ConversationEndedEvent,
     DetectionEvent,
-    WakeWordDetectedEvent,
     UtteranceContinuedEvent,
     UtteranceDetectedEvent,
     UtteranceStartedEvent,
+    WakeWordDetectedEvent,
 )
 from .worker import DetectionWorker
 
@@ -16,8 +16,8 @@ __all__ = [
     "DetectionEvent",
     "DetectionMode",
     "DetectionWorker",
-    "WakeWordDetectedEvent",
     "UtteranceContinuedEvent",
     "UtteranceDetectedEvent",
     "UtteranceStartedEvent",
+    "WakeWordDetectedEvent",
 ]

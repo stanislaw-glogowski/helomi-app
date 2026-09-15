@@ -25,12 +25,17 @@ memory. Zero telemetry, zero cloud audio streaming.
 - **Native Audio Pipeline**: Low-latency capture and playback powered by Swift (`AVAudioEngine` + Apple Voice
   Processing / Echo Cancellation).
 - **On-Device Speech Stack**:
-    - **Wake-Word**: OpenWakeWord engine
-    - **VAD & Turn-Taking**: Silero VAD (MLX and ONNX backends) + Smart Turn detection
-    - **STT (Speech-to-Text)**: Fast inference with Parakeet and MLX-Whisper
+    - **Wake-Word & Continuous Detection**: OpenWakeWord engine with continuous tracking even during active dialogue,
+      enabling vocal profile switching on the fly.
+    - **VAD & Turn-Taking**: Silero VAD (MLX and ONNX backends) + Smart Turn detection.
+    - **Continuous Conversation & Persistent Profiles**: Profiles remain engaged across conversation turns without
+      abrupt session timeouts.
+    - **Conversational Reactions & Instant Barge-In**: Instant audio interruption with punchy, personality-tailored
+      reactions (`INTERRUPTED`), activation greetings (`GREETING`), and graceful farewells (`FAREWELL`).
+    - **STT (Speech-to-Text)**: Fast inference with Parakeet and MLX-Whisper.
     - **TTS (Text-to-Speech)**: Streaming neural voice synthesis via VoxCPM2 and Supertonic (with voice style cloning &
-      presets)
-    - **Model Management**: Automatic local Hugging Face model cache resolution (`HFModel`)
+      presets).
+    - **Model Management**: Automatic local Hugging Face model cache resolution (`HFModel`).
 - **Modular Architecture**: Clean separation between core audio orchestration, speech engines, and interfaces.
 
 ---
@@ -95,8 +100,8 @@ hf download mlx-community/whisper-large-v3-turbo
 
 The primary way to use Helomi is via the **macOS System Tray application (`helomi-tray`)**. It runs in your macOS menu
 bar, manages continuous on-device audio processing, displays real-time status indicators, provides hotkeys to switch
-voice profiles and modes (Parrot mode or API server), and includes an interactive Text-to-Speech window (`t`) with
-speech synthesis and WAV export:
+voice profiles and modes (Parrot mode or API server), configures pipeline options (Persistent Profile, Wake Word,
+Reactions, Room Voice), and includes an interactive Text-to-Speech window (`t`) with speech synthesis and WAV export:
 
 ```bash
 # Launch the macOS system tray application

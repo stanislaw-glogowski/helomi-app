@@ -15,7 +15,7 @@ Returns root service metadata and documentation links.
   ```json
   {
     "title": "Helomi API",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "description": "Privacy-first voice assistant API for audio orchestration, profile management, pipeline command execution, and real-time event streaming.",
     "docs_url": "/docs"
   }
@@ -36,7 +36,8 @@ Simple health check endpoint returning server status.
 Lists all loaded voice assistant profiles. Optionally filters by a required prompt template.
 
 - **Query Parameters:**
-    - `require_prompt` (string, optional): If specified, only returns profiles that define the requested prompt template.
+    - `require_prompt` (string, optional): If specified, only returns profiles that define the requested prompt
+      template.
 - **Response:**
   ```json
   [
@@ -62,7 +63,8 @@ Retrieves detailed information for a specific profile ID.
 - **Path Parameters:**
     - `profile_id` (string): Profile identifier.
 - **Query Parameters:**
-    - `require_prompt` (string, optional): If specified, includes the rendered prompt content in the `"prompt"` field. Returns `404 Not Found` if the profile does not define this prompt.
+    - `require_prompt` (string, optional): If specified, includes the rendered prompt content in the `"prompt"` field.
+      Returns `404 Not Found` if the profile does not define this prompt.
 - **Response:**
   ```json
   {

@@ -86,10 +86,26 @@ class DetectionWorker(AbstractWorker):
                         )
 
                     case DetectionMode.UTTERANCE:
-                        prediction = self._turn_adapter.predict(
-                            chunk,
-                            vad_prediction.detected,
-                        )
+                        if (
+                            self._wakeword_adapter is not None
+                            and vad_prediction.detected
+                        ):
+                            wake_pred = self._wakeword_adapter.predict(
+                                chunk,
+                                vad_prediction.detected,
+                            )
+                            if wake_pred and wake_pred.matched:
+                                prediction = wake_pred
+                            else:
+                                prediction = self._turn_adapter.predict(
+                                    chunk,
+                                    vad_prediction.detected,
+                                )
+                        else:
+                            prediction = self._turn_adapter.predict(
+                                chunk,
+                                vad_prediction.detected,
+                            )
 
                 match prediction:
                     case TurnPrediction(status=TurnStatus.STARTED):
@@ -105,8 +121,11 @@ class DetectionWorker(AbstractWorker):
                         yield UtteranceContinuedEvent()
 
                     case TurnPrediction(status=TurnStatus.TIMEOUT):
+                        self._current_mode = self._default_mode
                         self._vad_adapter.reset()
                         self._turn_adapter.reset()
+                        if self._wakeword_adapter is not None:
+                            self._wakeword_adapter.reset()
                         yield ConversationEndedEvent()
 
                     case WakeWordPrediction(matched=str(profile_id)) if (
@@ -115,6 +134,7 @@ class DetectionWorker(AbstractWorker):
                         self._current_mode = DetectionMode.UTTERANCE
                         self._vad_adapter.reset()
                         self._wakeword_adapter.reset()
+                        self._turn_adapter.reset()
                         yield WakeWordDetectedEvent(
                             profile_id=profile_id,
                         )
@@ -135,8 +155,6 @@ class DetectionWorker(AbstractWorker):
 
     def _reset(self) -> None:
         self._vad_adapter.reset()
-        match self._current_mode:
-            case DetectionMode.WAKEWORD if self._wakeword_adapter is not None:
-                self._wakeword_adapter.reset()
-            case DetectionMode.UTTERANCE:
-                self._turn_adapter.reset()
+        self._turn_adapter.reset()
+        if self._wakeword_adapter is not None:
+            self._wakeword_adapter.reset()

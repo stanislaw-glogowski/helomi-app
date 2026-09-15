@@ -37,3 +37,9 @@ Targeted test: `UV_CACHE_DIR=/private/tmp/uv-cache uv run pytest tests/unit/test
 - **Mocks & Fixtures**: Never access real mic or heavy MLX models in tests. Use `tests/fixtures/audio.py`
   (`create_raw_audio`, `create_silence_raw_audio`, `create_noise_raw_audio`) and `tests/fixtures/mocks.py`.
 
+## Profiles Policy
+
+- **Public / Supported Profile**: Only `alexa` is the official, publicly documented assistant profile.
+- **Ignored / Local Profiles**: Any other profiles (e.g. experimental or local test profiles) are gitignored and
+  **must NEVER be mentioned** in documentation, `README.md`, `CHANGELOG.md`, public docstrings, or examples.
+

@@ -2,7 +2,52 @@
 
 All notable changes to Helomi are documented in this file.
 
-## [Unreleased]
+## [Unreleased] - (0.7.0)
+
+### Added
+
+- **Continuous Conversation Mode (`persistent_profile`)**:
+    - Added `persistent_profile` pipeline option (`PipelineSettings.persistent_profile: bool = True`,
+      `PipelineOptions.persistent_profile_enabled: bool = True`) to keep the active profile engaged across conversation
+      turns without deactivating on silence timeouts (`ConversationEndedEvent`).
+    - Added `Persistent Profile` toggle to macOS System Tray menu (`helomi_tray`) Settings submenu.
+- **Wake Word Detection in Utterance Mode (`DetectionMode.UTTERANCE`)**:
+    - Added wake-word evaluation during active utterance / conversation mode in `DetectionWorker.detect()`, enabling
+      wake-word re-triggering and on-the-fly vocal switching between assistant profiles without waiting for silence
+      timeout.
+    - Implemented automatic adapter reset (`vad_adapter.reset()`, `turn_adapter.reset()`, `wakeword_adapter.reset()`)
+      upon wake-word detection to immediately start a fresh turn.
+- **Spoken Interruption Reaction Handling (`ReactionKind.INTERRUPTED`)**:
+    - Added instant spoken reaction triggering (`ReactionKind.INTERRUPTED`) upon user speech onset barge-in
+      (`UtteranceStartedEvent`) and audio driver `InterruptedEvent`.
+    - Curated short, personality-tailored `interrupted` reaction variants for assistant profiles (e.g. `alexa`).
+- **Graceful Profile Farewell Reaction (`ReactionKind.FAREWELL`)**:
+    - Added farewell reaction playback upon manual profile deactivation or when `persistent_profile` is disabled,
+      deferring actual deactivation until playback finishes (`DisconnectedEvent`).
+- **Pipeline Configuration in `settings.yml`**:
+    - Added `pipeline:` section in `Settings` schema (`PipelineSettings`: `persistent_profile`, `reactions`,
+      `room_voice`, `wakeword`), allowing global defaults configuration via `resources/settings.yml`.
+
+### Changed
+
+- **Pipeline Service Lifecycle & Re-activation**:
+    - Re-activating the currently active profile via wake-word now seamlessly increments the audio generation counter,
+      clears the playback buffer, optionally speaks greeting reactions, and maintains active conversation state.
+    - Wrapped `start_room_voice()` with error handling to avoid disrupting pipeline commands if room voice audio fails
+      to start.
+- **System Tray Settings Menu (`helomi_tray`)**:
+    - Reorganized Settings submenu actions to reflect all pipeline options: `Persistent Profile`, `Wake Word`,
+      `Reactions`, `Room Voice`.
+
+### Fixed
+
+- Fixed wake word detection being completely bypassed once entering `DetectionMode.UTTERANCE`.
+- Fixed unintended profile deactivation on conversation silence timeouts when `persistent_profile` is enabled.
+- Fixed Pyrefly type checking issues in `Runtime._get_component` and Twilio message schemas (`StartEvent`,
+  `MediaEvent`).
+- Added missing `room_voice_supported` property to `MockAudioDriver` test fixture.
+
+## [0.6.5] - 2026-09-15
 
 ### Added
 

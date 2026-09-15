@@ -1,14 +1,14 @@
 import pytest
 
-from helomi_app.detection import (
+from helomi_app.core.detection import (
     ConversationEndedEvent,
     DetectionMode,
     DetectionWorker,
-    ProfileDetectedEvent,
     UtteranceContinuedEvent,
     UtteranceDetectedEvent,
+    WakeWordDetectedEvent,
 )
-from helomi_app.turn import TurnPrediction, TurnStatus
+from helomi_app.core.turn import TurnPrediction, TurnStatus
 from tests.fixtures.audio import create_audio_chunk, create_raw_audio
 from tests.fixtures.mocks import (
     MockTurnAdapter,
@@ -31,17 +31,18 @@ async def test_full_detection_flow_lifecycle():
     )
 
     async with worker:
-        # Phase 1: In PROFILE mode, simulate wake-word detection
+        # Phase 1: In WAKEWORD mode, simulate wake-word detection
         wakeword_adapter.matched = "gizmo"
         raw_audio_wake = create_raw_audio(sample_rate=16000, num_samples=512)
         events_wake = [ev async for ev in worker.detect(raw_audio_wake)]
 
         assert len(events_wake) == 1
-        assert isinstance(events_wake[0], ProfileDetectedEvent)
+        assert isinstance(events_wake[0], WakeWordDetectedEvent)
         assert events_wake[0].profile_id == "gizmo"
         assert worker.current_mode == DetectionMode.UTTERANCE
 
         # Phase 2: In UTTERANCE mode, user begins speaking (continued)
+        wakeword_adapter.matched = None
         turn_adapter.next_prediction = TurnPrediction(status=TurnStatus.CONTINUED)
         raw_audio_speech = create_raw_audio(sample_rate=16000, num_samples=512)
         events_cont = [ev async for ev in worker.detect(raw_audio_speech)]
@@ -60,7 +61,7 @@ async def test_full_detection_flow_lifecycle():
 
         assert len(events_done) == 1
         assert isinstance(events_done[0], UtteranceDetectedEvent)
-        assert events_done[0].audio_driver == completed_chunk
+        assert events_done[0].audio == completed_chunk
 
         # Phase 4: Inactivity timeout triggers conversation end and resets mode
         turn_adapter.next_prediction = TurnPrediction(status=TurnStatus.TIMEOUT)

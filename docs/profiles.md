@@ -34,25 +34,26 @@ The profile ID is derived automatically from the directory name (e.g., `alexa`).
 
 ## Profile Attributes
 
-| Field                   | Type                      | Description                                                                                                           |
-|-------------------------|---------------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `name`                  | `string`                  | Display name of the assistant profile (e.g., `"Alexa"`).                                                              |
-| `description`           | `string` (optional)       | Description or persona definition for the assistant profile (e.g. `"Friendly voice assistant"`).                     |
-| `priority`              | `integer` (optional)      | Sort priority for profile catalog ordering (higher numbers sorted first; default: `1`).                              |
-| `emoji`                 | `string` (optional)       | Single emoji icon displayed in macOS system tray when active (e.g. `👩🏻`, `🦆`; default: `👤`).                        |
-| `disabled`              | `boolean` (optional)      | Set to `true` to skip loading this profile (default: `false`).                                                        |
-| `readonly`              | `boolean` (optional)      | Marks profile configuration as read-only (default: `false`).                                                          |
+| Field                   | Type                      | Description                                                                                                                                             |
+|-------------------------|---------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`                  | `string`                  | Display name of the assistant profile (e.g., `"Alexa"`).                                                                                                |
+| `description`           | `string` (optional)       | Description or persona definition for the assistant profile (e.g. `"Friendly voice assistant"`).                                                        |
+| `priority`              | `integer` (optional)      | Sort priority for profile catalog ordering (higher numbers sorted first; default: `1`).                                                                 |
+| `emoji`                 | `string` (optional)       | Single emoji icon displayed in macOS system tray when active (e.g. `👩🏻`, `🤖`; default: `👤`).                                                          |
+| `disabled`              | `boolean` (optional)      | Set to `true` to skip loading this profile (default: `false`).                                                                                          |
+| `readonly`              | `boolean` (optional)      | Marks profile configuration as read-only (default: `false`).                                                                                            |
 | `reactions.greeting`    | `list[string]` (optional) | Spoken greetings randomly selected when the profile is activated / wake-word detected (e.g., `["Hello! How can I help?", "Hi there! I'm listening."]`). |
-| `reactions.interrupted` | `list[string]` (optional) | Spoken reactions randomly selected when the assistant's ongoing speech is interrupted (barge-in) (e.g., `["Yes?", "I'm listening."]`). |
-| `audio.room_voice_path` | `string` (optional)       | Path to an audio file played in a continuous loop when the profile is active (`path://assets/...`).                   |
-| `tts`                   | `object`                  | Configuration for TTS adapters (`supertonic`, `voxcpm2`).                                                             |
-| `stt`                   | `object`                  | Configuration for STT adapters (`parakeet`, `whisper`).                                                               |
-| `wakeword`              | `object`                  | Configuration for wake-word adapters (`openwakeword`).                                                                |
+| `reactions.farewell`    | `list[string]` (optional) | Spoken farewells randomly selected when the profile is deactivated (e.g., `["Goodbye!", "See you later."]`).                                            |
+| `reactions.interrupted` | `list[string]` (optional) | Spoken reactions randomly selected when the assistant's ongoing speech is interrupted (barge-in) (e.g., `["Yes?", "Listening.", "Go ahead."]).          |
+| `audio.room_voice_path` | `string` (optional)       | Path to an audio file played in a continuous loop when the profile is active (`path://assets/...`).                                                     |
+| `tts`                   | `object`                  | Configuration for TTS adapters (`supertonic`, `voxcpm2`).                                                                                               |
+| `stt`                   | `object`                  | Configuration for STT adapters (`parakeet`, `whisper`).                                                                                                 |
+| `wakeword`              | `object`                  | Configuration for wake-word adapters (`openwakeword`).                                                                                                  |
 
 ## Profile Prompts & Templates
 
-Profiles can define modular prompt templates stored in the `prompts/` subdirectory within the profile folder, as well
-as shared templates in `resources/prompts/`:
+Profiles can define modular prompt templates stored in the `prompts/` subdirectory within the profile folder, as well as
+shared templates in `resources/prompts/`:
 
 ```text
 resources/
@@ -75,8 +76,7 @@ Helomi's prompt engine (`PromptReader`) parses markdown prompts and dynamically 
 - Global / system parameters passed during catalog initialization.
 
 ```markdown
-You are {{ name }}, {{ description }}.
-Always answer concisely and naturally.
+You are {{ name }}, {{ description }}. Always answer concisely and naturally.
 ```
 
 Loaded prompts are accessible on the profile via `profile.prompts["<prompt_name>"]` (e.g. `profile.prompts["demo"]`)
@@ -88,16 +88,22 @@ Profiles can define verbal acknowledgements that the assistant synthesizes and s
 
 - **`greeting`**: Triggered when a profile is activated (e.g., when the wake-word is detected). The assistant randomly
   picks one phrase from the configured list.
-- **`interrupted`**: Triggered when speech playback is actively interrupted by the user (barge-in).
+- **`farewell`**: Triggered when a profile is deactivated (either manually or when `persistent_profile` is disabled).
+- **`interrupted`**: Triggered when ongoing assistant speech is interrupted by the user (barge-in). Keep these short and
+  punchy for natural responsiveness.
 
 ```yaml
 reactions:
   greeting:
     - "Hello! How can I help you?"
     - "Hi there! I'm listening."
+  farewell:
+    - "Goodbye!"
+    - "Talk to you soon."
   interrupted:
     - "Yes?"
-    - "I'm listening."
+    - "Listening."
+    - "Go ahead."
 ```
 
 ## Default Profile Values (`defaults.yml`)
@@ -122,9 +128,12 @@ reactions:
   greeting:
     - "Hello! How can I help you?"
     - "Hi there! I'm listening."
+  farewell:
+    - "Goodbye!"
+    - "Talk to you soon."
   interrupted:
     - "Yes?"
-    - "I'm listening."
+    - "Listening."
 
 tts:
   supertonic:

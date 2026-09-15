@@ -47,6 +47,17 @@ Adapters for speech components (`stt`, `tts`, `turn`, `vad`, `wakeword`) are con
 profile in `resources/profiles/`. If a profile lacks configuration for the currently active STT or TTS adapter, that
 profile is **automatically skipped**.
 
+## Pipeline Configuration (`pipeline`)
+
+The audio and speech processing pipeline behavior can be customized globally in `settings.yml`:
+
+| Field                | Type      | Default | Description                                                                                          |
+|----------------------|-----------|:-------:|------------------------------------------------------------------------------------------------------|
+| `persistent_profile` | `boolean` | `true`  | Keep active profile engaged across turns; do not auto-deactivate on conversation silence timeout.    |
+| `reactions`          | `boolean` | `true`  | Enable spoken reactions (`greeting`, `farewell`, `interrupted`).                                     |
+| `room_voice`         | `boolean` | `true`  | Enable continuous ambient background soundscapes if configured in profile (`audio.room_voice_path`). |
+| `wakeword`           | `boolean` | `true`  | Enable wake-word listening engine.                                                                   |
+
 ## Example Configuration
 
 `resources/settings.yml`:
@@ -54,6 +65,12 @@ profile is **automatically skipped**.
 ```yaml
 profile:
   default: "alexa"
+
+pipeline:
+  persistent_profile: true
+  reactions: true
+  room_voice: true
+  wakeword: true
 
 server:
   host: "127.0.0.1"

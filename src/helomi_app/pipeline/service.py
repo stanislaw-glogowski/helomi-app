@@ -49,16 +49,17 @@ from .request import PipelineRequest
 class PipelineService(PipelineComponent):
     def __init__(
         self,
-        settings: PipelineSettings,
         profiles: ProfileCatalog,
         audio_driver: AudioDriver,
         detection_worker: DetectionWorker,
         stt_worker: STTWorker,
         tts_worker: TTSWorker,
+        settings: PipelineSettings | None = None,
         options: PipelineOptions | None = None,
     ) -> None:
         super().__init__()
 
+        settings = settings or PipelineSettings()
         self._profiles = profiles
         self._options = options or PipelineOptions(
             persistent_profile_enabled=settings.persistent_profile,
@@ -136,19 +137,32 @@ class PipelineService(PipelineComponent):
         if self._active_extension is extension:
             return False
 
-        if self._active_extension:
+        prev_extension = self._active_extension
+        if prev_extension:
             self._dispatch_event(
                 ExtensionDeactivatedEvent(
-                    extension=self._active_extension,
+                    extension=prev_extension,
                 ),
-            )
-        elif self._active_profile and self._options.is_enabled("room_voice"):
-            self._audio_driver.start_room_voice(
-                profile_id=self._active_profile.id,
             )
 
         self._active_extension = extension
         self._sync_options()
+
+        if (
+            prev_extension is None
+            and self._active_profile
+            and self._options.is_enabled("room_voice")
+        ):
+            try:
+                self._audio_driver.start_room_voice(
+                    profile_id=self._active_profile.id,
+                )
+            except Exception as err:
+                self._logger.warning(
+                    "Failed to start room voice profile {}: {}",
+                    self._active_profile.id,
+                    err,
+                )
 
         self._dispatch_event(
             ExtensionActivatedEvent(
@@ -278,6 +292,19 @@ class PipelineService(PipelineComponent):
                                 profile_id=event.profile_id,
                             )
                         )
+                        if self._options.is_enabled("reactions"):
+                            reaction = self._active_profile.get_reaction(
+                                ReactionKind.INTERRUPTED
+                            )
+                            if reaction:
+                                self._tts_queue.put_nowait(
+                                    PipelineRequest(
+                                        data=TTSRequest(
+                                            text=reaction,
+                                            profile_id=self._active_profile.id,
+                                        ),
+                                    )
+                                )
 
                 case DisconnectedEvent() if self._active_profile is not None:
                     profile, self._active_profile = self._active_profile, None
@@ -305,9 +332,6 @@ class PipelineService(PipelineComponent):
                                 not self._options.is_enabled("persistent_profile")
                                 and self._active_profile
                             ):
-                                await self._detection_worker.change_mode(
-                                    DetectionMode.WAKEWORD
-                                )
                                 await self.execute_command(
                                     DeactivateProfileCmd(),
                                 )
@@ -327,6 +351,20 @@ class PipelineService(PipelineComponent):
                                         profile_id=profile.id,
                                     )
                                 )
+
+                                if self._options.is_enabled("reactions"):
+                                    reaction = profile.get_reaction(
+                                        ReactionKind.INTERRUPTED
+                                    )
+                                    if reaction:
+                                        self._tts_queue.put_nowait(
+                                            PipelineRequest(
+                                                data=TTSRequest(
+                                                    text=reaction,
+                                                    profile_id=profile.id,
+                                                ),
+                                            )
+                                        )
 
                     match res:
                         case UtteranceDetectedEvent():
@@ -470,9 +508,16 @@ class PipelineService(PipelineComponent):
             and self._active_extension
         ):
             if options.room_voice_enabled:
-                self._audio_driver.start_room_voice(
-                    profile_id=self._active_profile.id,
-                )
+                try:
+                    self._audio_driver.start_room_voice(
+                        profile_id=self._active_profile.id,
+                    )
+                except Exception as err:
+                    self._logger.warning(
+                        "Failed to start room voice profile {}: {}",
+                        self._active_profile.id,
+                        err,
+                    )
             else:
                 self._audio_driver.stop_room_voice()
 
@@ -486,7 +531,21 @@ class PipelineService(PipelineComponent):
         profile = self._profiles.get(cmd.profile_id)
 
         if self._active_profile is profile:
-            return False
+            PipelineRequest.bump_generation()
+            await self._detection_worker.change_mode(DetectionMode.UTTERANCE)
+            if self._options.is_enabled("reactions"):
+                reaction = profile.get_reaction(ReactionKind.GREETING)
+                if reaction:
+                    self._tts_queue.put_nowait(
+                        PipelineRequest(
+                            trace_id=cmd.trace_id,
+                            data=TTSRequest(
+                                text=reaction,
+                                profile_id=profile.id,
+                            ),
+                        )
+                    )
+            return True
 
         PipelineRequest.bump_generation()
 
@@ -507,9 +566,16 @@ class PipelineService(PipelineComponent):
         )
 
         if self._options.is_enabled("room_voice"):
-            self._audio_driver.start_room_voice(
-                profile_id=profile.id,
-            )
+            try:
+                self._audio_driver.start_room_voice(
+                    profile_id=profile.id,
+                )
+            except Exception as err:
+                self._logger.warning(
+                    "Failed to start room voice profile {}: {}",
+                    profile.id,
+                    err,
+                )
 
         await self._detection_worker.change_mode(DetectionMode.UTTERANCE)
 
@@ -530,10 +596,10 @@ class PipelineService(PipelineComponent):
         return True
 
     async def _handle_deactivate_profile(self, cmd: DeactivateProfileCmd) -> bool:
-        profile, self._active_profile = self._active_profile, None
-        if profile is None:
+        if self._active_profile is None:
             return False
 
+        profile = self._active_profile
         PipelineRequest.bump_generation()
 
         if self._options.is_enabled("wakeword"):

@@ -1,6 +1,6 @@
 import pytest
 
-from helomi_app.audio import AudioFormat, AudioResampler
+from helomi_app.core.audio import AudioFormat, AudioResampler
 from tests.fixtures.audio import create_raw_audio
 from tests.fixtures.mocks import MockAudioDriver
 
@@ -35,6 +35,5 @@ async def test_audio_capture_and_resampling_pipeline():
     for chunk in resampled_chunks:
         assert chunk.format == target_format
         # Check conversion to PCM byte buffer
-        width, pcm = chunk.to_pcm()
-        assert width == 2
+        pcm = chunk.to_int16()
         assert len(pcm) == len(chunk.samples) * 2

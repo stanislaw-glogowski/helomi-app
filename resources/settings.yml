@@ -16,8 +16,8 @@ audio:
   avfaudio:
     voice_processing: true
   twilio:
-    auth_token: "env://TWILIO_AUTH_TOKEN" # required
-    public_url: "env://TWILIO_PUBLIC_URL" # required
+    auth_token: "env://TWILIO_AUTH_TOKEN" # required (see .env.example)
+    public_url: "env://TWILIO_PUBLIC_URL" # required (see .env.example)
     port: 4357
     allowed_callers: # optional
     handshake_timeout: 30

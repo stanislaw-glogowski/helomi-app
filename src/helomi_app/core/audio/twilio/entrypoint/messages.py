@@ -19,40 +19,48 @@ class ConnectedEvent(_BaseMessage):
     version: str
 
 
+class StartFormat(_BaseMessage):
+    encoding: str
+    sample_rate: int = Field(alias="sampleRate")
+    channels: int
+
+
+class StartData(_BaseMessage):
+    account_sid: str = Field(alias="accountSid")
+    stream_sid: str = Field(alias="streamSid")
+    call_sid: str = Field(alias="callSid")
+    tracks: list[str]
+    format: StartFormat = Field(alias="mediaFormat")
+    custom_parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        alias="customParameters",
+    )
+
+
 class StartEvent(_BaseMessage):
+    Format = StartFormat
+    Data = StartData
+
     type: Literal["start"] = Field(alias="event")
     sequence_number: str = Field(alias="sequenceNumber")
     stream_sid: str = Field(alias="streamSid")
-    start: Data
+    start: StartData
 
-    class Data(_BaseMessage):
-        account_sid: str = Field(alias="accountSid")
-        stream_sid: str = Field(alias="streamSid")
-        call_sid: str = Field(alias="callSid")
-        tracks: list[str]
-        format: Format = Field(alias="mediaFormat")
-        custom_parameters: dict[str, Any] = Field(
-            default_factory=dict,
-            alias="customParameters",
-        )
 
-        class Format(_BaseMessage):
-            encoding: str
-            sample_rate: int = Field(alias="sampleRate")
-            channels: int
+class MediaData(_BaseMessage):
+    track: str
+    chunk: str
+    timestamp: str
+    payload: str
 
 
 class MediaEvent(_BaseMessage):
+    Data = MediaData
+
     type: Literal["media"] = Field(alias="event")
     sequence_number: str = Field(alias="sequenceNumber")
     stream_sid: str = Field(alias="streamSid")
-    media: Data
-
-    class Data(_BaseMessage):
-        track: str
-        chunk: str
-        timestamp: str
-        payload: str
+    media: MediaData
 
     @property
     def data(self) -> bytes:

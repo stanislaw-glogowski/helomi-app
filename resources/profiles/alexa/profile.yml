@@ -16,15 +16,15 @@ reactions:
     - "I'm here and listening. How are you doing today?"
   interrupted:
     - "Yes?"
-    - "Yes, I'm here."
+    - "Listening."
+    - "Go ahead."
+    - "I'm here."
     - "How can I help?"
-    - "Yes, go ahead."
-    - "I'm listening."
-    - "Go ahead, I'm listening."
-    - "Yes, what's on your mind?"
-    - "I'm here, what do you need?"
-    - "I'm listening, go ahead."
-    - "What can I do for you?"
+    - "Yes, please?"
+    - "Right here."
+    - "Tell me."
+    - "Ready."
+    - "What's up?"
 
 stt:
   parakeet:

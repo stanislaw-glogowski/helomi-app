@@ -156,4 +156,4 @@ class Runtime(AbstractAsyncContextManager):
                 else component
             )
 
-        return self._components[cls]
+        return cast(T, self._components[cls])
