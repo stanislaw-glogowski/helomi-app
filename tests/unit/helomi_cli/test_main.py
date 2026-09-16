@@ -143,9 +143,11 @@ async def test_cli_run_exception_handling():
         with pytest.raises(RuntimeError, match="command failed"):
             await run(args)
 
-        # When debug=False, exception is logged
+        # When debug=False, exception is logged and sys.exit(1) is called
         args.debug = False
-        await run(args)
+        with pytest.raises(SystemExit) as exc_info:
+            await run(args)
+        assert exc_info.value.code == 1
         mock_logger.exception.assert_called_once()
 
 

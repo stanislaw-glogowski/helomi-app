@@ -29,41 +29,29 @@ class AudioDriver[TSettings, TProfile](AbstractEventSource[AudioEvent], ABC):
     def room_voice_supported(self) -> bool:
         raise NotImplementedError
 
-    def play(self, audio: RawAudio, profile_id: str, is_final: bool) -> bool:
-        result = self.execute_command(
-            PlayCmd(
-                audio=audio,
-                profile_id=profile_id,
-                is_final=is_final,
-            )
-        )
+    async def play(self, audio: RawAudio) -> bool:
+        return await self.execute_command(PlayCmd(audio=audio))
 
-        return result
+    async def interrupt(self) -> bool:
+        return await self.execute_command(InterruptCmd())
 
-    def interrupt(self, profile_id: str) -> bool:
-        return self.execute_command(
-            InterruptCmd(
-                profile_id=profile_id,
-            )
-        )
-
-    def start_room_voice(self, profile_id: str) -> bool:
-        return self.execute_command(
+    async def start_room_voice(self, profile_id: str) -> bool:
+        return await self.execute_command(
             StartRoomVoiceCmd(
                 profile_id=profile_id,
             )
         )
 
-    def stop_room_voice(self) -> bool:
-        return self.execute_command(
+    async def stop_room_voice(self) -> bool:
+        return await self.execute_command(
             StopRoomVoiceCmd(),
         )
 
-    def disconnect(self) -> bool:
-        return self.execute_command(
+    async def disconnect(self) -> bool:
+        return await self.execute_command(
             DisconnectCmd(),
         )
 
     @abstractmethod
-    def execute_command(self, cmd: AudioCmd) -> bool:
+    async def execute_command(self, cmd: AudioCmd) -> bool:
         raise NotImplementedError

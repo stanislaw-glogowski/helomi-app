@@ -12,7 +12,6 @@ from ..messages import (
     ExtensionDeactivatedEvent,
     OptionsSetEvent,
     ProfileActivatedEvent,
-    ProfileDeactivatedEvent,
 )
 from ..service import (
     PipelineService,
@@ -113,7 +112,7 @@ class ServerExtension(PipelineExtension):
     async def _pipeline_loop(self) -> None:
         async for event in self._subscribe_event():
             match event:
-                case OptionsSetEvent():
+                case OptionsSetEvent() | ExtensionDeactivatedEvent():
                     event = None
 
                 case ExtensionActivatedEvent(active_profile_id=profile_id):
@@ -122,14 +121,6 @@ class ServerExtension(PipelineExtension):
                             profile_id=profile_id,
                         )
                         if profile_id
-                        else None
-                    )
-                case ExtensionDeactivatedEvent():
-                    event = (
-                        ProfileDeactivatedEvent(
-                            profile_id=profile.id,
-                        )
-                        if (profile := self.active_profile) is not None
                         else None
                     )
             if event is None:

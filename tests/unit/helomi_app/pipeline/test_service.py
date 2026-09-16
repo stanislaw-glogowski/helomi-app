@@ -10,7 +10,6 @@ from helomi_app.core.audio import (
     AudioFormat,
     CapturedEvent,
     DisconnectedEvent,
-    InterruptedEvent,
     RawAudio,
 )
 from helomi_app.core.audio.config import AudioProfile
@@ -83,11 +82,11 @@ def mock_profiles():
 @pytest.fixture
 def mock_service(mock_profiles):
     audio_driver = MagicMock(spec=AudioDriver)
-    audio_driver.start_room_voice = MagicMock(return_value=True)
-    audio_driver.stop_room_voice = MagicMock(return_value=True)
-    audio_driver.disconnect = MagicMock(return_value=True)
-    audio_driver.interrupt = MagicMock(return_value=False)
-    audio_driver.play = MagicMock()
+    audio_driver.start_room_voice = AsyncMock(return_value=True)
+    audio_driver.stop_room_voice = AsyncMock(return_value=True)
+    audio_driver.disconnect = AsyncMock(return_value=True)
+    audio_driver.interrupt = AsyncMock(return_value=False)
+    audio_driver.play = AsyncMock(return_value=True)
 
     async def empty_capture():
         if False:
@@ -321,7 +320,7 @@ async def test_pipeline_service_extension_filtering(mock_service) -> None:
 @pytest.mark.asyncio
 async def test_pipeline_service_detection_loop_speech_interrupted(mock_service) -> None:
     service, audio_driver, _, _, _ = mock_service
-    audio_driver.interrupt = MagicMock(return_value=True)
+    audio_driver.interrupt = AsyncMock(return_value=True)
 
     await service.execute_command(ActivateProfileCmd(profile_id="prof1"))
 
@@ -403,8 +402,6 @@ async def test_pipeline_service_stt_tts_and_playback_loops(mock_service) -> None
     )
     audio_driver.play.assert_called_with(
         audio=fake_audio,
-        profile_id="prof1",
-        is_final=False,
     )
 
     sub_task.cancel()
@@ -432,7 +429,7 @@ async def test_pipeline_service_say_text_empty(mock_service) -> None:
 @pytest.mark.asyncio
 async def test_pipeline_service_utterance_started_barge_in(mock_service) -> None:
     service, audio_driver, _, _, _ = mock_service
-    audio_driver.interrupt = MagicMock(return_value=True)
+    audio_driver.interrupt = AsyncMock(return_value=True)
 
     await service.execute_command(ActivateProfileCmd(profile_id="prof1"))
     service.active_profile.get_reaction = MagicMock(
@@ -525,7 +522,7 @@ async def test_pipeline_service_synthesis_ready_event(mock_service) -> None:
 async def test_pipeline_service_interrupted_reaction(mock_service) -> None:
     service, audio_driver, _, _, _ = mock_service
     service.register_extension(MockExtensionA, activate=True)
-    audio_driver.interrupt = MagicMock(return_value=True)
+    audio_driver.interrupt = AsyncMock(return_value=True)
 
     await service.execute_command(ActivateProfileCmd(profile_id="prof1"))
     service.active_profile.get_reaction = MagicMock(
@@ -668,15 +665,14 @@ async def test_pipeline_service_capture_loop_events(mock_service) -> None:
     sub_task = asyncio.create_task(listener())
     await asyncio.sleep(0.01)
 
-    # 1. CapturedEvent with profile_id activates profile
+    # 1. CapturedEvent with profile_id activates profile and queues audio
     raw_audio = MagicMock(spec=RawAudio)
 
     async def stream_captured():
         yield CapturedEvent(audio=raw_audio, profile_id="prof1")
         await asyncio.sleep(0.02)
-        # 2. InterruptedEvent triggers SpeechInterruptedEvent and reaction
-        service._profiles.get("prof1").get_reaction.return_value = "Tak?"
-        yield InterruptedEvent(profile_id="prof1")
+        # 2. DisconnectedEvent deactivates profile
+        yield DisconnectedEvent()
 
     audio_driver.subscribe_event = stream_captured
     cap_task = asyncio.create_task(service._capture_loop())
@@ -685,11 +681,9 @@ async def test_pipeline_service_capture_loop_events(mock_service) -> None:
     sub_task.cancel()
     await asyncio.gather(cap_task, sub_task, return_exceptions=True)
 
-    assert service.active_profile.id == "prof1"
-    assert any(isinstance(e, SpeechInterruptedEvent) for e in events)
-    assert not service._tts_queue.empty()
-    req = service._tts_queue.get_nowait()
-    assert req.data.text == "Tak?"
+    assert any(isinstance(e, ProfileActivatedEvent) for e in events)
+    assert any(isinstance(e, ProfileDeactivatedEvent) for e in events)
+    assert service.active_profile is None
 
 
 @pytest.mark.asyncio
@@ -729,3 +723,120 @@ async def test_pipeline_service_extension_lifecycle_advanced(mock_service) -> No
 
     sub_task.cancel()
     await asyncio.gather(sub_task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_service_activate_invalid_profile(mock_service) -> None:
+    service, _, _, _, _ = mock_service
+    # ProfileCatalog raises KeyError for missing profile; should be handled cleanly
+    service._profiles.get = MagicMock(side_effect=KeyError("Profile not found"))
+    res = await service.execute_command(ActivateProfileCmd(profile_id="non_existent"))
+    assert res is False
+
+
+@pytest.mark.asyncio
+async def test_pipeline_service_stop_room_voice_error(mock_service) -> None:
+    service, audio_driver, _, _, _ = mock_service
+    audio_driver.stop_room_voice.side_effect = RuntimeError("driver error")
+
+    await service.execute_command(ActivateProfileCmd(profile_id="prof1"))
+
+    # Deactivating profile with failing stop_room_voice should not raise
+    res = await service.execute_command(DeactivateProfileCmd())
+    assert res is True
+
+
+@pytest.mark.asyncio
+async def test_pipeline_service_interrupt_cooldown_blocks_second_interrupt(
+    mock_service,
+) -> None:
+    """After first interrupt, cooldown prevents second interrupt.
+
+    This ensures that reaction playback is protected from interruption.
+    """
+    service, audio_driver, _, _, _ = mock_service
+    audio_driver.interrupt = AsyncMock(return_value=True)
+
+    await service.execute_command(ActivateProfileCmd(profile_id="prof1"))
+    assert not service._interrupt_cooldown
+
+    # Two UtteranceStartedEvent in a row — second should be blocked by cooldown
+    async def mock_detect(audio):
+        yield UtteranceStartedEvent()
+        yield UtteranceStartedEvent()
+
+    service._detection_worker.detect = mock_detect
+
+    events = []
+
+    async def listener():
+        async for evt in service.subscribe_event():
+            events.append(evt)
+
+    task = asyncio.create_task(listener())
+    await asyncio.sleep(0.01)
+
+    service._detection_queue.put_nowait(MagicMock(spec=RawAudio))
+
+    det_task = asyncio.create_task(service._detection_loop())
+    await asyncio.sleep(0.05)
+    det_task.cancel()
+    task.cancel()
+    await asyncio.gather(det_task, task, return_exceptions=True)
+
+    # Only ONE SpeechInterruptedEvent despite two UtteranceStartedEvents
+    interrupted_events = [e for e in events if isinstance(e, SpeechInterruptedEvent)]
+    assert len(interrupted_events) == 1
+    assert service._interrupt_cooldown is True
+
+
+@pytest.mark.asyncio
+async def test_pipeline_service_interrupt_cooldown_clears_on_utterance_detected(
+    mock_service,
+) -> None:
+    """Cooldown clears when user finishes speaking (UtteranceDetectedEvent)."""
+    service, audio_driver, _, _, _ = mock_service
+    audio_driver.interrupt = AsyncMock(return_value=True)
+
+    await service.execute_command(ActivateProfileCmd(profile_id="prof1"))
+
+    # Interrupt → cooldown ON → UtteranceDetected → cooldown OFF
+    async def mock_detect(audio):
+        yield UtteranceStartedEvent()
+        yield UtteranceDetectedEvent(audio=MagicMock(spec=AudioChunk))
+
+    service._detection_worker.detect = mock_detect
+    service._detection_queue.put_nowait(MagicMock(spec=RawAudio))
+
+    det_task = asyncio.create_task(service._detection_loop())
+    await asyncio.sleep(0.05)
+    det_task.cancel()
+    await asyncio.gather(det_task, return_exceptions=True)
+
+    assert service._interrupt_cooldown is False
+    assert not service._stt_queue.empty()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_service_interrupt_cooldown_clears_on_conversation_ended(
+    mock_service,
+) -> None:
+    """Cooldown clears on ConversationEndedEvent (timeout)."""
+    service, audio_driver, _, _, _ = mock_service
+    audio_driver.interrupt = AsyncMock(return_value=True)
+
+    await service.execute_command(ActivateProfileCmd(profile_id="prof1"))
+    service._interrupt_cooldown = True  # simulate active cooldown
+
+    async def mock_detect(audio):
+        yield ConversationEndedEvent()
+
+    service._detection_worker.detect = mock_detect
+    service._detection_queue.put_nowait(MagicMock(spec=RawAudio))
+
+    det_task = asyncio.create_task(service._detection_loop())
+    await asyncio.sleep(0.05)
+    det_task.cancel()
+    await asyncio.gather(det_task, return_exceptions=True)
+
+    assert service._interrupt_cooldown is False

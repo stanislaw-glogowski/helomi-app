@@ -1,5 +1,6 @@
 from .collections import DeepMergeDict
 from .conversion import to_snake_case
+from .epoch import EpochCoordinator, EpochEnvelope
 from .foundation import (
     AbstractAdapter,
     AbstractAsyncComponent,
@@ -28,6 +29,8 @@ __all__ = [
     "ConfigFile",
     "ConfigKind",
     "DeepMergeDict",
+    "EpochCoordinator",
+    "EpochEnvelope",
     "HFModel",
     "LogLevel",
     "PromptReader",

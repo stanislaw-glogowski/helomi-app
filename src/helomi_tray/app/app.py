@@ -58,6 +58,7 @@ class App(rumps.App, BaseComponent):
         self._start_icon = AppIcon.Start()
         self._state = AppState()
         self._last_state = AppState()
+        self._previous_mode: AppMode = AppMode.SERVER
 
         self._window: BaseWindow | None = None
 
@@ -173,26 +174,27 @@ class App(rumps.App, BaseComponent):
 
     @rumps.timer(0.5)
     def _sync_state(self, _: rumps.Timer | None = None) -> None:
-        if self._last_state == self._state:
+        state = self._state
+        if self._last_state == state:
             return
 
-        last_state, self._last_state = self._last_state, self._state
+        last_state, self._last_state = self._last_state, state
 
-        match self._state.status:
+        match state.status:
             case AppStatus.RUNNING:
                 profile = (
-                    self._runtime.profiles.get(self._state.profile_id)
-                    if self._state.profile_id
+                    self._runtime.profiles.get(state.profile_id)
+                    if state.profile_id
                     else None
                 )
 
                 self._menu_tts.set_enabled(True)
-                self._menu_tts.set_checked(self._state.mode == AppMode.TTS)
+                self._menu_tts.set_checked(state.mode == AppMode.TTS)
 
                 self._menu_parrot.set_enabled(True)
-                self._menu_parrot.set_checked(self._state.mode == AppMode.PARROT)
+                self._menu_parrot.set_checked(state.mode == AppMode.PARROT)
 
-                match self._state.mode:
+                match state.mode:
                     case AppMode.SERVER:
                         mode_icon = None
                     case AppMode.TTS:
@@ -200,52 +202,47 @@ class App(rumps.App, BaseComponent):
                     case AppMode.PARROT:
                         mode_icon = AppIcon.PARROT_MODE
 
-                match self._state.audio_driver:
+                match state.audio_driver:
                     case AudioDriverKind.LOCAL | None:
                         self._menu_profiles.set_enabled(True)
 
                         action = self._menu_settings.get_action("persistent_profile")
                         action.set_checked(
-                            self._state.persistent_profile_enabled
-                            and self._state.persistent_profile_supported
+                            state.persistent_profile_enabled
+                            and state.persistent_profile_supported
                         )
-                        action.set_enabled(self._state.persistent_profile_supported)
+                        action.set_enabled(state.persistent_profile_supported)
 
                         action = self._menu_settings.get_action("wakeword")
                         action.set_checked(
-                            self._state.wakeword_enabled
-                            and self._state.wakeword_supported
+                            state.wakeword_enabled and state.wakeword_supported
                         )
-                        action.set_enabled(self._state.wakeword_supported)
+                        action.set_enabled(state.wakeword_supported)
 
                         action = self._menu_settings.get_action("reactions")
                         action.set_checked(
-                            self._state.reactions_enabled
-                            and self._state.reactions_supported
+                            state.reactions_enabled and state.reactions_supported
                         )
-                        action.set_enabled(self._state.reactions_supported)
+                        action.set_enabled(state.reactions_supported)
 
                         action = self._menu_settings.get_action("room_voice")
                         action.set_checked(
-                            self._state.room_voice_enabled
-                            and self._state.room_voice_supported
+                            state.room_voice_enabled and state.room_voice_supported
                         )
-                        action.set_enabled(self._state.room_voice_supported)
+                        action.set_enabled(state.room_voice_supported)
 
                         if mode_icon:
                             icon = mode_icon
                         elif profile:
                             icon = profile.emoji
-                        elif self._state.wakeword_enabled:
+                        elif state.wakeword_enabled:
                             icon = AppIcon.WAKEWORD_ACTIVE
                         else:
                             icon = AppIcon.WAKEWORD_IDLE
 
                     case AudioDriverKind.GSM:
                         self._menu_profiles.set_enabled(False)
-                        self._menu_parrot.set_checked(
-                            self._state.mode == AppMode.PARROT
-                        )
+                        self._menu_parrot.set_checked(state.mode == AppMode.PARROT)
 
                         if mode_icon:
                             icon = mode_icon
@@ -258,31 +255,27 @@ class App(rumps.App, BaseComponent):
 
                 title = f"{icon} {label}"
 
-                if (
-                    profile
-                    and self._state.room_voice_enabled
-                    and profile.has_room_voice
-                ):
+                if profile and state.room_voice_enabled and profile.has_room_voice:
                     title = f"{title} {AppIcon.ROOM_VOICE}"
 
                 self.title = title
 
-                if self._state.mode == AppMode.SERVER and self._state.api_url:
+                if state.mode == AppMode.SERVER and state.api_url:
                     self._menu_server.title = "API Documentation"
                     self._menu_server.set_enabled(True)
                 else:
                     self._menu_server.title = "API Disabled"
                     self._menu_server.set_enabled(False)
 
-                if last_state.profile_id != self._state.profile_id:
+                if last_state.profile_id != state.profile_id:
                     if last_state.profile_id:
                         self._menu_profiles.get_action(
                             last_state.profile_id,
                         ).set_checked(False)
 
-                    if self._state.profile_id:
+                    if state.profile_id:
                         self._menu_profiles.get_action(
-                            self._state.profile_id,
+                            state.profile_id,
                         ).set_checked(True)
 
             case AppStatus.QUITING:
@@ -414,6 +407,7 @@ class App(rumps.App, BaseComponent):
 
         match sender.id:
             case "tts_window":
+                self._previous_mode = self._state.mode
                 self._set_mode(AppMode.TTS)
                 window = TTSWindow(
                     on_send=self._handle_tts_send,
@@ -433,7 +427,7 @@ class App(rumps.App, BaseComponent):
         window.close()
         self._window = None
 
-        self._set_mode(AppMode.SERVER)
+        self._set_mode(self._previous_mode)
 
     def _handle_tts_send(self, text: str) -> None:
         self._pipeline_execute_command(

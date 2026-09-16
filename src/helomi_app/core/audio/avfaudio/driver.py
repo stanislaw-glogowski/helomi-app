@@ -4,7 +4,6 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, ClassVar
 
-from .. import DisconnectedEvent
 from ..domain import AudioDriverKind
 from ..messages import (
     AudioCmd,
@@ -12,11 +11,7 @@ from ..messages import (
     CapturedEvent,
     DisconnectCmd,
     InterruptCmd,
-    InterruptedEvent,
     PlayCmd,
-    PlayedEvent,
-    RoomVoiceStartedEvent,
-    RoomVoiceStoppedEvent,
     StartRoomVoiceCmd,
     StopRoomVoiceCmd,
 )
@@ -46,12 +41,12 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
         self._proc: asyncio.subprocess.Process | None = None
         self._proc_task: asyncio.Task | None = None
 
-        self._request_profiles: dict[int, str] = {}
-        self._request_futures: dict[int, asyncio.Future[Any]] = {}
-
+        self._pending_requests: dict[int, asyncio.Future[Any]] = {}
         self._pending_playbacks = 0
+
         self._room_voice_started = False
         self._ready_signal = asyncio.Event()
+        self._lock = asyncio.Lock()
 
     @property
     def kind(self) -> AudioDriverKind:
@@ -61,62 +56,58 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
     def room_voice_supported(self) -> bool:
         return True
 
-    def execute_command(self, cmd: AudioCmd) -> bool:
+    async def execute_command(self, cmd: AudioCmd) -> bool:
         self._require_ready()
-        success = True
 
         match cmd:
             case PlayCmd():
-                profile_id = cmd.profile_id
-                request_id = self._send(MessageKind.PLAY, AudioPacked.encode(cmd.audio))
-                self._pending_playbacks += 1
-                if cmd.is_final:
-                    self._dispatch_event(DisconnectedEvent())
+                async with self._lock:
+                    self._pending_playbacks += 1
+                self._send(MessageKind.PLAY, AudioPacked.encode(cmd.audio))
 
             case InterruptCmd():
-                profile_id = cmd.profile_id
-                request_id = self._send(MessageKind.STOP_PLAYBACK)
-                self._pending_playbacks = 0
+                async with self._lock:
+                    if not self._pending_playbacks:
+                        return False
+
+                    self._pending_playbacks = 0
+                self._send(MessageKind.STOP_PLAYBACK)
 
             case StartRoomVoiceCmd():
-                profile = self._profiles.get(cmd.profile_id, None)
-                if profile is None or profile.room_voice_path is None:
-                    if self._room_voice_started:
-                        self._send(MessageKind.STOP_ROOM_VOICE)
-                    self._room_voice_started = False
-                    profile_id = None
-                    request_id = None
-                else:
-                    self._room_voice_started = True
-                    profile_id = cmd.profile_id
-                    request_id = self._send(
-                        MessageKind.START_ROOM_VOICE,
-                        StartRoomVoiceRequest(path=str(profile.room_voice_path)),
-                    )
+                room_voice_path = (
+                    profile.room_voice_path
+                    if (profile := self._profiles.get(cmd.profile_id, None))
+                    else None
+                )
 
-                if profile_id is None and self._room_voice_started:
-                    request_id = self._send(MessageKind.STOP_ROOM_VOICE)
-                    success = False
+                async with self._lock:
+                    if room_voice_path is None and not self._room_voice_started:
+                        return False
+                    self._room_voice_started = room_voice_path is not None
+
+                    if not room_voice_path:
+                        self._send(MessageKind.STOP_ROOM_VOICE)
+                    else:
+                        self._send(
+                            MessageKind.START_ROOM_VOICE,
+                            StartRoomVoiceRequest(path=str(room_voice_path)),
+                        )
 
             case StopRoomVoiceCmd():
-                if not self._room_voice_started:
-                    return False
-
-                self._room_voice_started = False
-                profile_id = None
-                request_id = self._send(MessageKind.STOP_ROOM_VOICE)
+                async with self._lock:
+                    if not self._room_voice_started:
+                        return False
+                    self._room_voice_started = False
+                self._send(MessageKind.STOP_ROOM_VOICE)
 
             case DisconnectCmd():
-                if self._room_voice_started:
+                async with self._lock:
+                    if not self._room_voice_started:
+                        return True
                     self._room_voice_started = False
-                    self._send(MessageKind.STOP_ROOM_VOICE)
-                return True
+                self._send(MessageKind.STOP_ROOM_VOICE)
 
-        if request_id is None:
-            return False
-        if profile_id is not None:
-            self._request_profiles[request_id] = profile_id
-        return success
+        return True
 
     def subscribe_event(self) -> AsyncIterator[AudioEvent]:
         self._require_ready()
@@ -137,11 +128,11 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
         frame = WireFrame.pack(kind, msg)
         try:
             future = asyncio.Future[Any]()
-            self._request_futures[frame.request_id] = future
+            self._pending_requests[frame.request_id] = future
             frame.write_to(proc.stdin)
             return await asyncio.wait_for(future, timeout=self._PROC_TIMEOUT)
         finally:
-            self._request_futures.pop(frame.request_id, None)
+            self._pending_requests.pop(frame.request_id, None)
 
     async def _do_open(self) -> None:
         if self._proc is not None:
@@ -173,10 +164,10 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
         )
 
     async def _do_close(self) -> None:
-        for future in self._request_futures.values():
+        for future in self._pending_requests.values():
             if isinstance(future, asyncio.Future) and not future.done():
                 future.cancel()
-        self._request_futures.clear()
+        self._pending_requests.clear()
 
     async def _post_close(self) -> None:
         proc, proc_task, self._proc, self._proc_task = (
@@ -219,7 +210,6 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
             if frame is None:
                 break
 
-            profile_id = self._request_profiles.pop(frame.request_id, None)
             result: Any = None
 
             match frame.kind:
@@ -232,7 +222,6 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
 
                     self._dispatch_event(
                         CapturedEvent(
-                            profile_id=profile_id,
                             audio=audio,
                         ),
                     )
@@ -240,40 +229,18 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
                 case MessageKind.AUDIO_STARTED:
                     result = frame.unpack_msg(AudioStartedPacked)
 
-                case MessageKind.ROOM_VOICE_START_RESULT:
-                    if profile_id:
-                        self._dispatch_event(
-                            RoomVoiceStartedEvent(
-                                profile_id=profile_id,
-                            ),
-                        )
-
-                case MessageKind.ROOM_VOICE_STOP_RESULT:
-                    self._dispatch_event(
-                        RoomVoiceStoppedEvent(),
-                    )
-
                 case MessageKind.PLAYBACK_FINISHED:
-                    self._pending_playbacks = (
-                        self._pending_playbacks > 0 and self._pending_playbacks - 1
-                    ) or 0
+                    async with self._lock:
+                        self._pending_playbacks = (
+                            self._pending_playbacks > 0 and self._pending_playbacks - 1
+                        ) or 0
 
-                    if profile_id:
-                        self._dispatch_event(
-                            PlayedEvent(
-                                profile_id=profile_id,
-                            ),
-                        )
-
-                case MessageKind.PLAYBACK_STOPPED:
-                    self._pending_playbacks = 0
-
-                    if profile_id:
-                        self._dispatch_event(
-                            InterruptedEvent(
-                                profile_id=profile_id,
-                            ),
-                        )
+                case (
+                    MessageKind.PLAYBACK_STOPPED
+                    | MessageKind.ROOM_VOICE_START_RESULT
+                    | MessageKind.ROOM_VOICE_STOP_RESULT
+                ):
+                    pass
 
                 case MessageKind.ERROR:
                     error_packet = frame.unpack_msg(ErrorPacket)
@@ -287,7 +254,7 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
                     self._logger.trace("{} frame skipped", frame.kind.name)
 
             if (
-                future := self._request_futures.pop(frame.request_id, None)
+                future := self._pending_requests.pop(frame.request_id, None)
             ) is not None:
                 match result:
                     case Exception():

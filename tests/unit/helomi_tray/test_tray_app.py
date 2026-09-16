@@ -440,6 +440,16 @@ def test_tray_app_handle_window_lifecycle(mock_runtime):
         # 4. Closing when no window is open does nothing
         app._handle_close_window()
 
+        # 5. Restores non-server mode (e.g. Parrot mode)
+        app._state = replace(app._state, mode=AppMode.PARROT)
+        app._set_mode.reset_mock()
+        mock_close.reset_mock()
+        app._handle_open_window(action)
+        app._set_mode.assert_called_once_with(AppMode.TTS)
+        app._handle_close_window()
+        mock_close.assert_called_once()
+        app._set_mode.assert_called_with(AppMode.PARROT)
+
 
 def test_tray_app_handle_tts_send(mock_runtime):
     """Verify _handle_tts_send executes SayText pipeline command with active profile."""

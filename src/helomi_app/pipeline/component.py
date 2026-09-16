@@ -35,13 +35,13 @@ class PipelineComponent(AbstractAsyncComponent, ABC):
 
     async def set_options(
         self,
-        greeting_enabled: bool | None = None,
+        reactions_enabled: bool | None = None,
         room_voice_enabled: bool | None = None,
         wakeword_enabled: bool | None = None,
     ) -> bool:
         return await self._execute_command(
             SetOptionsCmd(
-                greeting_enabled=greeting_enabled,
+                reactions_enabled=reactions_enabled,
                 room_voice_enabled=room_voice_enabled,
                 wakeword_enabled=wakeword_enabled,
             )

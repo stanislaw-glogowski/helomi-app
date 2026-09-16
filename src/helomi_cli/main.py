@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import signal
+import sys
 from contextlib import suppress
 
 from dotenv import load_dotenv
@@ -97,6 +98,7 @@ async def run(args: argparse.Namespace) -> None:
             raise err
         else:
             logger.exception(err)
+            sys.exit(1)
 
 
 def main():

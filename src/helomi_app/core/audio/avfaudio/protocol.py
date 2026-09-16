@@ -164,21 +164,20 @@ class WireFrame:
     def unpack_msg[T: PackedMessage](self, packed_cls: type[T]) -> T:
         return packed_cls.unpack(self.payload)
 
-    def upack_bool(self, name: str) -> bool:
+    def unpack_bool(self, name: str) -> bool:
         if len(self.payload) != 1 or self.payload[0] not in {0, 1}:
-            raise RuntimeError(t"Native audio {name} is invalid: expected one 0/1 byte")
+            raise RuntimeError(f"Native audio {name} is invalid: expected one 0/1 byte")
         return bool(self.payload[0])
 
     @classmethod
     def _new_request_id(cls) -> int:
         request_id = cls._NEXT_REQUEST_ID
         cls._NEXT_REQUEST_ID = (request_id + 1) & 0xFFFFFFFF
-        return cls._NEXT_REQUEST_ID
+        return request_id
 
 
 @dataclass(frozen=True, slots=True)
 class HandshakePacked(PackedMessage):
-    version: int
     version: int
 
     @classmethod

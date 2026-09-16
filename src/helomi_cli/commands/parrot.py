@@ -2,7 +2,7 @@ import asyncio
 
 from rich import print
 
-from helomi_app import Runtime
+from helomi_app import Profile, Runtime
 from helomi_app.pipeline import (
     ActivateProfileCmd,
     ProfileActivatedEvent,
@@ -19,13 +19,14 @@ async def run_parrot_cmd(
     profile_id: str | None,
     spinner: Spinner,
 ):
+    profile_id = profile_id or Profile.DEFAULT_ID
+
     print()
     await spinner.start("Initializing audio drivers & speech pipeline...")
     await runtime.get_pipeline_parrot_extension(True)
     pipeline = await runtime.get_pipeline_service()
 
-    if profile_id:
-        await pipeline.execute_command(ActivateProfileCmd(profile_id=profile_id))
+    await pipeline.execute_command(ActivateProfileCmd(profile_id=profile_id))
 
     await spinner.stop("Parrot mode ready")
 

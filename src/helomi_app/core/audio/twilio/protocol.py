@@ -38,9 +38,6 @@ class StartData(_BaseMessage):
 
 
 class StartEvent(_BaseMessage):
-    Format = StartFormat
-    Data = StartData
-
     type: Literal["start"] = Field(alias="event")
     sequence_number: str = Field(alias="sequenceNumber")
     stream_sid: str = Field(alias="streamSid")
@@ -55,8 +52,6 @@ class MediaData(_BaseMessage):
 
 
 class MediaEvent(_BaseMessage):
-    Data = MediaData
-
     type: Literal["media"] = Field(alias="event")
     sequence_number: str = Field(alias="sequenceNumber")
     stream_sid: str = Field(alias="streamSid")
@@ -90,7 +85,7 @@ class MarkData(_BaseMessage):
     name: str
 
 
-EventParser = TypeAdapter(
+TwilioEvent = TypeAdapter(
     Annotated[
         ConnectedEvent | StartEvent | MediaEvent | StopEvent | MarkEvent,
         Field(discriminator="type"),
@@ -106,10 +101,9 @@ class MediaCmd(_BaseMessage):
     media: dict[str, str]
 
     @classmethod
-    def create(cls, stream_sid: str, data: bytes) -> Self:
+    def create(cls, data: bytes) -> Self:
         payload = base64.b64encode(data).decode("utf-8")
         return cls(
-            stream_sid=stream_sid,
             media={
                 "payload": payload,
             },
@@ -127,10 +121,12 @@ class MarkCmd(_BaseMessage):
     mark: dict[str, str]
 
     @classmethod
-    def create(cls, stream_sid: str, name: str) -> Self:
+    def create(cls, name: str) -> Self:
         return cls(
-            stream_sid=stream_sid,
             mark={
                 "name": name,
             },
         )
+
+
+type TwilioCmd = MediaCmd | ClearCmd | MarkCmd

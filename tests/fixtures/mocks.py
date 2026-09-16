@@ -14,12 +14,8 @@ from helomi_app.core.audio import (
     DisconnectCmd,
     DisconnectedEvent,
     InterruptCmd,
-    InterruptedEvent,
     PlayCmd,
-    PlayedEvent,
     RawAudio,
-    RoomVoiceStartedEvent,
-    RoomVoiceStoppedEvent,
     StartRoomVoiceCmd,
     StopRoomVoiceCmd,
 )
@@ -80,25 +76,21 @@ class MockAudioDriver(AudioDriver[Any, Any]):
             if isinstance(event, CapturedEvent):
                 yield event.audio
 
-    def execute_command(self, cmd: AudioCmd) -> bool:
+    async def execute_command(self, cmd: AudioCmd) -> bool:
         match cmd:
             case PlayCmd():
                 self.played_audio.append(cmd.audio)
-                self._dispatch_event(PlayedEvent(profile_id=cmd.profile_id))
                 return True
             case InterruptCmd():
                 self.interrupt_count += 1
-                self._dispatch_event(InterruptedEvent(profile_id=cmd.profile_id))
                 return True
             case StartRoomVoiceCmd():
                 self.room_voice_started = True
                 self.room_voice_profile_id = cmd.profile_id
-                self._dispatch_event(RoomVoiceStartedEvent(profile_id=cmd.profile_id))
                 return True
             case StopRoomVoiceCmd():
                 self.room_voice_started = False
                 self.room_voice_profile_id = None
-                self._dispatch_event(RoomVoiceStoppedEvent())
                 return True
             case DisconnectCmd():
                 self._dispatch_event(DisconnectedEvent())

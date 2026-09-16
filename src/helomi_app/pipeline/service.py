@@ -7,7 +7,6 @@ from ..core.audio import (
     AudioDriver,
     CapturedEvent,
     DisconnectedEvent,
-    InterruptedEvent,
     RawAudio,
 )
 from ..core.detection import (
@@ -90,6 +89,7 @@ class PipelineService(PipelineComponent):
 
         self._active_profile: Profile | None = None
         self._active_extension: PipelineExtensionType | None = None
+        self._interrupt_cooldown = False
 
         self._lock = asyncio.Lock()
 
@@ -154,7 +154,7 @@ class PipelineService(PipelineComponent):
             and self._options.is_enabled("room_voice")
         ):
             try:
-                self._audio_driver.start_room_voice(
+                await self._audio_driver.start_room_voice(
                     profile_id=self._active_profile.id,
                 )
             except Exception as err:
@@ -183,7 +183,13 @@ class PipelineService(PipelineComponent):
         extension, self._active_extension = self._active_extension, None
 
         if self._active_profile and self._options.room_voice_enabled:
-            self._audio_driver.stop_room_voice()
+            try:
+                await self._audio_driver.stop_room_voice()
+            except Exception as err:
+                self._logger.warning(
+                    "Failed to stop room voice: {}",
+                    err,
+                )
 
         self._active_extension = None
         self._sync_options()
@@ -261,7 +267,7 @@ class PipelineService(PipelineComponent):
         )
 
     async def _do_close(self) -> None:
-        self._audio_driver.disconnect()
+        await self._audio_driver.disconnect()
         for subscription in self._subscriptions:
             subscription.put_nowait(None)
         self._subscriptions.clear()
@@ -281,30 +287,6 @@ class PipelineService(PipelineComponent):
                         )
 
                     self._detection_queue.put_nowait(event.audio)
-
-                case InterruptedEvent():
-                    if (
-                        self._active_profile
-                        and self._active_profile.id == event.profile_id
-                    ):
-                        self._dispatch_event(
-                            SpeechInterruptedEvent(
-                                profile_id=event.profile_id,
-                            )
-                        )
-                        if self._options.is_enabled("reactions"):
-                            reaction = self._active_profile.get_reaction(
-                                ReactionKind.INTERRUPTED
-                            )
-                            if reaction:
-                                self._tts_queue.put_nowait(
-                                    PipelineRequest(
-                                        data=TTSRequest(
-                                            text=reaction,
-                                            profile_id=self._active_profile.id,
-                                        ),
-                                    )
-                                )
 
                 case DisconnectedEvent() if self._active_profile is not None:
                     profile, self._active_profile = self._active_profile, None
@@ -328,6 +310,7 @@ class PipelineService(PipelineComponent):
                                 )
 
                         case ConversationEndedEvent():
+                            self._interrupt_cooldown = False
                             if (
                                 not self._options.is_enabled("persistent_profile")
                                 and self._active_profile
@@ -341,10 +324,12 @@ class PipelineService(PipelineComponent):
 
                     match res:
                         case UtteranceStartedEvent() | UtteranceDetectedEvent():
-                            if self._audio_driver.interrupt(
-                                profile_id=profile.id,
+                            if (
+                                not self._interrupt_cooldown
+                                and await self._audio_driver.interrupt()
                             ):
                                 PipelineRequest.bump_generation()
+                                self._interrupt_cooldown = True
 
                                 self._dispatch_event(
                                     SpeechInterruptedEvent(
@@ -368,6 +353,8 @@ class PipelineService(PipelineComponent):
 
                     match res:
                         case UtteranceDetectedEvent():
+                            self._interrupt_cooldown = False
+
                             self._stt_queue.put_nowait(
                                 PipelineRequest(
                                     data=STTRequest(
@@ -459,11 +446,7 @@ class PipelineService(PipelineComponent):
 
             try:
                 if request.is_current_generation and self._active_profile:
-                    self._audio_driver.play(
-                        audio=request.data,
-                        profile_id=self._active_profile.id,
-                        is_final=request.is_final,
-                    )
+                    await self._audio_driver.play(audio=request.data)
             finally:
                 self._playback_queue.task_done()
 
@@ -509,7 +492,7 @@ class PipelineService(PipelineComponent):
         ):
             if options.room_voice_enabled:
                 try:
-                    self._audio_driver.start_room_voice(
+                    await self._audio_driver.start_room_voice(
                         profile_id=self._active_profile.id,
                     )
                 except Exception as err:
@@ -519,19 +502,28 @@ class PipelineService(PipelineComponent):
                         err,
                     )
             else:
-                self._audio_driver.stop_room_voice()
+                try:
+                    await self._audio_driver.stop_room_voice()
+                except Exception as err:
+                    self._logger.warning(
+                        "Failed to stop room voice: {}",
+                        err,
+                    )
 
         self._options = options
-
         self._dispatch_event(OptionsSetEvent(**update))
 
         return True
 
     async def _handle_activate_profile(self, cmd: ActivateProfileCmd) -> bool:
-        profile = self._profiles.get(cmd.profile_id)
+        try:
+            profile = self._profiles.get(cmd.profile_id)
+        except KeyError:
+            return False
 
         if self._active_profile is profile:
             PipelineRequest.bump_generation()
+            self._interrupt_cooldown = False
             await self._detection_worker.change_mode(DetectionMode.UTTERANCE)
             if self._options.is_enabled("reactions"):
                 reaction = profile.get_reaction(ReactionKind.GREETING)
@@ -548,6 +540,7 @@ class PipelineService(PipelineComponent):
             return True
 
         PipelineRequest.bump_generation()
+        self._interrupt_cooldown = False
 
         if self._active_profile is not None:
             self._dispatch_event(
@@ -567,7 +560,7 @@ class PipelineService(PipelineComponent):
 
         if self._options.is_enabled("room_voice"):
             try:
-                self._audio_driver.start_room_voice(
+                await self._audio_driver.start_room_voice(
                     profile_id=profile.id,
                 )
             except Exception as err:
@@ -601,12 +594,19 @@ class PipelineService(PipelineComponent):
 
         profile = self._active_profile
         PipelineRequest.bump_generation()
+        self._interrupt_cooldown = False
 
         if self._options.is_enabled("wakeword"):
             await self._detection_worker.change_mode(DetectionMode.WAKEWORD)
 
         if self._options.is_enabled("room_voice"):
-            self._audio_driver.stop_room_voice()
+            try:
+                await self._audio_driver.stop_room_voice()
+            except Exception as err:
+                self._logger.warning(
+                    "Failed to stop room voice: {}",
+                    err,
+                )
 
         if self._options.is_enabled("reactions"):
             reaction = profile.get_reaction(ReactionKind.FAREWELL)
@@ -625,7 +625,7 @@ class PipelineService(PipelineComponent):
                 return True
 
         self._active_profile = None
-        self._audio_driver.disconnect()
+        await self._audio_driver.disconnect()
 
         self._dispatch_event(
             ProfileDeactivatedEvent(

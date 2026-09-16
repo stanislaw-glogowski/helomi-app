@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from helomi_app import Profile
 from helomi_app.pipeline import (
     ActivateProfileCmd,
     ProfileActivatedEvent,
@@ -74,7 +75,7 @@ async def test_run_parrot_cmd_lifecycle(mock_runtime):
 
 @pytest.mark.asyncio
 async def test_run_parrot_cmd_no_profile(mock_runtime):
-    """Verify run_parrot_cmd without profile_id does not call execute_command."""
+    """Verify run_parrot_cmd without profile_id activates default profile."""
     runtime, mock_pipeline = mock_runtime
 
     async def empty_events():
@@ -89,4 +90,6 @@ async def test_run_parrot_cmd_no_profile(mock_runtime):
 
     await run_parrot_cmd(runtime, shutdown, None, spinner)
 
-    mock_pipeline.execute_command.assert_not_called()
+    mock_pipeline.execute_command.assert_called_once_with(
+        ActivateProfileCmd(profile_id=Profile.DEFAULT_ID)
+    )

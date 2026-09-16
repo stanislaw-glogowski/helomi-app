@@ -80,7 +80,7 @@ class RawAudio:
         return float32_to_int16(self.data)
 
     @classmethod
-    def from_mulan(cls, data: bytes, format: AudioFormat) -> Self:
+    def from_mulaw(cls, data: bytes, format: AudioFormat) -> Self:
         return cls(
             format=format,
             data=mulaw_to_float32(data),
@@ -119,8 +119,8 @@ class AudioChunk:
         )
 
     @classmethod
-    def from_mulan(cls, data: bytes, format: AudioFormat) -> Self:
-        return cls.from_raw(RawAudio.from_mulan(data, format))
+    def from_mulaw(cls, data: bytes, format: AudioFormat) -> Self:
+        return cls.from_raw(RawAudio.from_mulaw(data, format))
 
     def to_mulaw(self) -> bytes:
         return float32_to_mulaw(self.samples)

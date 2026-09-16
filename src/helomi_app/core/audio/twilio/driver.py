@@ -5,10 +5,11 @@ from typing import ClassVar
 import uvicorn
 
 from ..domain import AudioDriverKind
-from ..messages import AudioCmd, DisconnectCmd, DisconnectedEvent, InterruptCmd, PlayCmd
+from ..messages import AudioCmd
 from ..ports import AudioDriver
+from .bridge import TwilioBridge
 from .config import TwilioProfile, TwilioSettings
-from .entrypoint import Bridge, create_app
+from .entrypoint import create_app
 
 
 class TwilioDriver(AudioDriver):
@@ -21,7 +22,7 @@ class TwilioDriver(AudioDriver):
     ) -> None:
         super().__init__(settings, profiles)
 
-        self._bridge = Bridge(
+        self._bridge = TwilioBridge(
             settings=settings,
             profiles=profiles,
             dispatch_event=self._dispatch_event,
@@ -47,39 +48,16 @@ class TwilioDriver(AudioDriver):
     def room_voice_supported(self) -> bool:
         return False
 
-    def execute_command(self, cmd: AudioCmd) -> bool:
+    async def execute_command(self, cmd: AudioCmd) -> bool:
         if self._loop is None:
             return False
 
-        match cmd:
-            case PlayCmd():
-                asyncio.run_coroutine_threadsafe(
-                    self._bridge.send_audio(cmd.audio, cmd.is_final),
-                    self._loop,
-                )
-                if cmd.is_final:
-                    self._dispatch_event(DisconnectedEvent())
-                return True
+        future = asyncio.run_coroutine_threadsafe(
+            self._bridge.execute_command(cmd),
+            self._loop,
+        )
 
-            case InterruptCmd():
-                if not self._bridge.is_sending_audio:
-                    return False
-
-                asyncio.run_coroutine_threadsafe(
-                    self._bridge.abort_sending_audio(),
-                    self._loop,
-                )
-                return True
-
-            case DisconnectCmd():
-                asyncio.run_coroutine_threadsafe(
-                    self._bridge.disconnect_profile(),
-                    self._loop,
-                )
-                return True
-
-            case _:
-                return False
+        return await asyncio.wait_for(asyncio.wrap_future(future), timeout=0)
 
     async def _do_open(self) -> None:
         thread = threading.Thread(

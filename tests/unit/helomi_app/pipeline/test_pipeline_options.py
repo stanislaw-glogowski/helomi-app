@@ -43,11 +43,11 @@ def mock_pipeline_dependencies():
 
     audio_driver = MagicMock(spec=AudioDriver)
     audio_driver.room_voice_supported = True
-    audio_driver.start_room_voice = MagicMock(return_value=True)
-    audio_driver.stop_room_voice = MagicMock(return_value=True)
-    audio_driver.disconnect = MagicMock(return_value=True)
-    audio_driver.interrupt = MagicMock(return_value=False)
-    audio_driver.play = MagicMock()
+    audio_driver.start_room_voice = AsyncMock(return_value=True)
+    audio_driver.stop_room_voice = AsyncMock(return_value=True)
+    audio_driver.disconnect = AsyncMock(return_value=True)
+    audio_driver.interrupt = AsyncMock(return_value=False)
+    audio_driver.play = AsyncMock(return_value=True)
 
     async def empty_capture():
         if False:

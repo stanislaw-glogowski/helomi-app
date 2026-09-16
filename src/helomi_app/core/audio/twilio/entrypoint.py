@@ -7,11 +7,11 @@ from fastapi import (
     status,
 )
 
-from .....version import __version__
-from .bridge import Bridge
+from ....version import __version__
+from .bridge import TwilioBridge
 
 
-def create_app(bridge: Bridge) -> FastAPI:
+def create_app(bridge: TwilioBridge) -> FastAPI:
     app = FastAPI(
         title="Helomi Twilio Entrypoint",
         version=__version__,
@@ -53,7 +53,7 @@ def create_app(bridge: Bridge) -> FastAPI:
 
 
 async def handle_request(request: Request) -> Response:
-    bridge: Bridge = request.app.state.bridge
+    bridge: TwilioBridge = request.app.state.bridge
     params = dict(await request.form())
 
     caller = params.get("From", None)
@@ -111,7 +111,7 @@ async def handle_websocket(
     deadline: str | None = None,
     sig: str | None = None,
 ) -> None:
-    bridge: Bridge = websocket.app.state.bridge
+    bridge: TwilioBridge = websocket.app.state.bridge
     if not profile_id or not call_sid or not deadline or not sig:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -124,4 +124,4 @@ async def handle_websocket(
         )
 
     await websocket.accept()
-    await bridge.connect_profile(profile_id, websocket)
+    await bridge.connect(profile_id, websocket)
