@@ -20,12 +20,13 @@ from .pipeline import PipelineService
 from .pipeline.parrot import ParrotExtension
 from .pipeline.server import ServerExtension
 from .profile import ProfileCatalog
+from .reaction import ReactionCatalog
 from .resources import ResourceCatalog, UserData
 from .settings import Settings
 
 
 class Runtime(AbstractAsyncContextManager):
-    def __init__(self, resources: ResourceCatalog | Path | None = None) -> None:
+    def __init__(self, resources: ResourceCatalog | Path | None = None):
         match resources:
             case Path() | None:
                 resources = UserData(resources)
@@ -42,7 +43,7 @@ class Runtime(AbstractAsyncContextManager):
         exc_value: BaseException | None,
         traceback: TracebackType | None,
         /,
-    ) -> None:
+    ):
         await self._exit_stack.aclose()
 
     @property
@@ -93,16 +94,31 @@ class Runtime(AbstractAsyncContextManager):
             ),
         )
 
+    async def get_reaction_catalog(self) -> ReactionCatalog:
+        async def _creator() -> ReactionCatalog:
+            tts_worker = await self.get_tts_worker()
+            return ReactionCatalog(
+                profiles=self.profiles,
+                tts_worker=tts_worker,
+            )
+
+        return await self._get_component(
+            ReactionCatalog,
+            _creator,
+        )
+
     async def get_pipeline_service(self) -> PipelineService:
         async def _creator() -> PipelineService:
-            audio_driver = await self.get_audio_driver()
             detection_worker = await self.get_detection_worker()
             stt_worker = await self.get_stt_worker()
             tts_worker = await self.get_tts_worker()
+            reactions = await self.get_reaction_catalog()
+            audio_driver = await self.get_audio_driver()
 
             return PipelineService(
                 settings=self.settings.pipeline,
                 profiles=self.profiles,
+                reactions=reactions,
                 audio_driver=audio_driver,
                 detection_worker=detection_worker,
                 stt_worker=stt_worker,
@@ -156,4 +172,4 @@ class Runtime(AbstractAsyncContextManager):
                 else component
             )
 
-        return cast(T, self._components[cls])
+        return self._components[cls]

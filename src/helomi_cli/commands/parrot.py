@@ -44,7 +44,7 @@ async def run_parrot_cmd(
 
     print_exit("exit parrot mode")
 
-    async def _monitor_events() -> None:
+    async def _monitor_events():
         async for event in pipeline.subscribe_event():
             match event:
                 case ProfileActivatedEvent(profile_id=pid):

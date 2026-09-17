@@ -56,6 +56,6 @@ class Settings(BaseConfig, PromptReader):
             },
         )
 
-    def model_post_init(self, context: dict[str, Any]) -> None:
+    def model_post_init(self, context: dict[str, Any]):
         for key in ("root_path", "prompts"):
             self._set_private_attr(key, context.get(key))

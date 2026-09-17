@@ -17,12 +17,12 @@ class _WindowDelegate(AppKit.NSObject):
         instance._owner = owner
         return instance
 
-    def windowWillClose_(self, notification: Any) -> None:
+    def windowWillClose_(self, notification: Any):
         if self._owner is not None:
             self._owner.windowWillClose_(notification)
 
 
-def _ensure_edit_menu() -> None:
+def _ensure_edit_menu():
     app = AppKit.NSApplication.sharedApplication()
     if app.mainMenu() is not None:
         return
@@ -65,7 +65,7 @@ class BaseWindow:
         size: AppKit.NSSize,
         min_size: AppKit.NSSize,
         on_close: Callable[[], None] | None = None,
-    ) -> None:
+    ):
         self._on_close = on_close
         self.focus_view = None
 
@@ -94,15 +94,15 @@ class BaseWindow:
 
         self._build_ui()
 
-    def _build_ui(self) -> None:
+    def _build_ui(self):
         """Subclasses construct their subviews here."""
         pass
 
-    def handle_event(self, event: PipelineEvent) -> None:
+    def handle_event(self, event: PipelineEvent):
         """Handle incoming pipeline events. Subclasses can override."""
         pass
 
-    def activate(self) -> None:
+    def activate(self):
         """Order window front and set focus keeping accessory activation policy."""
         _ensure_edit_menu()
         app = AppKit.NSApplication.sharedApplication()
@@ -113,24 +113,24 @@ class BaseWindow:
         if self.focus_view is not None:
             self.window.makeFirstResponder_(self.focus_view)
 
-    def deactivate(self, hide_window: bool = True) -> None:
+    def deactivate(self, hide_window: bool = True):
         """Optionally hide the window and ensure accessory policy."""
         if hide_window and hasattr(self, "window") and self.window is not None:
             self.window.orderOut_(None)
         app = AppKit.NSApplication.sharedApplication()
         app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
 
-    def show(self) -> None:
+    def show(self):
         """Show window with elevated activation policy."""
         self.activate()
 
-    def close(self) -> None:
+    def close(self):
         """Hide window, restore accessory activation policy, and trigger on_close."""
         self.deactivate(hide_window=True)
         if self._on_close:
             self._on_close()
 
-    def windowWillClose_(self, _: Any) -> None:
+    def windowWillClose_(self, _: Any):
         """Handle window closed by user and restore accessory policy."""
         self.deactivate(hide_window=False)
         if self._on_close:

@@ -71,7 +71,7 @@ def parse_args(default_cmd="install") -> argparse.Namespace:
     return parser.parse_args()
 
 
-async def run(args: argparse.Namespace) -> None:
+async def run(args: argparse.Namespace):
     logger = configure_logger(LogLevel.DEBUG if args.debug else LogLevel.INFO)
     runtime = Runtime()
     spinner = Spinner(args.debug)

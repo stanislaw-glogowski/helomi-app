@@ -1,4 +1,3 @@
-import random
 from pathlib import Path
 from typing import Any, ClassVar, Self
 
@@ -10,7 +9,7 @@ from ..core.audio.config import AudioProfile
 from ..core.stt.config import STTProfile
 from ..core.tts.config import TTSProfile
 from ..core.wakeword.config import WakeWordProfile
-from .domain import ReactionKind
+from ..reaction import ReactionKind
 
 
 class Profile(BaseConfig, PromptReader):
@@ -148,13 +147,7 @@ class Profile(BaseConfig, PromptReader):
                 cleaned[k] = v
         return cleaned
 
-    def model_post_init(self, context: Any) -> None:
+    def model_post_init(self, context: Any):
         if context and isinstance(context, dict):
             for key in ("id", "root_path", "prompts"):
                 self._set_private_attr(key, context.get(key))
-
-    def get_reaction(self, kind: ReactionKind) -> str | None:
-        reactions = self.reactions.get(kind)
-        if not reactions:
-            return None
-        return random.choice(reactions)

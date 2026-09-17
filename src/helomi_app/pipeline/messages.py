@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..core.audio import RawAudio
-from ..profile import ReactionKind
+from ..reaction import ReactionKind
 from .domain import PipelineExtensionType, PipelineOptions
 
 type PipelineCmd = Annotated[

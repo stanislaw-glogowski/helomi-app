@@ -1,6 +1,3 @@
-profile:
-  default: "alexa"
-
 pipeline:
   persistent_profile: true
   wakeword: true

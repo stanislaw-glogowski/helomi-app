@@ -35,7 +35,7 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
     _PROC_PATH: ClassVar[Path] = Path(__file__).resolve().parent / "bin" / "avfaudio"
     _PROC_TIMEOUT: ClassVar[float] = 3.0
 
-    def __init__(self, settings, profiles) -> None:
+    def __init__(self, settings, profiles):
         super().__init__(settings, profiles)
 
         self._proc: asyncio.subprocess.Process | None = None
@@ -134,7 +134,7 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
         finally:
             self._pending_requests.pop(frame.request_id, None)
 
-    async def _do_open(self) -> None:
+    async def _do_open(self):
         if self._proc is not None:
             return
 
@@ -152,7 +152,7 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
 
         await asyncio.wait_for(self._ready_signal.wait(), timeout=self._PROC_TIMEOUT)
 
-    async def _post_open(self) -> None:
+    async def _post_open(self):
         cfg = self._settings
 
         await self._send_wait(
@@ -163,13 +163,13 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
             ),
         )
 
-    async def _do_close(self) -> None:
+    async def _do_close(self):
         for future in self._pending_requests.values():
             if isinstance(future, asyncio.Future) and not future.done():
                 future.cancel()
         self._pending_requests.clear()
 
-    async def _post_close(self) -> None:
+    async def _post_close(self):
         proc, proc_task, self._proc, self._proc_task = (
             self._proc,
             self._proc_task,
@@ -202,7 +202,7 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
                 proc.kill()
                 await proc.wait()
 
-    async def _proc_loop(self) -> None:
+    async def _proc_loop(self):
         proc = self._require_proc()
 
         while not self._exit_signal.is_set():
@@ -262,7 +262,7 @@ class AVFAudioDriver(AudioDriver[AVFAudioSettings, AVFAudioProfile]):
                     case _:
                         future.set_result(result)
 
-    def _require_ready(self) -> None:
+    def _require_ready(self):
         if not self._ready_signal.is_set():
             raise RuntimeError("AVFAudio process is not ready")
 

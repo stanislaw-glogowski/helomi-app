@@ -25,7 +25,7 @@ class DetectionWorker(AbstractWorker):
         turn_adapter: TurnAdapter,
         vad_adapter: VADAdapter,
         wakeword_adapter: WakeWordAdapter | None = None,
-    ) -> None:
+    ):
         super().__init__()
         self._default_mode = (
             DetectionMode.WAKEWORD if wakeword_adapter else DetectionMode.UTTERANCE
@@ -143,17 +143,17 @@ class DetectionWorker(AbstractWorker):
         except Exception as err:
             yield err
 
-    def _do_open_sync(self) -> None:
+    def _do_open_sync(self):
         self._exit_stack.enter_context(self._turn_adapter)
         self._exit_stack.enter_context(self._vad_adapter)
         if self._wakeword_adapter is not None:
             self._exit_stack.enter_context(self._wakeword_adapter)
         self._exit_stack.callback(self._resamples.reset)
 
-    def _do_close_sync(self) -> None:
+    def _do_close_sync(self):
         self._current_mode = self._default_mode
 
-    def _reset(self) -> None:
+    def _reset(self):
         self._vad_adapter.reset()
         self._turn_adapter.reset()
         if self._wakeword_adapter is not None:

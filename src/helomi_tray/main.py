@@ -40,14 +40,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run(args: argparse.Namespace) -> None:
+def run(args: argparse.Namespace):
     configure_logger(
         LogLevel.DEBUG if args.debug else LogLevel.INFO,
     )
     runtime = Runtime()
     app = App(runtime=runtime)
 
-    def _signal_handler(_sig: int, _frame: object) -> None:
+    def _signal_handler(_sig: int, _frame: object):
         app.quit()
 
     signal.signal(signal.SIGINT, _signal_handler)
@@ -59,7 +59,7 @@ def run(args: argparse.Namespace) -> None:
         app.quit()
 
 
-def main() -> None:
+def main():
     load_dotenv()
     args = parse_args()
     run(args)

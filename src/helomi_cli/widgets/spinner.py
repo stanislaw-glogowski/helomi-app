@@ -9,13 +9,13 @@ class Spinner:
         self._task: asyncio.Task | None = None
         self._disabled = disabled
 
-    async def start(self, msg: str = "Please wait...") -> None:
+    async def start(self, msg: str = "Please wait..."):
         if self._disabled:
             return
         self._stop_event.clear()
         self._task = asyncio.create_task(self._spin(msg))
 
-    async def _spin(self, msg: str) -> None:
+    async def _spin(self, msg: str):
         idx = 0
         try:
             while not self._stop_event.is_set():
@@ -27,7 +27,7 @@ class Spinner:
         except asyncio.CancelledError:
             pass
 
-    async def stop(self, msg: str | None = None) -> None:
+    async def stop(self, msg: str | None = None):
         if self._task is None:
             return
 

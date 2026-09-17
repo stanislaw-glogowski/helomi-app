@@ -18,7 +18,7 @@ class HFModel(BaseModel):
     namespace: str | None = None
     path: Path
 
-    def __init__(self, model_id: str | None = None, **data: Any) -> None:
+    def __init__(self, model_id: str | None = None, **data: Any):
         if model_id is not None and not data:
             super().__init__(id=model_id)
         else:

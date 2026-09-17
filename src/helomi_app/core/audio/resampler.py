@@ -7,7 +7,7 @@ from .domain import AudioChunk, AudioFormat, RawAudio
 
 
 class AudioResampler:
-    def __init__(self, format: AudioFormat) -> None:
+    def __init__(self, format: AudioFormat):
         self._format = format
         self._block_size = format.block_size
         self._streams: dict[int, soxr.ResampleStream] = {}
@@ -29,7 +29,7 @@ class AudioResampler:
 
         yield from self._flush_all()
 
-    def reset(self) -> None:
+    def reset(self):
         """Reset internal resample streams and clear buffered audio."""
         for stream in self._streams.values():
             stream.clear()

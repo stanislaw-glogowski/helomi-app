@@ -19,7 +19,7 @@ class TwilioDriver(AudioDriver):
         self,
         settings: TwilioSettings,
         profiles: dict[str, TwilioProfile],
-    ) -> None:
+    ):
         super().__init__(settings, profiles)
 
         self._bridge = TwilioBridge(
@@ -59,7 +59,7 @@ class TwilioDriver(AudioDriver):
 
         return await asyncio.wait_for(asyncio.wrap_future(future), timeout=0)
 
-    async def _do_open(self) -> None:
+    async def _do_open(self):
         thread = threading.Thread(
             target=self._serve,
             name=self.__label__,
@@ -70,7 +70,7 @@ class TwilioDriver(AudioDriver):
         self._server.should_exit = False
         thread.start()
 
-    async def _post_close(self) -> None:
+    async def _post_close(self):
         self._thread, self._loop, thread = None, None, self._thread
 
         if thread is None:
@@ -80,7 +80,7 @@ class TwilioDriver(AudioDriver):
         if thread.is_alive():
             thread.join(timeout=self._CLOSE_TIMEOUT)
 
-    def _serve(self) -> None:
+    def _serve(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self._loop = loop
@@ -89,7 +89,7 @@ class TwilioDriver(AudioDriver):
         finally:
             loop.close()
 
-    async def _server_loop(self) -> None:
+    async def _server_loop(self):
         cfg = self._server.config
 
         if not cfg.loaded:

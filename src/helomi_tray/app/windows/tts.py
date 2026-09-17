@@ -64,11 +64,11 @@ class TagButtonsContainer(AppKit.NSView):
     def isFlipped(self) -> bool:
         return True
 
-    def resizeSubviewsWithOldSize_(self, old_size: AppKit.NSSize) -> None:
+    def resizeSubviewsWithOldSize_(self, old_size: AppKit.NSSize):
         objc.super(TagButtonsContainer, self).resizeSubviewsWithOldSize_(old_size)
         self.relayout_buttons()
 
-    def relayout_buttons(self) -> None:
+    def relayout_buttons(self):
         bounds_width = self.bounds().size.width
         if bounds_width <= 0:
             bounds_width = 520.0
@@ -252,7 +252,7 @@ class ComposeTextViewDelegate(AppKit.NSObject):
         instance.on_text_change = on_text_change
         return instance
 
-    def highlight_tags(self, tv: AppKit.NSTextView) -> None:
+    def highlight_tags(self, tv: AppKit.NSTextView):
         """Apply rounded background and accent colors to emotion tags."""
         text = tv.string()
         ts = tv.textStorage()
@@ -318,7 +318,7 @@ class TTSWindow(BaseWindow):
         on_send: Callable[[str], None] | None = None,
         on_close: Callable[[], None] | None = None,
         get_profile_id: Callable[[], str | None] | None = None,
-    ) -> None:
+    ):
         self._on_send = on_send
         self._get_profile_id = get_profile_id
         self._current_audio: RawAudio | None = None
@@ -341,7 +341,7 @@ class TTSWindow(BaseWindow):
     ) -> Self:
         return cls(on_send=on_send, on_close=on_close, get_profile_id=get_profile_id)
 
-    def _build_ui(self) -> None:
+    def _build_ui(self):
         content_view = self.window.contentView()
 
         # Top instruction label
@@ -510,15 +510,15 @@ class TTSWindow(BaseWindow):
         )
         content_view.addSubview_(speak_btn)
 
-    def _handle_text_change(self) -> None:
+    def _handle_text_change(self):
         if self.status_label.stringValue() in ("Sent", "Cleared"):
             self.status_label.setStringValue_("Ready")
 
-    def handle_event(self, event: PipelineEvent) -> None:
+    def handle_event(self, event: PipelineEvent):
         if isinstance(event, SynthesisReadyEvent):
             self.on_synthesis_ready(event)
 
-    def on_synthesis_ready(self, event: SynthesisReadyEvent) -> None:
+    def on_synthesis_ready(self, event: SynthesisReadyEvent):
         self._current_audio = event.audio
         self._current_profile_id = event.profile_id
         self._current_timestamp = datetime.now()
@@ -528,16 +528,16 @@ class TTSWindow(BaseWindow):
             else:
                 PyObjCTools.AppHelper.callAfter(self._enable_save)
 
-    def _enable_save(self) -> None:
+    def _enable_save(self):
         self.save_btn.setEnabled_(True)
         if self.status_label.stringValue() == "Speaking…":
             self.status_label.setStringValue_("Ready")
 
-    def tagButtonClicked_(self, sender: AppKit.NSButton) -> None:
+    def tagButtonClicked_(self, sender: AppKit.NSButton):
         tag = sender.title()
         self.insert_tag(tag)
 
-    def insert_tag(self, tag: str) -> None:
+    def insert_tag(self, tag: str):
         """Insert emotion tag at current cursor position."""
         sel = self.text_view.selectedRange()
         text = self.text_view.string()
@@ -551,7 +551,7 @@ class TTSWindow(BaseWindow):
         self.delegate.highlight_tags(self.text_view)
         self.window.makeFirstResponder_(self.text_view)
 
-    def do_send(self) -> None:
+    def do_send(self):
         """Dispatch the typed text to the send callback."""
         text = self.text_view.string().strip()
         if not text:
@@ -568,7 +568,7 @@ class TTSWindow(BaseWindow):
         except Exception as err:
             self.status_label.setStringValue_(f"Error: {err}")
 
-    def do_save(self) -> None:
+    def do_save(self):
         """Prompt save dialog and write current synthesis audio to file."""
         if not self._current_audio:
             return
@@ -597,7 +597,7 @@ class TTSWindow(BaseWindow):
         except Exception as err:
             self.status_label.setStringValue_(f"Error: {err}")
 
-    def clear(self) -> None:
+    def clear(self):
         """Clear the compose text view and reset status."""
         self.text_view.setString_("")
         self.delegate.highlight_tags(self.text_view)
@@ -608,14 +608,14 @@ class TTSWindow(BaseWindow):
         self.status_label.setStringValue_("Cleared")
         self.window.makeFirstResponder_(self.text_view)
 
-    def sendClicked_(self, _: object = None) -> None:
+    def sendClicked_(self, _: object = None):
         self.do_send()
 
-    def clearClicked_(self, _: object = None) -> None:
+    def clearClicked_(self, _: object = None):
         self.clear()
 
-    def saveClicked_(self, _: object = None) -> None:
+    def saveClicked_(self, _: object = None):
         self.do_save()
 
-    def closeClicked_(self, _: object = None) -> None:
+    def closeClicked_(self, _: object = None):
         self.close()

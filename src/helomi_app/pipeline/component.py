@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 
 from ..common import AbstractAsyncComponent, TaskManager
-from ..profile import Profile, ProfileCatalog, ReactionKind
+from ..profile import Profile, ProfileCatalog
+from ..reaction import ReactionKind
 from .domain import PipelineOptions
 from .messages import (
     ActivateProfileCmd,
@@ -14,7 +15,7 @@ from .messages import (
 
 
 class PipelineComponent(AbstractAsyncComponent, ABC):
-    def __init__(self) -> None:
+    def __init__(self):
         super().__init__()
         self._tasks = TaskManager()
 
@@ -47,7 +48,7 @@ class PipelineComponent(AbstractAsyncComponent, ABC):
             )
         )
 
-    async def activate_profile(self, profile_id: str | None = None) -> bool:
+    async def activate_profile(self, profile_id: str) -> bool:
         return await self._execute_command(
             ActivateProfileCmd(
                 profile_id=profile_id,
@@ -57,7 +58,7 @@ class PipelineComponent(AbstractAsyncComponent, ABC):
     async def deactivate_profile(self) -> bool:
         return await self._execute_command(DeactivateProfileCmd())
 
-    async def say_text(self, text: str, profile_id: str | None = None) -> bool:
+    async def say_text(self, text: str, profile_id: str) -> bool:
         return await self._execute_command(
             SayTextCmd(
                 text=text,
@@ -65,11 +66,7 @@ class PipelineComponent(AbstractAsyncComponent, ABC):
             )
         )
 
-    async def say_reaction(
-        self,
-        reaction: ReactionKind,
-        profile_id: str | None = None,
-    ) -> bool:
+    async def say_reaction(self, reaction: ReactionKind, profile_id: str) -> bool:
         return await self._execute_command(
             SayReactionCmd(
                 reaction=reaction,
@@ -81,5 +78,5 @@ class PipelineComponent(AbstractAsyncComponent, ABC):
     async def _execute_command(self, cmd: PipelineCmd) -> bool:
         raise NotImplementedError
 
-    async def _pre_open(self) -> None:
+    async def _pre_open(self):
         await self._exit_stack.enter_async_context(self._tasks)

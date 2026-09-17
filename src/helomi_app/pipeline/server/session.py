@@ -11,16 +11,16 @@ class Session:
     def __init__(
         self,
         profile_id: str,
-    ) -> None:
+    ):
         self.id: Final[str] = str(uuid.uuid4())
         self.profile_id: Final[str] = profile_id
 
         self._events: asyncio.Queue[PipelineEvent | None] = asyncio.Queue()
 
-    def dispatch_event(self, event: PipelineEvent) -> None:
+    def dispatch_event(self, event: PipelineEvent):
         self._events.put_nowait(event)
 
-    def close(self) -> None:
+    def close(self):
         self._events.put_nowait(None)
 
     async def subscribe_event(self) -> AsyncIterator[PipelineEvent]:
@@ -35,7 +35,7 @@ class Session:
 
 
 class SessionManager(AbstractAsyncComponent):
-    def __init__(self) -> None:
+    def __init__(self):
         super().__init__(is_quiet=True)
         self._sessions: dict[str, Session] = {}
         self._profile_to_session: dict[str, str] = {}
@@ -55,7 +55,7 @@ class SessionManager(AbstractAsyncComponent):
 
             return session
 
-    async def release(self, session: Session) -> None:
+    async def release(self, session: Session):
         async with self._lock:
             popped = self._sessions.pop(session.id, None)
             if popped is None:
@@ -66,7 +66,7 @@ class SessionManager(AbstractAsyncComponent):
     def get(self, session_id: str) -> Session | None:
         return self._sessions.get(session_id)
 
-    def dispatch_event(self, event: PipelineEvent) -> None:
+    def dispatch_event(self, event: PipelineEvent):
         profile_id: str | None = getattr(event, "profile_id", None)
         if profile_id is None:
             return
@@ -74,7 +74,7 @@ class SessionManager(AbstractAsyncComponent):
         if session_id and (session := self._sessions.get(session_id)):
             session.dispatch_event(event)
 
-    async def _do_close(self) -> None:
+    async def _do_close(self):
         async with self._lock:
             for session in self._sessions.values():
                 session.close()

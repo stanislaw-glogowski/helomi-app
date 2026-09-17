@@ -19,7 +19,8 @@ from ..core.detection import (
 )
 from ..core.stt import STTRequest, STTResponse, STTWorker
 from ..core.tts import TTSChunk, TTSRequest, TTSWorker
-from ..profile import Profile, ProfileCatalog, ReactionKind
+from ..profile import Profile, ProfileCatalog
+from ..reaction import ReactionCatalog, ReactionKind
 from .component import PipelineComponent
 from .config import PipelineSettings
 from .domain import PipelineExtensionLike, PipelineExtensionType, PipelineOptions
@@ -49,17 +50,19 @@ class PipelineService(PipelineComponent):
     def __init__(
         self,
         profiles: ProfileCatalog,
+        reactions: ReactionCatalog,
         audio_driver: AudioDriver,
         detection_worker: DetectionWorker,
         stt_worker: STTWorker,
         tts_worker: TTSWorker,
         settings: PipelineSettings | None = None,
         options: PipelineOptions | None = None,
-    ) -> None:
+    ):
         super().__init__()
 
         settings = settings or PipelineSettings()
         self._profiles = profiles
+        self._reactions = reactions
         self._options = options or PipelineOptions(
             persistent_profile_enabled=settings.persistent_profile,
             persistent_profile_supported=False,
@@ -113,7 +116,7 @@ class PipelineService(PipelineComponent):
         self,
         extension_like: PipelineExtensionLike,
         activate=True,
-    ) -> None:
+    ):
         extension = self._resolve_extension(extension_like)
 
         if extension in self._extensions:
@@ -203,7 +206,7 @@ class PipelineService(PipelineComponent):
 
         return True
 
-    async def sync_extension(self) -> None:
+    async def sync_extension(self):
         if self._active_extension is None:
             return
 
@@ -257,7 +260,7 @@ class PipelineService(PipelineComponent):
         finally:
             self._subscriptions.discard(subscription)
 
-    async def _do_open(self) -> None:
+    async def _do_open(self):
         self._tasks.add_tasks(
             self._capture_loop(),
             self._detection_loop(),
@@ -266,13 +269,13 @@ class PipelineService(PipelineComponent):
             self._playback_loop(),
         )
 
-    async def _do_close(self) -> None:
+    async def _do_close(self):
         await self._audio_driver.disconnect()
         for subscription in self._subscriptions:
             subscription.put_nowait(None)
         self._subscriptions.clear()
 
-    async def _capture_loop(self) -> None:
+    async def _capture_loop(self):
         async for event in self._audio_driver.subscribe_event():
             match event:
                 case CapturedEvent():
@@ -296,7 +299,7 @@ class PipelineService(PipelineComponent):
                         )
                     )
 
-    async def _detection_loop(self) -> None:
+    async def _detection_loop(self):
         while True:
             audio = await self._detection_queue.get()
 
@@ -367,7 +370,7 @@ class PipelineService(PipelineComponent):
             finally:
                 self._detection_queue.task_done()
 
-    async def _stt_loop(self) -> None:
+    async def _stt_loop(self):
         while True:
             request = await self._stt_queue.get()
 
@@ -398,7 +401,7 @@ class PipelineService(PipelineComponent):
             finally:
                 self._stt_queue.task_done()
 
-    async def _tts_loop(self) -> None:
+    async def _tts_loop(self):
         while True:
             request = await self._tts_queue.get()
 
@@ -440,7 +443,7 @@ class PipelineService(PipelineComponent):
             finally:
                 self._tts_queue.task_done()
 
-    async def _playback_loop(self) -> None:
+    async def _playback_loop(self):
         while True:
             request = await self._playback_queue.get()
 
@@ -672,7 +675,17 @@ class PipelineService(PipelineComponent):
 
         return True
 
-    def _sync_options(self) -> None:
+    def _get_reaction_audio(
+        self,
+        profile_id: str,
+        reaction: ReactionKind,
+    ) -> RawAudio | None:
+        if not self._options.is_enabled("reactions"):
+            return None
+
+        return self._reactions.get_audio(profile_id, reaction)
+
+    def _sync_options(self):
         if self._active_extension:
             self._options.persistent_profile_supported = True
             self._options.wakeword_supported = self._detection_worker.wakeword_supported
@@ -687,7 +700,7 @@ class PipelineService(PipelineComponent):
     def _dispatch_event(
         self,
         event: PipelineEvent,
-    ) -> None:
+    ):
         for subscription in self._subscriptions:
             subscription.put_nowait(event)
 

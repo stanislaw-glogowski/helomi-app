@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 class PipelineExtension(PipelineComponent, ABC):
-    def __init__(self, service: PipelineService) -> None:
+    def __init__(self, service: PipelineService):
         super().__init__()
         self._service = service
 

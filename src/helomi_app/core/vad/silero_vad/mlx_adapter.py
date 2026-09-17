@@ -16,7 +16,7 @@ else:
 
 
 class SileroVADMLXAdapter(VADAdapter[SileroVADMLXSettings]):
-    def __init__(self, settings) -> None:
+    def __init__(self, settings):
         super().__init__(settings)
         self._model: ModelType | None = None
         self._state: StateType | None = None
@@ -37,11 +37,11 @@ class SileroVADMLXAdapter(VADAdapter[SileroVADMLXSettings]):
             score=score,
         )
 
-    def reset(self) -> None:
+    def reset(self):
         self._require_model()
         self._state = None
 
-    def _do_open(self) -> None:
+    def _do_open(self):
         from mlx_audio.vad import load
 
         with disable_progress_bars():
@@ -50,7 +50,7 @@ class SileroVADMLXAdapter(VADAdapter[SileroVADMLXSettings]):
             self._logger.debug("Loading model: {}", cfg.model.id)
             self._model = cast(Any, load(cfg.model.path))
 
-    def _do_close(self) -> None:
+    def _do_close(self):
         self._model = None
         self._state = None
 

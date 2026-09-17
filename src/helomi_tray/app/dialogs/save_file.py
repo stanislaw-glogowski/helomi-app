@@ -11,7 +11,7 @@ class SaveFileDialog(BaseDialog):
         title: str,
         default_name: str | None = None,
         allowed_types: list[str] | None = None,
-    ) -> None:
+    ):
         super().__init__()
         self._title = title
         self._default_name = default_name

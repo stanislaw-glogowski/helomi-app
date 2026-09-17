@@ -16,12 +16,12 @@ class TaskManager(AbstractAsyncComponent):
         self._tasks.append(task)
         return task
 
-    def add_tasks(self, *coro: Coroutine) -> None:
+    def add_tasks(self, *coro: Coroutine):
         group = self._require_group()
         for c in coro:
             self._tasks.append(group.create_task(c))
 
-    async def wait(self) -> None:
+    async def wait(self):
         await asyncio.gather(*self._tasks)
 
     def _require_group(self) -> asyncio.TaskGroup:
@@ -29,10 +29,10 @@ class TaskManager(AbstractAsyncComponent):
             raise RuntimeError("Task manager is not ready")
         return self._group
 
-    async def _do_open(self) -> None:
+    async def _do_open(self):
         self._group = await self._exit_stack.enter_async_context(asyncio.TaskGroup())
 
-    async def _post_close(self) -> None:
+    async def _post_close(self):
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)

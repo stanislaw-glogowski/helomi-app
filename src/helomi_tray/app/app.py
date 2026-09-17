@@ -36,7 +36,7 @@ from .windows import BaseWindow, TTSWindow
 class App(rumps.App, BaseComponent):
     _TITLE: ClassVar[str] = "Helomi"
 
-    def __init__(self, runtime: Runtime) -> None:
+    def __init__(self, runtime: Runtime):
         rumps.App.__init__(
             self,
             name=self._TITLE,
@@ -156,15 +156,15 @@ class App(rumps.App, BaseComponent):
             ),
         ]
 
-    def run(self, **options) -> None:
+    def run(self, **options):
         self._before_run()
         super().run(**options)
 
-    def quit(self) -> None:
+    def quit(self):
         self._on_quit_click(None)
 
     @rumps.timer(0.1)
-    def _animate_start_icon(self, sender: rumps.Timer | None = None) -> None:
+    def _animate_start_icon(self, sender: rumps.Timer | None = None):
         if self._state.status != AppStatus.STARTING:
             if sender:
                 sender.stop()
@@ -173,7 +173,7 @@ class App(rumps.App, BaseComponent):
         self.title = f"{self._start_icon} {self._TITLE}"
 
     @rumps.timer(0.5)
-    def _sync_state(self, _: rumps.Timer | None = None) -> None:
+    def _sync_state(self, _: rumps.Timer | None = None):
         state = self._state
         if self._last_state == state:
             return
@@ -293,7 +293,7 @@ class App(rumps.App, BaseComponent):
         self,
         force_sync: bool = False,
         **kwargs: Unpack[AppState.Update],
-    ) -> None:
+    ):
         if self._state.status == AppStatus.QUITING:
             return
 
@@ -303,7 +303,7 @@ class App(rumps.App, BaseComponent):
             if force_sync:
                 self._sync_state(None)
 
-    def _set_mode(self, mode: AppMode) -> None:
+    def _set_mode(self, mode: AppMode):
         extension: PipelineExtensionType | None
         match mode:
             case AppMode.SERVER:
@@ -325,7 +325,7 @@ class App(rumps.App, BaseComponent):
             self._loop,
         )
 
-    def _on_profile_click(self, sender: MenuItem) -> None:
+    def _on_profile_click(self, sender: MenuItem):
         if sender.checked:
             self._pipeline_execute_command(DeactivateProfileCmd())
         else:
@@ -335,7 +335,7 @@ class App(rumps.App, BaseComponent):
                 )
             )
 
-    def _on_parrot_click(self, sender: MenuItem) -> None:
+    def _on_parrot_click(self, sender: MenuItem):
         self._handle_close_window()
 
         if sender.checked:
@@ -343,14 +343,14 @@ class App(rumps.App, BaseComponent):
         else:
             self._set_mode(AppMode.PARROT)
 
-    def _on_server_click(self, _: MenuItem) -> None:
+    def _on_server_click(self, _: MenuItem):
         if url := self._state.api_url:
             webbrowser.open(url)
 
-    def _on_audio_click(self, sender: MenuItem) -> None:
+    def _on_audio_click(self, sender: MenuItem):
         pass
 
-    def _on_setting_click(self, sender: MenuItem) -> None:
+    def _on_setting_click(self, sender: MenuItem):
         self._pipeline_execute_command(
             SetOptionsCmd(
                 persistent_profile_enabled=not sender.checked
@@ -368,7 +368,7 @@ class App(rumps.App, BaseComponent):
             )
         )
 
-    def _on_quit_click(self, sender: rumps.MenuItem | None = None) -> None:
+    def _on_quit_click(self, sender: rumps.MenuItem | None = None):
         if sender is not None:
             sender.set_callback(None)
 
@@ -378,7 +378,7 @@ class App(rumps.App, BaseComponent):
         )
         rumps.Timer(self._handle_exit, 0.1).start()
 
-    def _handle_exit(self, sender: rumps.Timer) -> None:
+    def _handle_exit(self, sender: rumps.Timer):
         sender.stop()
 
         if self._window is not None:
@@ -393,7 +393,7 @@ class App(rumps.App, BaseComponent):
 
         rumps.quit_application()
 
-    def _handle_open_window(self, sender: MenuItem) -> None:
+    def _handle_open_window(self, sender: MenuItem):
         match sender.id:
             case "tts_window":
                 if isinstance(self._window, TTSWindow):
@@ -419,7 +419,7 @@ class App(rumps.App, BaseComponent):
 
     def _handle_close_window(
         self,
-    ) -> None:
+    ):
         window, self._window = self._window, None
         if window is None:
             return
@@ -429,7 +429,7 @@ class App(rumps.App, BaseComponent):
 
         self._set_mode(self._previous_mode)
 
-    def _handle_tts_send(self, text: str) -> None:
+    def _handle_tts_send(self, text: str):
         self._pipeline_execute_command(
             SayTextCmd(
                 text=text,
@@ -437,7 +437,7 @@ class App(rumps.App, BaseComponent):
             )
         )
 
-    def _before_run(self) -> None:
+    def _before_run(self):
         thread = threading.Thread(
             target=self._thread_worker,
             daemon=True,
@@ -446,7 +446,7 @@ class App(rumps.App, BaseComponent):
         self._thread = thread
         thread.start()
 
-    def _thread_worker(self) -> None:
+    def _thread_worker(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -462,7 +462,7 @@ class App(rumps.App, BaseComponent):
             with suppress(Exception):
                 loop.close()
 
-    async def _runtime_loop(self) -> None:
+    async def _runtime_loop(self):
         self._shutdown_signal = (shutdown_signal := asyncio.Event())
 
         async with self._runtime:
@@ -499,7 +499,7 @@ class App(rumps.App, BaseComponent):
 
                 await shutdown_signal.wait()
 
-    async def _pipeline_loop(self) -> None:
+    async def _pipeline_loop(self):
         if self._pipeline is None:
             return
 
@@ -541,7 +541,7 @@ class App(rumps.App, BaseComponent):
             if self._window is not None:
                 self._window.handle_event(event)
 
-    def _pipeline_execute_command(self, cmd: PipelineCmd) -> None:
+    def _pipeline_execute_command(self, cmd: PipelineCmd):
         if self._pipeline is None or self._loop is None or self._loop.is_closed():
             return
 

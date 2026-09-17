@@ -6,7 +6,7 @@ from .component import AbstractAsyncComponent
 
 
 class AbstractEventSource[TEvent](AbstractAsyncComponent, ABC):
-    def __init__(self) -> None:
+    def __init__(self):
         super().__init__()
         self._subscriptions: set[asyncio.Queue[TEvent | None]] = set()
 
@@ -23,14 +23,14 @@ class AbstractEventSource[TEvent](AbstractAsyncComponent, ABC):
         finally:
             self._subscriptions.discard(subscription)
 
-    async def _pre_close(self) -> None:
+    async def _pre_close(self):
         self._unsubscribe_all()
 
-    def _unsubscribe_all(self) -> None:
+    def _unsubscribe_all(self):
         for subscription in self._subscriptions:
             subscription.put_nowait(None)
         self._subscriptions.clear()
 
-    def _dispatch_event(self, event: TEvent) -> None:
+    def _dispatch_event(self, event: TEvent):
         for subscription in self._subscriptions:
             subscription.put_nowait(event)

@@ -13,7 +13,7 @@ class MenuItem(rumps.MenuItem):
         id: str | None = None,
         checked: bool = False,
         enabled: bool = False,
-    ) -> None:
+    ):
         super().__init__(
             title=title,
             key=key,

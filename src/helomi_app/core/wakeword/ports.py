@@ -10,7 +10,7 @@ class WakeWordAdapter[TSettings, TProfile](AbstractAdapter[TSettings], ABC):
         self,
         settings: TSettings,
         profiles: dict[str, TProfile],
-    ) -> None:
+    ):
         super().__init__(settings)
         self._profiles = profiles
 
@@ -18,5 +18,5 @@ class WakeWordAdapter[TSettings, TProfile](AbstractAdapter[TSettings], ABC):
     def predict(self, audio: AudioChunk, voice_detected: bool) -> WakeWordPrediction:
         raise NotImplementedError
 
-    def reset(self) -> None:
+    def reset(self):
         raise NotImplementedError

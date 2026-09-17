@@ -11,7 +11,7 @@ class PipelineRequest[TData]:
         return cls._current_generation
 
     @classmethod
-    def bump_generation(cls) -> None:
+    def bump_generation(cls):
         cls._current_generation += 1
 
     data: TData

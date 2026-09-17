@@ -4,7 +4,7 @@ from typing import ClassVar
 class EpochCoordinator:
     _current_epoch: ClassVar[int] = 1
 
-    def __init_subclass__(cls) -> None:
+    def __init_subclass__(cls):
         cls._current_epoch: int = 1
 
     @classmethod
@@ -22,7 +22,7 @@ class EpochCoordinator:
 
 
 class EpochEnvelope(EpochCoordinator):
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         epoch = getattr(self, "epoch", None)
         if epoch is None:
             object.__setattr__(self, "epoch", self.__class__.current_epoch())

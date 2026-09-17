@@ -7,7 +7,7 @@ from .config import SmartTurnSettings
 
 
 class SmartTurnState:
-    def __init__(self, settings: SmartTurnSettings, chunk: AudioChunk) -> None:
+    def __init__(self, settings: SmartTurnSettings, chunk: AudioChunk):
         sample_rate = chunk.format.sample_rate
         chunk_size = chunk.samples.size
 
@@ -40,7 +40,7 @@ class SmartTurnState:
         self.silence_samples = 0
         self.idle_silence_samples = 0
 
-    def reset(self, full: bool = True) -> None:
+    def reset(self, full: bool = True):
         if full:
             self.pre_roll.clear()
             self.idle_silence_samples = 0

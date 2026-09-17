@@ -12,7 +12,7 @@ class UserData(ResourceCatalog):
     _LOCAL_DIR: ClassVar[str] = "resources"
     _APP_DIR: ClassVar[str] = "HelomiApp"
 
-    def __init__(self, root_path: Path | None = None) -> None:
+    def __init__(self, root_path: Path | None = None):
         self._root_path = (
             root_path if root_path is not None else self._locate_root_path()
         )

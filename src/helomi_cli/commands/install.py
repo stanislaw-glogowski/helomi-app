@@ -34,13 +34,13 @@ async def run_install_cmd(
     await _install_oww_model(spinner, _OWW_PROFILE_MODEL, models_root)
 
 
-def _download_oww_model(file_name: str, dst_path: Path) -> None:
+def _download_oww_model(file_name: str, dst_path: Path):
     url = f"{_OWW_RELEASE_URL}/{file_name}"
     file_path = dst_path / file_name
     urlretrieve(url, file_path)
 
 
-async def _install_oww_model(spinner: Spinner, file_name: str, dst_path: Path) -> None:
+async def _install_oww_model(spinner: Spinner, file_name: str, dst_path: Path):
     await spinner.start(f"{file_name} ...")
     await asyncio.to_thread(_download_oww_model, file_name, dst_path)
     await spinner.stop(f"{file_name}")

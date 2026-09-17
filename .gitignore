@@ -36,6 +36,7 @@ node_modules
 !/resources/profiles/defaults.yml
 !/resources/profiles/alexa
 /resources/profiles/alexa/models/*
+/resources/profiles/alexa/.reactions
 /resources/profiles/alexa/profile.override.yml
 /resources/settings.override.yml
 

@@ -14,7 +14,7 @@ else:
 
 
 class ParakeetAdapter(STTAdapter[ParakeetSettings, ParakeetProfile]):
-    def __init__(self, settings, profiles) -> None:
+    def __init__(self, settings, profiles):
         super().__init__(settings, profiles)
         self._model: ModelType | None = None
 
@@ -44,7 +44,7 @@ class ParakeetAdapter(STTAdapter[ParakeetSettings, ParakeetProfile]):
         except Exception as err:
             yield err
 
-    def _do_open(self) -> None:
+    def _do_open(self):
         from mlx_audio.stt import load
 
         with disable_progress_bars():
@@ -53,7 +53,7 @@ class ParakeetAdapter(STTAdapter[ParakeetSettings, ParakeetProfile]):
             self._logger.debug("Loading model: {}", cfg.model.id)
             self._model = cast(Any, load(cfg.model.path))
 
-    def _do_close(self) -> None:
+    def _do_close(self):
         self._model = None
 
     def _require_model(self) -> ModelType:

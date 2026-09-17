@@ -47,7 +47,7 @@ class MediaRequest(EpochEnvelope):
 
 
 class TwilioConnection:
-    def __init__(self, websocket: WebSocket) -> None:
+    def __init__(self, websocket: WebSocket):
         self._websocket: WebSocket | None = websocket
         self._sid: str | None = None
         self._lock = asyncio.Lock()
@@ -82,10 +82,10 @@ class TwilioBridge:
         settings: TwilioSettings,
         profiles: dict[str, TwilioProfile],
         dispatch_event: Callable[[AudioEvent], None],
-    ) -> None:
+    ):
         loop = asyncio.get_running_loop()
 
-        def _dispatch_event(event: AudioEvent) -> None:
+        def _dispatch_event(event: AudioEvent):
             loop.call_soon_threadsafe(
                 dispatch_event,
                 event,
@@ -113,7 +113,7 @@ class TwilioBridge:
         self,
         profile_id: str,
         websocket: WebSocket,
-    ) -> None:
+    ):
         async with self._lock:
             if self._connection is not None:
                 return

@@ -10,7 +10,7 @@ from .config import PiperProfile, PiperSettings
 
 
 class PiperAdapter(TTSAdapter[PiperSettings, PiperProfile]):
-    def __init__(self, settings, profiles) -> None:
+    def __init__(self, settings, profiles):
         super().__init__(settings, profiles)
         self._models: dict[str, PiperVoice] = {}
 
@@ -60,7 +60,7 @@ class PiperAdapter(TTSAdapter[PiperSettings, PiperProfile]):
         except Exception as err:
             yield err
 
-    def _do_open(self) -> None:
+    def _do_open(self):
         for profile_id, profile in self._profiles.items():
             self._logger.debug("Loading model: {}", profile.model_path.name)
             self._models[profile_id] = PiperVoice.load(
@@ -68,5 +68,5 @@ class PiperAdapter(TTSAdapter[PiperSettings, PiperProfile]):
                 config_path=profile.config_path,
             )
 
-    def _do_close(self) -> None:
+    def _do_close(self):
         self._models.clear()

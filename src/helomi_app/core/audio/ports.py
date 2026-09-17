@@ -14,7 +14,7 @@ from .messages import (
 
 
 class AudioDriver[TSettings, TProfile](AbstractEventSource[AudioEvent], ABC):
-    def __init__(self, settings: TSettings, profiles: dict[str, TProfile]) -> None:
+    def __init__(self, settings: TSettings, profiles: dict[str, TProfile]):
         super().__init__()
         self._settings = settings
         self._profiles = profiles

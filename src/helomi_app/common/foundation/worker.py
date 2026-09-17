@@ -8,29 +8,29 @@ from .component import AbstractAsyncComponent
 
 
 class AbstractWorker(AbstractAsyncComponent, ABC):
-    def __init__(self, max_workers: int = 1) -> None:
+    def __init__(self, max_workers: int = 1):
         super().__init__()
 
         self._max_workers = max_workers
         self._executor: ThreadPoolExecutor | None = None
 
     @final
-    async def _pre_open(self) -> None:
+    async def _pre_open(self):
         self._executor = ThreadPoolExecutor(
             max_workers=self._max_workers,
             thread_name_prefix=self.__label__,
         )
 
     @final
-    async def _do_open(self) -> None:
+    async def _do_open(self):
         await self._run_sync(self._do_open_sync)
 
     @final
-    async def _do_close(self) -> None:
+    async def _do_close(self):
         await self._run_sync(self._do_close_sync)
 
     @final
-    async def _post_close(self) -> None:
+    async def _post_close(self):
         if self._executor is None:
             return
 
@@ -43,10 +43,10 @@ class AbstractWorker(AbstractAsyncComponent, ABC):
         finally:
             self._executor = None
 
-    def _do_open_sync(self) -> None:
+    def _do_open_sync(self):
         pass
 
-    def _do_close_sync(self) -> None:
+    def _do_close_sync(self):
         pass
 
     async def _run_sync[*Ts, R](self, func: Callable[[*Ts], R], *args: *Ts) -> R:

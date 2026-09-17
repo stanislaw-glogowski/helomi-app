@@ -110,7 +110,7 @@ async def handle_websocket(
     call_sid: str | None = None,
     deadline: str | None = None,
     sig: str | None = None,
-) -> None:
+):
     bridge: TwilioBridge = websocket.app.state.bridge
     if not profile_id or not call_sid or not deadline or not sig:
         raise HTTPException(

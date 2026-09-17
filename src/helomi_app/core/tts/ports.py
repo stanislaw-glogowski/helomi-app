@@ -6,7 +6,7 @@ from .domain import TTSChunk, TTSRequest
 
 
 class TTSAdapter[TSettings, TProfile](AbstractAdapter[TSettings], ABC):
-    def __init__(self, settings: TSettings, profiles: dict[str, TProfile]) -> None:
+    def __init__(self, settings: TSettings, profiles: dict[str, TProfile]):
         super().__init__(settings)
         self._profiles = profiles
 

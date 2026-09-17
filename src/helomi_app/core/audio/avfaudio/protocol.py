@@ -22,7 +22,7 @@ class StreamReader(Protocol):
 
 
 class StreamWriter(Protocol):
-    def write(self, data: bytes | bytearray | memoryview) -> None: ...
+    def write(self, data: bytes | bytearray | memoryview): ...
 
 
 class MessageKind(IntEnum):
@@ -136,7 +136,7 @@ class WireFrame:
 
         return cls(kind, payload, request_id)
 
-    def write_to(self, stream: StreamWriter | None) -> None:
+    def write_to(self, stream: StreamWriter | None):
         if stream is None:
             raise RuntimeError("Failed to write frame to AVFAudio process")
 
@@ -192,7 +192,7 @@ class HandshakePacked(PackedMessage):
     def pack(self) -> bytes:
         return self.version.to_bytes(2, "little")
 
-    def verify(self) -> None:
+    def verify(self):
         if self.version != PROTOCOL_VERSION:
             raise RuntimeError(
                 "Unsupported avfaudio audio protocol version: "

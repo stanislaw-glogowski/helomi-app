@@ -13,7 +13,7 @@ from .config import VoxCPM2Profile, VoxCPM2Settings
 class VoxCPM2Adapter(TTSAdapter[VoxCPM2Settings, VoxCPM2Profile]):
     _AUDIO_FORMAT: ClassVar[AudioFormat] = AudioFormat.MONO_48
 
-    def __init__(self, settings, profiles) -> None:
+    def __init__(self, settings, profiles):
         super().__init__(settings, profiles)
         self._model: VoxCPM | None = None
 
@@ -53,7 +53,7 @@ class VoxCPM2Adapter(TTSAdapter[VoxCPM2Settings, VoxCPM2Profile]):
         except Exception as err:
             yield err
 
-    def _do_open(self) -> None:
+    def _do_open(self):
         with disable_progress_bars():
             cfg = self._settings
 
@@ -64,7 +64,7 @@ class VoxCPM2Adapter(TTSAdapter[VoxCPM2Settings, VoxCPM2Profile]):
                 local_files_only=True,
             )
 
-    def _do_close(self) -> None:
+    def _do_close(self):
         if self._model is None:
             return
 

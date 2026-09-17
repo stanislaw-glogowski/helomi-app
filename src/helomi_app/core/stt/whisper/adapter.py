@@ -40,5 +40,5 @@ class WhisperAdapter(STTAdapter[WhisperSettings, WhisperProfile]):
         except Exception as err:
             yield err
 
-    def _do_open(self) -> None:
+    def _do_open(self):
         self._logger.debug("Using model: {}", self._settings.model.id)

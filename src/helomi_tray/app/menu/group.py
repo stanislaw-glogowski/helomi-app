@@ -4,11 +4,11 @@ from .item import MenuItem
 
 
 class MenuGroup(rumps.MenuItem):
-    def __init__(self, title: str) -> None:
+    def __init__(self, title: str):
         super().__init__(title=title)
         self._actions: dict[str, MenuItem] = {}
 
-    def add_action(self, action: MenuItem) -> None:
+    def add_action(self, action: MenuItem):
         self.add(action)
         self._actions[action.id] = action
 
@@ -18,6 +18,6 @@ class MenuGroup(rumps.MenuItem):
 
         return self._actions[id]
 
-    def set_enabled(self, enabled: bool) -> None:
+    def set_enabled(self, enabled: bool):
         for action in self._actions.values():
             action.set_enabled(enabled)

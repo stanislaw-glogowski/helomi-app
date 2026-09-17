@@ -10,7 +10,7 @@ from .config import OpenWakeWordProfile, OpenWakeWordSettings
 
 
 class OpenWakeWordAdapter(WakeWordAdapter[OpenWakeWordSettings, OpenWakeWordProfile]):
-    def __init__(self, settings, profiles) -> None:
+    def __init__(self, settings, profiles):
         super().__init__(settings, profiles)
         self._model: Model | None = None
         self._profile_mapping: dict[str, str] = {}
@@ -110,13 +110,13 @@ class OpenWakeWordAdapter(WakeWordAdapter[OpenWakeWordSettings, OpenWakeWordProf
             scores=scores,
         )
 
-    def reset(self) -> None:
+    def reset(self):
         self._require_model().reset()
         self._samples_buffer = np.empty(0, dtype=np.float32)
         self._recent_voice_frames = 0
         self._consecutive_frames.clear()
 
-    def _do_open(self) -> None:
+    def _do_open(self):
         cfg = self._settings
 
         names: list[str] = []
@@ -140,7 +140,7 @@ class OpenWakeWordAdapter(WakeWordAdapter[OpenWakeWordSettings, OpenWakeWordProf
             },
         )
 
-    def _do_close(self) -> None:
+    def _do_close(self):
         self._samples_buffer = np.empty(0, dtype=np.float32)
         self._recent_voice_frames = 0
         self._consecutive_frames.clear()

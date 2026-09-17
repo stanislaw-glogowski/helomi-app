@@ -7,7 +7,7 @@ from .config import SileroVADONNXSettings
 
 
 class SileroVADONNXAdapter(VADAdapter[SileroVADONNXSettings]):
-    def __init__(self, settings) -> None:
+    def __init__(self, settings):
         super().__init__(settings)
         self._model: VAD | None = None
 
@@ -26,17 +26,17 @@ class SileroVADONNXAdapter(VADAdapter[SileroVADONNXSettings]):
             score=score,
         )
 
-    def reset(self) -> None:
+    def reset(self):
         self._require_model().reset_states()
 
-    def _do_open(self) -> None:
+    def _do_open(self):
         cfg = self._settings
         self._logger.debug("Loading model: {}", cfg.model_path.name)
         self._model = VAD(
             model_path=str(cfg.model_path),
         )
 
-    def _do_close(self) -> None:
+    def _do_close(self):
         self._model = None
 
     def _require_model(self) -> VAD:

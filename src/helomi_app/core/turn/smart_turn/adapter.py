@@ -16,7 +16,7 @@ else:
 
 
 class SmartTurnAdapter(TurnAdapter[SmartTurnSettings]):
-    def __init__(self, settings) -> None:
+    def __init__(self, settings):
         super().__init__(settings)
         self._model: ModelType | None = None
         self._state: SmartTurnState | None = None
@@ -130,13 +130,13 @@ class SmartTurnAdapter(TurnAdapter[SmartTurnSettings]):
             score=score,
         )
 
-    def reset(self) -> None:
+    def reset(self):
         self._require_model()
 
         if self._state is not None:
             self._state.reset(full=True)
 
-    def _do_open(self) -> None:
+    def _do_open(self):
         from mlx_audio.vad import load
 
         with disable_progress_bars():
@@ -145,7 +145,7 @@ class SmartTurnAdapter(TurnAdapter[SmartTurnSettings]):
             self._logger.debug("Loading model: {}", cfg.model.id)
             self._model = cast(Any, load(cfg.model.path))
 
-    def _do_close(self) -> None:
+    def _do_close(self):
         self._state = None
         self._model = None
 

@@ -13,7 +13,7 @@ from .config import SupertonicProfile, SupertonicSettings
 class SupertonicAdapter(TTSAdapter[SupertonicSettings, SupertonicProfile]):
     _AUDIO_FORMAT: ClassVar[AudioFormat] = AudioFormat.MONO_44
 
-    def __init__(self, settings, profiles) -> None:
+    def __init__(self, settings, profiles):
         super().__init__(settings, profiles)
         self._model: TTS | None = None
         self._styles: dict[str, Style] = {}
@@ -63,7 +63,7 @@ class SupertonicAdapter(TTSAdapter[SupertonicSettings, SupertonicProfile]):
         except Exception as err:
             yield err
 
-    def _do_open(self) -> None:
+    def _do_open(self):
         with disable_progress_bars():
             cfg = self._settings
 
@@ -75,7 +75,7 @@ class SupertonicAdapter(TTSAdapter[SupertonicSettings, SupertonicProfile]):
                 inter_op_num_threads=cfg.inter_threads,
             )
 
-    def _do_close(self) -> None:
+    def _do_close(self):
         if self._model is None:
             return
 

@@ -6,7 +6,7 @@ from .ports import TTSAdapter
 
 
 class TTSWorker(AbstractWorker):
-    def __init__(self, adapter: TTSAdapter) -> None:
+    def __init__(self, adapter: TTSAdapter):
         super().__init__()
         self._adapter = adapter
 
@@ -22,5 +22,5 @@ class TTSWorker(AbstractWorker):
                 case chunk:
                     yield chunk
 
-    def _do_open_sync(self) -> None:
+    def _do_open_sync(self):
         self._exit_stack.enter_context(self._adapter)

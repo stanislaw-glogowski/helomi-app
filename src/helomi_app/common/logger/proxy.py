@@ -6,7 +6,7 @@ class TaggedStreamProxy:
     _TAG: ClassVar[str] = "\u200b"
     _TRACEBACK_PREFIX: ClassVar[str] = "Traceback (most recent call last):"
 
-    def __init__(self, target_stream: TextIO, skip_untagged=True) -> None:
+    def __init__(self, target_stream: TextIO, skip_untagged=True):
         self._target = target_stream
         self._enabled = True
         self._skip_untagged = skip_untagged
@@ -27,11 +27,11 @@ class TaggedStreamProxy:
 
         return self._target.write(message)
 
-    def writelines(self, lines: Iterable[str], /) -> None:
+    def writelines(self, lines: Iterable[str], /):
         for line in lines:
             self.write(line)
 
-    def flush(self) -> None:
+    def flush(self):
         self._target.flush()
 
     def fileno(self) -> int:

@@ -11,5 +11,5 @@ class VADAdapter[TSettings](AbstractAdapter[TSettings], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def reset(self) -> None:
+    def reset(self):
         raise NotImplementedError

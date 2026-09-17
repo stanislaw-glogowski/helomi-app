@@ -40,7 +40,7 @@ class AudioFormat:
     sample_rate: int
     channels: int = 1
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         if self.sample_rate <= 0:
             raise ValueError(
                 f"Sample rate must be greater than 0, got {self.sample_rate}"
@@ -173,7 +173,9 @@ class AudioFile(AbstractFile):
             )
             return RawAudio.from_int16(data, format)
 
-    def write(self, audio: RawAudio | AudioChunk) -> None:
+    def write(self, audio: RawAudio | AudioChunk):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
         with wave.open(str(self.path), "wb") as f:
             f.setnchannels(audio.format.channels)
             f.setframerate(audio.format.sample_rate)

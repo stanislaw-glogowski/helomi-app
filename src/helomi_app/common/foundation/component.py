@@ -18,7 +18,7 @@ class BaseComponent:
     __label__: ClassVar[str] = ""
     __component__: ClassVar[str] = ""
 
-    def __init_subclass__(cls, **kwargs) -> None:
+    def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
 
         cls.__label__ = cls.__dict__.get("__label__") or to_snake_case(cls.__name__)
@@ -32,7 +32,7 @@ class BaseComponent:
 
 
 class AbstractComponent(AbstractContextManager, BaseComponent, ABC):
-    def __init__(self, is_quiet=False) -> None:
+    def __init__(self, is_quiet=False):
         super().__init__()
         self._is_open = False
         self._is_quiet = is_quiet
@@ -49,11 +49,11 @@ class AbstractComponent(AbstractContextManager, BaseComponent, ABC):
         exc_value: BaseException | None,
         traceback: TracebackType | None,
         /,
-    ) -> None:
+    ):
         self.close()
 
     @final
-    def open(self) -> None:
+    def open(self):
         if self._is_open:
             raise RuntimeError(f"{self.__component__} is already open")
 
@@ -67,7 +67,7 @@ class AbstractComponent(AbstractContextManager, BaseComponent, ABC):
             raise err
 
     @final
-    def close(self) -> None:
+    def close(self):
         if not self._is_open:
             return
         self._is_open = False
@@ -76,26 +76,26 @@ class AbstractComponent(AbstractContextManager, BaseComponent, ABC):
             self._logger.debug("CLOSED")
 
     @final
-    def __close(self, silent=False) -> None:
+    def __close(self, silent=False):
         try:
             self._do_close()
         except BaseException as err:
             if not silent:
                 self._logger.warning("Error while closing: {}", err)
 
-    def _require_open(self) -> None:
+    def _require_open(self):
         if not self._is_open:
             raise RuntimeError(f"{self.__component__} is not open")
 
-    def _do_open(self) -> None:
+    def _do_open(self):
         pass
 
-    def _do_close(self) -> None:
+    def _do_close(self):
         pass
 
 
 class AbstractAsyncComponent(AbstractAsyncContextManager, BaseComponent, ABC):
-    def __init__(self, is_quiet=False) -> None:
+    def __init__(self, is_quiet=False):
         super().__init__()
         self._is_open = False
         self._is_quiet = is_quiet
@@ -115,11 +115,11 @@ class AbstractAsyncComponent(AbstractAsyncContextManager, BaseComponent, ABC):
         exc_value: BaseException | None,
         traceback: TracebackType | None,
         /,
-    ) -> None:
+    ):
         await self.close()
 
     @final
-    async def open(self) -> None:
+    async def open(self):
         async with self._lifecycle:
             if self._is_open:
                 raise RuntimeError(f"{self.__component__} is already open")
@@ -138,7 +138,7 @@ class AbstractAsyncComponent(AbstractAsyncContextManager, BaseComponent, ABC):
                 self._logger.debug("OPENED")
 
     @final
-    async def close(self) -> None:
+    async def close(self):
         async with self._lifecycle:
             if not self._is_open:
                 return
@@ -148,7 +148,7 @@ class AbstractAsyncComponent(AbstractAsyncContextManager, BaseComponent, ABC):
                 self._logger.debug("CLOSED")
 
     @final
-    async def __close(self, silent=False) -> None:
+    async def __close(self, silent=False):
         self._exit_signal.set()
         errors: list[BaseException] = []
 
@@ -172,24 +172,24 @@ class AbstractAsyncComponent(AbstractAsyncContextManager, BaseComponent, ABC):
         if not silent and errors:
             self._logger.warning("Error(s) while closing: {}", errors)
 
-    def _require_open(self) -> None:
+    def _require_open(self):
         if not self._is_open:
             raise RuntimeError(f"{self.__component__} is not open")
 
-    async def _pre_open(self) -> None:
+    async def _pre_open(self):
         pass
 
-    async def _do_open(self) -> None:
+    async def _do_open(self):
         pass
 
-    async def _post_open(self) -> None:
+    async def _post_open(self):
         pass
 
-    async def _pre_close(self) -> None:
+    async def _pre_close(self):
         pass
 
-    async def _do_close(self) -> None:
+    async def _do_close(self):
         pass
 
-    async def _post_close(self) -> None:
+    async def _post_close(self):
         pass

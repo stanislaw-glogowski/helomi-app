@@ -7,11 +7,11 @@ class AbstractFile:
     _DEFAULT_SUFFIX: ClassVar[str] = ""
     _SUFFIXES: ClassVar[list[str]] = []
 
-    def __init_subclass__(cls) -> None:
+    def __init_subclass__(cls):
         if cls._SUFFIXES:
             cls._DEFAULT_SUFFIX = cls._SUFFIXES[0]
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path):
         self._path = path
         if not self._path.suffix and self._DEFAULT_SUFFIX:
             self._path = self._path.with_suffix(self._DEFAULT_SUFFIX)

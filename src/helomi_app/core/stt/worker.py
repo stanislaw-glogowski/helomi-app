@@ -6,7 +6,7 @@ from .ports import STTAdapter
 
 
 class STTWorker(AbstractWorker):
-    def __init__(self, adapter: STTAdapter) -> None:
+    def __init__(self, adapter: STTAdapter):
         super().__init__()
         self._adapter = adapter
 
@@ -30,5 +30,5 @@ class STTWorker(AbstractWorker):
                     chunks.append(chunk)
                     yield chunk
 
-    def _do_open_sync(self) -> None:
+    def _do_open_sync(self):
         self._exit_stack.enter_context(self._adapter)

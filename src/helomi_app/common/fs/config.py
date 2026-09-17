@@ -19,7 +19,7 @@ class ConfigFile(AbstractFile):
     _OVERRIDE_POSTFIX: ClassVar[str] = ".override"
     _SUFFIXES: ClassVar[list[str]] = [".yml", ".yaml", ".json"]
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path):
         super().__init__(path)
         match path.suffix:
             case ".yaml" | ".yml":
@@ -76,7 +76,7 @@ class ConfigFile(AbstractFile):
                 else DeepMergeDict({})
             )
 
-    def write(self, data: DeepMergeDict) -> None:
+    def write(self, data: DeepMergeDict):
         with self.path.open("w", encoding="utf-8") as f:
             match self._kind:
                 case ConfigKind.YAML:

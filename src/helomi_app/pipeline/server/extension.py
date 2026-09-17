@@ -29,7 +29,7 @@ class ServerExtension(PipelineExtension):
         settings: ServerSettings,
         service: PipelineService,
         sessions: SessionManager | None = None,
-    ) -> None:
+    ):
         super().__init__(service)
 
         if sessions is None:
@@ -63,7 +63,7 @@ class ServerExtension(PipelineExtension):
     def __str__(self) -> str:
         return f"{self.__component__}(url={self.url})"
 
-    async def _do_open(self) -> None:
+    async def _do_open(self):
         thread = threading.Thread(
             target=self._serve,
             name=self.__label__,
@@ -76,7 +76,7 @@ class ServerExtension(PipelineExtension):
 
         self._tasks.add_task(self._pipeline_loop())
 
-    async def _post_close(self) -> None:
+    async def _post_close(self):
         self._thread, self._loop, thread = None, None, self._thread
 
         if thread is None:
@@ -86,7 +86,7 @@ class ServerExtension(PipelineExtension):
         if thread.is_alive():
             thread.join(timeout=self._CLOSE_TIMEOUT)
 
-    def _serve(self) -> None:
+    def _serve(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -94,7 +94,7 @@ class ServerExtension(PipelineExtension):
         finally:
             loop.close()
 
-    async def _server_loop(self) -> None:
+    async def _server_loop(self):
         cfg = self._server.config
 
         if not cfg.loaded:
@@ -109,7 +109,7 @@ class ServerExtension(PipelineExtension):
 
         await self._server.shutdown()
 
-    async def _pipeline_loop(self) -> None:
+    async def _pipeline_loop(self):
         async for event in self._subscribe_event():
             match event:
                 case OptionsSetEvent() | ExtensionDeactivatedEvent():
