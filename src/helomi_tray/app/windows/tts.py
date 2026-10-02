@@ -7,9 +7,13 @@ import AppKit
 import objc
 import PyObjCTools.AppHelper
 
-from helomi_app.core.audio import AudioFile, RawAudio
-from helomi_app.core.tts import TTS_TAGS
-from helomi_app.pipeline import PipelineEvent, SynthesisReadyEvent
+from helomi_app import (
+    SYNTHESIS_TAGS,
+    ApplicationEvent,
+    AudioFile,
+    RawAudio,
+    SynthesisReadyEvent,
+)
 
 from ..dialogs import SaveFileDialog
 from .base import BaseWindow
@@ -106,7 +110,7 @@ class ComposeTextView(AppKit.NSTextView):
                 start -= 1
                 if text[start] == "[":
                     tag = text[start:pos]
-                    if tag in TTS_TAGS:
+                    if tag in SYNTHESIS_TAGS:
                         return start, pos
                     break
 
@@ -120,7 +124,7 @@ class ComposeTextView(AppKit.NSTextView):
                     if text[end] == "]":
                         end += 1
                         tag = text[start:end]
-                        if tag in TTS_TAGS:
+                        if tag in SYNTHESIS_TAGS:
                             return start, end
                         break
                     end += 1
@@ -408,7 +412,7 @@ class TTSWindow(BaseWindow):
         self.text_view.setAllowsUndo_(True)
 
         self.delegate = ComposeTextViewDelegate(
-            tags=TTS_TAGS,
+            tags=SYNTHESIS_TAGS,
             on_text_change=self._handle_text_change,
         )
         self.text_view.setDelegate_(self.delegate)
@@ -427,7 +431,7 @@ class TTSWindow(BaseWindow):
         self.tag_container.buttons = []
         self.tag_buttons = []
 
-        for tag, desc in TTS_TAGS.items():
+        for tag, desc in SYNTHESIS_TAGS.items():
             btn = TagButton.alloc().initWithFrame_(AppKit.NSMakeRect(0, 0, 10, 20))
             btn.setTitle_(tag)
             btn.setToolTip_(desc)
@@ -514,7 +518,7 @@ class TTSWindow(BaseWindow):
         if self.status_label.stringValue() in ("Sent", "Cleared"):
             self.status_label.setStringValue_("Ready")
 
-    def handle_event(self, event: PipelineEvent):
+    def handle_event(self, event: ApplicationEvent):
         if isinstance(event, SynthesisReadyEvent):
             self.on_synthesis_ready(event)
 
@@ -565,8 +569,8 @@ class TTSWindow(BaseWindow):
             if self._on_send:
                 self._on_send(text)
             self.status_label.setStringValue_("Sent")
-        except Exception as err:
-            self.status_label.setStringValue_(f"Error: {err}")
+        except Exception as error:
+            self.status_label.setStringValue_(f"Error: {error}")
 
     def do_save(self):
         """Prompt save dialog and write current synthesis audio to file."""
@@ -594,8 +598,8 @@ class TTSWindow(BaseWindow):
         try:
             AudioFile(path).write(self._current_audio)
             self.status_label.setStringValue_(f"Saved: {path.name}")
-        except Exception as err:
-            self.status_label.setStringValue_(f"Error: {err}")
+        except Exception as error:
+            self.status_label.setStringValue_(f"Error: {error}")
 
     def clear(self):
         """Clear the compose text view and reset status."""

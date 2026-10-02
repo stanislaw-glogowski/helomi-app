@@ -1,8 +1,8 @@
 # Helomi Voice Assistant – TypeScript Demo
 
 An interactive conversational voice agent built with [Bun](https://bun.sh/), TypeScript, and
-the [Vercel AI SDK](https://sdk.vercel.ai/), demonstrating real-time integration with Helomi's local speech processing
-pipeline.
+the [Vercel AI SDK](https://sdk.vercel.ai/), demonstrating real-time integration with Helomi's local conversation
+runtime.
 
 ## Overview
 
@@ -28,7 +28,7 @@ sentence-by-sentence back to Helomi's Text-to-Speech (TTS) synthesizer for low-l
 ## Architecture & Event Flow
 
 ```text
-  User Speech ──► [Helomi Core (VAD + STT)]
+  User Speech ──► [Helomi Runtime (VAD + Transcription)]
                           │
             SSE Event: transcription_ready
                           ▼
@@ -44,7 +44,7 @@ sentence-by-sentence back to Helomi's Text-to-Speech (TTS) synthesizer for low-l
                           │
              POST /api/v1/command (say_text)
                           ▼
-          [Helomi Core (TTS Synthesis & Audio Playback)]
+          [Helomi Runtime (Synthesis & Audio Playback)]
 ```
 
 ---

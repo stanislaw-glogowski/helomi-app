@@ -1,74 +1,75 @@
-# Audio Pipeline & Audio Assets
+# Audio Routing and Assets
 
-Helomi utilizes a native macOS CoreAudio / `AVFAudio` engine to achieve low-latency audio capture and playback with
-hardware acceleration.
+Helomi mounts every configured audio driver behind one `AudioRouter` and keeps exactly one conversation route active.
+The local `avfaudio` driver uses the native Swift `AVAudioEngine` helper. The optional `twilio` driver handles inbound
+bidirectional Media Streams.
 
-## Native Audio Engine (`AVFAudio`)
-
-The native audio engine bridge handles real-time microphone capture, synthesized speech playback, and ambient
-soundscapes.
-
-### Apple Voice Processing (Echo Cancellation)
-
-You can enable macOS system-level hardware acoustic echo cancellation (AEC) and automatic gain control in
-`resources/settings.yml`:
+## Local audio
 
 ```yaml
 audio:
-  adapter: "avfaudio"
+  initial_driver: avfaudio
+  monitor_driver: avfaudio
+  drivers:
+  - avfaudio
   avfaudio:
     voice_processing: true
 ```
 
-When enabled, output speech played through speakers is automatically subtracted from the microphone capture buffer,
-minimizing accidental self-triggering and speech barge-in confusion.
+Apple voice processing enables echo cancellation and automatic gain control. Blocking native driver work stays off
+the asyncio event loop.
 
----
+## Routing behavior
 
-## Room Voice / Ambient Audio Loop
+- An inbound Twilio call atomically takes over the active route and selects its profile from the called number.
+- Local microphone capture is ignored while the remote route is active.
+- Optional monitoring sends only inbound caller audio to `avfaudio`; synthesis and room voice are not duplicated.
+- The previous route is restored after hangup.
+- A second call is rejected as busy.
+- Switching away from a live remote call requires explicit confirmation and disconnects before changing route.
 
-Profiles can specify an ambient background audio track (room voice) that plays continuously while that profile is
-active:
+Set `monitor_driver: null` or omit it to disable monitoring. The tray's Call window can mute configured monitoring
+without changing the response mode.
+
+## Twilio playback
+
+Speech and driver-specific room voice are mixed in float32 20 ms frames. The mixer applies ambient volume and speech
+ducking, clips the result, resamples it, and emits headerless μ-law audio at 8 kHz. Output is paced in real time with a
+bounded queue.
+
+Each logical playback ends with a Twilio `mark`; the returned mark acknowledges completion. Barge-in sends `clear`,
+cancels stale synthesis/playback by turn ID, and continues capturing the caller's utterance.
+
+See [Settings Configuration](settings.md) for webhook and driver setup.
+
+## Synthesis streaming
+
+Each synthesis request keeps its complete input text. Model audio is coalesced into 100 ms portions and played while
+generation continues, with at most one second of unacknowledged speech buffered across the application and driver.
+The producer waits for playback capacity instead of dropping audio. Text requests retain FIFO order without a fixed
+item limit; barge-in, profile changes, and route changes discard obsolete work.
+
+The playback acknowledgement timeout includes the remaining buffered duration plus `app.conversation.playback_ack_timeout`
+seconds of transport grace. Failed requests emit `processing_failed` and do not terminate the processing loops.
+Completed synthesis still exposes the full clean audio for WAV export. VoxCPM2 reference features are reused per profile
+when normalization and denoising are disabled.
+
+## Reference and room audio
+
+Use clean mono WAV files. Paths in a profile are relative to that profile when written with `path://`:
 
 ```yaml
 audio:
-  room_voice_path: "path://assets/ambient.wav"
-```
+  avfaudio:
+    room_voice:
+      path: path://assets/ambient.wav
+      volume: 0.25
+      ducking: 0.35
 
-- **Format:** `.wav` (PCM)
-- **Lifecycle:** Starts playing seamlessly when the profile is activated, and stops automatically when switching
-  profiles or deactivating the assistant.
-
----
-
-## Reference Audio (Voice Cloning with VoxCPM2)
-
-TTS adapters, such as VoxCPM2, support voice style cloning through reference audio samples.
-
-### Format Guidelines
-
-The reference audio should be a clean, noise-free recording of the target voice:
-
-- **Format:** `.wav`
-- **Channels:** Mono
-- **Length:** Typically 10 to 20 seconds of clear, uninterrupted speech
-- **Sample Rate:** Matches TTS engine requirements (16kHz or 24kHz)
-
-### Configuring Reference Audio
-
-To use reference audio with VoxCPM2, specify the path to the `.wav` file in your `profile.yml` (or `defaults.yml`):
-
-```yaml
-tts:
+synthesis:
   voxcpm2:
-    ref_audio: "path://assets/ref_audio.wav"
-    inference: 7
-    cfg_value: 2.6
+    ref_audio: path://assets/ref_audio.wav
 ```
 
-And ensure the VoxCPM2 adapter is active in `settings.yml`:
-
-```yaml
-tts:
-  adapter: "voxcpm2"
-```
+A voice-cloning reference should normally contain 10–20 seconds of clear speech. Room voice is looped only inside the
+active driver; synthesis events and WAV exports remain clean.

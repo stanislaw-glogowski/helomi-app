@@ -4,6 +4,7 @@
 .junie
 .vscode/
 .DS_Store
+/:memory:.ses
 
 # Python
 __pycache__/

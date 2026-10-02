@@ -14,14 +14,7 @@ class CustomBuildHook(BuildHookInterface):
         native_root = root / "native" / "macos"
         native_audio = native_root / "avfaudio"
         executable = (
-            root
-            / "src"
-            / "helomi_app"
-            / "core"
-            / "audio"
-            / "avfaudio"
-            / "bin"
-            / "avfaudio"
+            root / "src" / "helomi_runtime" / "audio" / "avfaudio" / "bin" / "avfaudio"
         )
         sources = [
             native_audio / "Package.swift",

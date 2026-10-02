@@ -1,162 +1,101 @@
 # Profiles Configuration
 
-Profiles define the persona and voice configuration for an assistant profile, such as wake-word model assets, TTS voice
-styles, reference audio, ambient room audio, and STT language prompts.
+Profiles provide persona data and per-adapter voice settings. The supported public profile is `alexa`, stored in
+`resources/profiles/alexa/`. The directory name is its ID; no profile is implicitly selected as a default.
 
-> [!IMPORTANT]
-> **Adapters are configured exclusively in `settings.yml`**, never in `profile.yml`.
->
-> In `profile.yml`, you only provide the configuration parameters for the adapters (e.g. `wakeword.openwakeword`,
-`tts.voxcpm2`, `stt.parakeet`).
-> If a profile does not include a configuration section for the currently active STT or TTS adapter specified in
-`settings.yml`, that profile is **automatically skipped** and will not be loaded into the catalog.
+Global driver and adapter choices live in `settings.yml`. A profile can store settings for every supported adapter;
+only selected adapters and enabled audio drivers are retained and validated after defaults and overrides are merged.
 
-## Creating a Profile
+A profile without the selected synthesis configuration, or with that configuration set to `null`, is excluded from
+the catalog. An explicit `{}` declares support using adapter defaults; invalid active configuration produces an error
+with the profile ID and source file. A missing selected transcription configuration uses defaults and the global
+`transcription.options.language`, which a profile can override.
 
-Profiles are stored in the `resources/profiles/` directory. Each profile has its own subdirectory containing a
-`profile.yml` (or `.json`) file:
+A missing wake-word configuration leaves the profile available for manual or Twilio activation, without wake-word
+activation. Disabling global wake-word detection discards all profile wake-word configurations. Inactive variants do
+not require their environment variables, model files, or assets. Twilio mappings and reactions use the filtered catalog.
 
-```text
-resources/
-└── profiles/
-    ├── alexa/
-    │   ├── profile.yml
-    │   ├── assets/
-    │   │   └── ref_audio.wav
-    │   ├── models/
-    │   │   └── alexa_v0.1.onnx
-    │   └── prompts/
-    │       └── demo.md
-    └── defaults.yml
-```
-
-The profile ID is derived automatically from the directory name (e.g., `alexa`).
-
-## Profile Attributes
-
-| Field                   | Type                      | Description                                                                                                                                             |
-|-------------------------|---------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `name`                  | `string`                  | Display name of the assistant profile (e.g., `"Alexa"`).                                                                                                |
-| `description`           | `string` (optional)       | Description or persona definition for the assistant profile (e.g. `"Friendly voice assistant"`).                                                        |
-| `priority`              | `integer` (optional)      | Sort priority for profile catalog ordering (higher numbers sorted first; default: `1`).                                                                 |
-| `emoji`                 | `string` (optional)       | Single emoji icon displayed in macOS system tray when active (e.g. `👩🏻`, `🤖`; default: `👤`).                                                          |
-| `disabled`              | `boolean` (optional)      | Set to `true` to skip loading this profile (default: `false`).                                                                                          |
-| `readonly`              | `boolean` (optional)      | Marks profile configuration as read-only (default: `false`).                                                                                            |
-| `reactions.greeting`    | `list[string]` (optional) | Spoken greetings randomly selected when the profile is activated / wake-word detected (e.g., `["Hello! How can I help?", "Hi there! I'm listening."]`). |
-| `reactions.farewell`    | `list[string]` (optional) | Spoken farewells randomly selected when the profile is deactivated (e.g., `["Goodbye!", "See you later."]`).                                            |
-| `reactions.interrupted` | `list[string]` (optional) | Spoken reactions randomly selected when the assistant's ongoing speech is interrupted (barge-in) (e.g., `["Yes?", "Listening.", "Go ahead."]).          |
-| `audio.room_voice_path` | `string` (optional)       | Path to an audio file played in a continuous loop when the profile is active (`path://assets/...`).                                                     |
-| `tts`                   | `object`                  | Configuration for TTS adapters (`supertonic`, `voxcpm2`).                                                                                               |
-| `stt`                   | `object`                  | Configuration for STT adapters (`parakeet`, `whisper`).                                                                                                 |
-| `wakeword`              | `object`                  | Configuration for wake-word adapters (`openwakeword`).                                                                                                  |
-
-## Profile Prompts & Templates
-
-Profiles can define modular prompt templates stored in the `prompts/` subdirectory within the profile folder, as well as
-shared templates in `resources/prompts/`:
+## Layout
 
 ```text
-resources/
-├── prompts/
-│   └── demo/
-│       └── instructions.md     # Shared formatting / instructions template
-└── profiles/
-    └── alexa/
-        ├── profile.yml
-        └── prompts/
-            └── demo.md          # Profile-specific prompt template
+resources/profiles/
+├── defaults.yml
+└── alexa/
+    ├── profile.yml
+    ├── profile.override.yml        # optional, local configuration
+    ├── assets/
+    │   └── ref_audio.wav
+    ├── models/
+    │   └── alexa_v0.1.onnx
+    └── prompts/
+        └── demo.md
 ```
 
-### Prompt Parameter Substitution (`PromptReader`)
+`defaults.yml` is merged into each profile before validation. A profile-specific override file is merged last.
 
-Helomi's prompt engine (`PromptReader`) parses markdown prompts and dynamically interpolates parameters enclosed in
-`{{ parameter }}` tags:
-
-- Built-in profile parameters: `{{ name }}`, `{{ description }}`.
-- Global / system parameters passed during catalog initialization.
-
-```markdown
-You are {{ name }}, {{ description }}. Always answer concisely and naturally.
-```
-
-Loaded prompts are accessible on the profile via `profile.prompts["<prompt_name>"]` (e.g. `profile.prompts["demo"]`)
-and can be requested through the API with the `require_prompt` query parameter.
-
-## Spoken Reactions (`reactions`)
-
-Profiles can define verbal acknowledgements that the assistant synthesizes and speaks in response to lifecycle events:
-
-- **`greeting`**: Triggered when a profile is activated (e.g., when the wake-word is detected). The assistant randomly
-  picks one phrase from the configured list.
-- **`farewell`**: Triggered when a profile is deactivated (either manually or when `persistent_profile` is disabled).
-- **`interrupted`**: Triggered when ongoing assistant speech is interrupted by the user (barge-in). Keep these short and
-  punchy for natural responsiveness.
-
-```yaml
-reactions:
-  greeting:
-    - "Hello! How can I help you?"
-    - "Hi there! I'm listening."
-  farewell:
-    - "Goodbye!"
-    - "Talk to you soon."
-  interrupted:
-    - "Yes?"
-    - "Listening."
-    - "Go ahead."
-```
-
-## Default Profile Values (`defaults.yml`)
-
-You can define base configuration values inherited by all profiles in `resources/profiles/defaults.yml`. Specific
-profile definitions will automatically extend and override these defaults.
-
-## Example `profile.yml`
-
-Notice that `adapter` is **not** specified here — the active adapters are chosen in `settings.yml`:
+## Schema
 
 ```yaml
 name: "Alexa"
-
 description: "Helpful and friendly voice assistant"
-
 priority: 1
-
 emoji: "👩🏻"
+disabled: false
+readonly: false
 
 reactions:
+  connected:
+    - "Hello, Alexa speaking. How can I help?"
   greeting:
     - "Hello! How can I help you?"
-    - "Hi there! I'm listening."
   farewell:
     - "Goodbye!"
-    - "Talk to you soon."
-  interrupted:
-    - "Yes?"
-    - "Listening."
 
-tts:
+audio:
+  avfaudio:
+    room_voice:
+      path: path://assets/ambient.wav
+      volume: 0.25
+      ducking: 0.35
+  twilio:
+    callees:
+      - "+15555550100"
+    room_voice:
+      path: path://assets/call-ambient.wav
+      volume: 0.18
+      ducking: 0.45
+
+transcription:
+  parakeet:
+    language: en
+  whisper:
+    language: en
+
+synthesis:
   supertonic:
-    voice_name: "F1"
+    voice_name: F1
+    language: en
   voxcpm2:
-    ref_audio: "path://assets/ref_audio.wav"
+    ref_audio: path://assets/ref_audio.wav
 
 wakeword:
   openwakeword:
-    model_path: "path://models/alexa_v0.1.onnx"
-    threshold: 0.75
-
-stt:
-  parakeet:
-    language: "en"
-  whisper:
-    language: "en"
+    model_path: path://models/alexa_v0.1.onnx
 ```
 
-## Disabling a Profile
+Room voice is configured independently for each audio driver. `volume` and `ducking` are normalized values from `0.0`
+to `1.0`. Twilio mixes the loop with clean speech before μ-law/8 kHz encoding; exported TTS audio never contains the
+ambient track.
 
-To temporarily prevent a profile from loading regardless of active adapters, set:
+Greetings play once when a new profile session begins. Farewells are used for controlled shutdown and wait for a
+bounded playback acknowledgement. Barge-in is deliberately silent: it clears stale playback immediately and does not
+speak an interruption reaction.
 
-```yaml
-disabled: true
-```
+## Prompts
+
+Markdown files under a profile's `prompts/` directory are exposed through `profile.prompts`. Templates may use
+`{{ name }}`, `{{ description }}`, and shared parameters. A requested missing prompt excludes the profile from list
+results and produces `404` for a single-profile API request.
+
+Set `disabled: true` to exclude the profile from the catalog. `readonly` is public metadata; it does not select or
+activate a profile.

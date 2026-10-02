@@ -1,14 +1,18 @@
 from rich import print
 
-from helomi_app import Runtime
+from helomi_app import Application
 
 
-def print_welcome(runtime: Runtime, msg: str, profile_id: str | None = None):
+def print_welcome(
+    application: Application,
+    msg: str,
+    profile_id: str | None = None,
+):
     print()
     print(msg)
 
-    _print_adapters(runtime)
-    _print_profiles(runtime, profile_id)
+    _print_adapters(application)
+    _print_profiles(application, profile_id)
 
 
 def print_exit(action: str):
@@ -17,15 +21,12 @@ def print_exit(action: str):
     print()
 
 
-def _print_profiles(runtime: Runtime, profile_id: str | None = None):
+def _print_profiles(application: Application, profile_id: str | None = None):
     print()
     print("[italic cyan]Profiles available:[/italic cyan]")
-    default_profile = runtime.profiles.get(None)
-    for profile in runtime.profiles:
+    for profile in application.profiles:
         if profile.id == profile_id:
             tag = " [italic magenta]active[/italic magenta]"
-        elif profile is default_profile:
-            tag = " [italic dim]default[/italic dim]"
         else:
             tag = ""
 
@@ -36,13 +37,21 @@ def _print_adapter(label: str, adapter: str):
     print(f"  [green]{label}[/green][italic magenta]{adapter}[/italic magenta]")
 
 
-def _print_adapters(runtime: Runtime):
-    cfg = runtime.settings
+def _print_adapters(application: Application):
+    settings = application.settings
     print()
     print("[italic cyan]Adapters used:[/italic cyan]")
-    _print_adapter("Audio    ", cfg.audio.adapter)
-    _print_adapter("Wakeword ", cfg.wakeword.adapter)
-    _print_adapter("VAD      ", cfg.vad.adapter)
-    _print_adapter("Turn     ", cfg.turn.adapter)
-    _print_adapter("STT      ", cfg.stt.adapter)
-    _print_adapter("TTS      ", cfg.tts.adapter)
+    _print_adapter(
+        "Audio    ",
+        ", ".join(settings.audio.drivers),
+    )
+    _print_adapter(
+        "Wakeword ",
+        settings.detection.wakeword.adapter
+        if settings.detection.wakeword
+        else "disabled",
+    )
+    _print_adapter("VAD      ", settings.detection.vad.adapter)
+    _print_adapter("Turn     ", settings.detection.turn.adapter)
+    _print_adapter("STT      ", settings.transcription.adapter)
+    _print_adapter("TTS      ", settings.synthesis.adapter)

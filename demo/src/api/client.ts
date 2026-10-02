@@ -1,32 +1,32 @@
 import { ClientError } from './client.error';
 import { camelToSnake, toCamelCase, toSnakeCase } from './helpers';
-import { Session } from './session';
+import { HelomiSession } from './session';
 import type { CallOptions, Profile, RequestOptions } from './types';
 
 /**
- * HTTP and SSE API Client for the Helomi speech server.
+ * HTTP and SSE API HelomiClient for the Helomi speech server.
  */
-export class Client {
+export class HelomiClient {
   /** API version prefix. */
   static readonly VERSION = '1';
 
-  private readonly baseURL: string;
+  private readonly baseUrl: string;
 
-  constructor(options: { baseURL: string }) {
-    const { baseURL } = options;
-    this.baseURL = baseURL;
+  constructor(options: { baseUrl: string }) {
+    const { baseUrl } = options;
+    this.baseUrl = baseUrl;
   }
 
   /**
-   * Creates a new Session controller for the specified voice profile.
+   * Creates a new HelomiSession controller for the specified voice profile.
    */
-  createSession(profileId: string): Session {
-    return new Session(profileId, this);
+  createSession(profileId: string): HelomiSession {
+    return new HelomiSession(profileId, this);
   }
 
   async getProfile(
     profileId: string,
-    require_prompt: string,
+    requirePrompt: string,
     options?: CallOptions,
   ): Promise<Profile<string> | null>;
   async getProfile(
@@ -37,13 +37,13 @@ export class Client {
     profileId: string,
     ...args: [string, CallOptions?] | [CallOptions?]
   ): Promise<unknown> {
-    let require_prompt: string | undefined;
+    let requirePrompt: string | undefined;
     let options: CallOptions = {};
 
     for (const arg of args) {
       switch (typeof arg) {
         case 'string':
-          require_prompt = arg;
+          requirePrompt = arg;
           break;
         case 'object':
           options = arg;
@@ -55,30 +55,30 @@ export class Client {
       return await this.send(`/profile/${profileId}`, {
         ...options,
         query: {
-          require_prompt,
+          requirePrompt,
         },
       });
-    } catch (err) {
-      if (err instanceof ClientError && err.isNotFound) {
+    } catch (error) {
+      if (error instanceof ClientError && error.isNotFound) {
         return null;
       }
-      throw err;
+      throw error;
     }
   }
 
   async getProfiles(
-    require_prompt: string,
+    requirePrompt: string,
     options?: CallOptions,
   ): Promise<Profile<string>[]>;
   async getProfiles(options?: CallOptions): Promise<Profile<null>[]>;
   async getProfiles(...args: [string, CallOptions?] | [CallOptions?]): Promise<unknown> {
-    let require_prompt: string | undefined;
+    let requirePrompt: string | undefined;
     let options: CallOptions = {};
 
     for (const arg of args) {
       switch (typeof arg) {
         case 'string':
-          require_prompt = arg;
+          requirePrompt = arg;
           break;
         case 'object':
           options = arg;
@@ -89,7 +89,7 @@ export class Client {
     return await this.send('/profile', {
       ...options,
       query: {
-        require_prompt,
+        requirePrompt,
       },
     });
   }
@@ -98,8 +98,8 @@ export class Client {
    * Sends an HTTP request to the API with JSON payload conversion and error checking.
    */
   async fetch(path: string, options: RequestOptions = {}): Promise<Response> {
-    const url = new URL(`/api/v${Client.VERSION}${path}`, this.baseURL);
-    const { headers, command, abort, trace_id, query } = options;
+    const url = new URL(`/api/v${HelomiClient.VERSION}${path}`, this.baseUrl);
+    const { headers, command, abort, traceId, query } = options;
 
     if (query) {
       for (const [key, value] of Object.entries(query)) {
@@ -114,7 +114,7 @@ export class Client {
     let method: 'POST' | undefined;
 
     if (command) {
-      command.traceId = trace_id;
+      command.traceId = traceId;
 
       switch (command.type) {
         default:

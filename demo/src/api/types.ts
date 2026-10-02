@@ -8,11 +8,11 @@ export type Profile<TPrompt = string | null> = {
   prompt: TPrompt;
   hasWakeword: boolean;
   isActive: boolean;
-  isDefault: boolean;
   isReadonly: boolean;
 };
 
-export type Reaction = 'greeting' | 'interrupted';
+export type ReactionKind = 'greeting' | 'farewell' | 'interrupted';
+export type ResponseMode = 'api' | 'parrot' | 'operator';
 
 /**
  * Options for generic API calls.
@@ -22,14 +22,14 @@ export type CallOptions = {
 };
 
 /**
- * Options for commands sent to the speech pipeline.
+ * Options for commands sent to the Helomi application.
  */
 export type CommandOptions = CallOptions & {
-  trace_id?: string;
+  traceId?: string;
 };
 
 /**
- * Options for raw HTTP requests sent by Client.
+ * Options for raw HTTP requests sent by HelomiClient.
  */
 export type RequestOptions = CommandOptions & {
   headers?: Record<string, string>;
@@ -38,7 +38,7 @@ export type RequestOptions = CommandOptions & {
 };
 
 /**
- * Generic message envelope matching Helomi pipeline schema.
+ * Generic message envelope matching the Helomi message schema.
  */
 export type Envelope<
   TType extends string,
@@ -55,24 +55,29 @@ export type Command =
   | Envelope<
       'say_text',
       {
-        profileId: string;
         text: string;
+        mode: ResponseMode;
       }
     >
   | Envelope<
       'say_reaction',
       {
-        profileId: string;
-        reaction: Reaction;
+        reaction: ReactionKind;
+        mode: ResponseMode;
       }
     >
   | Envelope<
-      'activate_profile',
+      'end_conversation',
       {
-        profileId: string;
+        playFarewell: boolean;
       }
-    >
-  | Envelope<'deactivate_profile'>;
+    >;
+
+export type CommandResult = {
+  accepted: boolean;
+  rejectionCode: string | null;
+  detail: string | null;
+};
 
 /**
  * Base profile event payload envelope.

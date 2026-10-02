@@ -1,15 +1,11 @@
 # Models & Adapters
 
-Helomi supports running inference using local models directly from Hugging Face.
+Helomi runs inference from models already present in the local Hugging Face cache.
 
 ## Downloading Models
 
-The application automatically downloads and caches models required by the configured adapters from Hugging Face. Ensure
-you have an active internet connection on the first run. Models are cached locally using the standard Hugging Face
-caching mechanism.
-
-If you prefer to pre-download them manually or want to use them offline, you can use the Hugging Face CLI (`hf` or
-`huggingface-cli`):
+Settings validation resolves models with `local_files_only=True`; startup fails clearly when a selected adapter model is not
+available. Download required models before the first run with the Hugging Face CLI (`hf` or `huggingface-cli`):
 
 ```bash
 # Default Speech Stack (~7.5 GB)
@@ -48,10 +44,9 @@ uv run helomi-cli install
 
 ### Whisper & Parakeet (STT)
 
-Relies on MLX or ONNX backends for Apple Silicon hardware acceleration. Transcriber models are downloaded automatically
-upon first use and cached.
+Relies on MLX backends for Apple Silicon hardware acceleration. Download the selected transcriber model before startup.
 
 ### VoxCPM2 (TTS)
 
-Requires the `openbmb/VoxCPM2` model. The application will pull the weights via the Hugging Face Hub. Denoising
-capabilities may require additional computational overhead.
+Requires `openbmb/VoxCPM2` in the local Hugging Face cache. Denoising capabilities may require additional computational
+overhead.

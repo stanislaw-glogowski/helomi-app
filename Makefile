@@ -3,7 +3,7 @@ ifneq ($(filter run-cli run-tray,$(firstword $(MAKECMDGOALS))),)
   $(eval $(RUN_ARGS):;@:)
 endif
 
-.PHONY: init run-cli run-tray test lint format typecheck verify
+.PHONY: init run-cli run-tray test lint format typecheck demo-verify verify
 
 init:
 	uv sync
@@ -32,8 +32,10 @@ format:
 typecheck:
 	UV_CACHE_DIR=/private/tmp/uv-cache uv run pyrefly check
 
-verify: lint test
+demo-verify:
+	cd demo && bun run lint && bun run typecheck && bun test
+
+verify: lint test demo-verify
 	UV_CACHE_DIR=/private/tmp/uv-cache uv run python -m compileall -q hatch_build.py src tests
 	swift test --package-path native/macos/avfaudio
 	UV_CACHE_DIR=/private/tmp/uv-cache uv build
-

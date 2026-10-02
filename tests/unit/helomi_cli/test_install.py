@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from helomi_app import Runtime
+from helomi_app import Application
 from helomi_cli.commands.install import (
     _OWW_ROOT_MODELS,
     _download_oww_model,
@@ -41,13 +41,13 @@ async def test_run_install_cmd(tmp_path: Path) -> None:
     spinner.start = AsyncMock()
     spinner.stop = AsyncMock()
 
-    runtime = MagicMock(spec=Runtime)
-    runtime.resources = MagicMock()
-    runtime.resources.build_path = MagicMock(return_value=tmp_path)
+    application = MagicMock(spec=Application)
+    application.resources = MagicMock()
+    application.resources.path_for = MagicMock(return_value=tmp_path)
 
     with patch(
         "helomi_cli.commands.install._install_oww_model", new_callable=AsyncMock
     ) as mock_install:
-        await run_install_cmd(runtime, spinner)
+        await run_install_cmd(application, spinner)
         expected_calls = len(_OWW_ROOT_MODELS) + 1
         assert mock_install.call_count == expected_calls

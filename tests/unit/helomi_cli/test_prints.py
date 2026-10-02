@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from helomi_app import Runtime
+from helomi_app import Application
 from helomi_cli.widgets.prints import (
     _print_adapter,
     _print_adapters,
@@ -24,21 +24,20 @@ def test_prints_widgets() -> None:
     prof3.name = "Profile 3"
 
     settings = MagicMock()
-    settings.audio.adapter = "avfaudio"
-    settings.wakeword.adapter = "openwakeword"
-    settings.vad.adapter = "silero_vad"
-    settings.turn.adapter = "smart_turn"
-    settings.stt.adapter = "parakeet"
-    settings.tts.adapter = "voxcpm2"
+    settings.audio.drivers = ["avfaudio"]
+    settings.detection.wakeword.adapter = "openwakeword"
+    settings.detection.vad.adapter = "silero_vad"
+    settings.detection.turn.adapter = "smart_turn"
+    settings.transcription.adapter = "parakeet"
+    settings.synthesis.adapter = "voxcpm2"
 
-    runtime = MagicMock(spec=Runtime)
-    runtime.settings = settings
-    runtime.profiles = MagicMock()
-    runtime.profiles.__iter__ = MagicMock(return_value=iter([prof1, prof2, prof3]))
-    runtime.profiles.get = MagicMock(return_value=prof1)
+    application = MagicMock(spec=Application)
+    application.settings = settings
+    application.profiles = MagicMock()
+    application.profiles.__iter__ = MagicMock(return_value=iter([prof1, prof2, prof3]))
 
     with patch("helomi_cli.widgets.prints.print") as mock_print:
-        print_welcome(runtime, "Welcome message", profile_id="p2")
+        print_welcome(application, "Welcome message", profile_id="p2")
         assert mock_print.called
 
     with patch("helomi_cli.widgets.prints.print") as mock_print:
@@ -50,10 +49,10 @@ def test_prints_widgets() -> None:
         assert mock_print.called
 
     with patch("helomi_cli.widgets.prints.print") as mock_print:
-        _print_adapters(runtime)
+        _print_adapters(application)
         assert mock_print.called
 
     with patch("helomi_cli.widgets.prints.print") as mock_print:
-        # Cover branches: active profile, default profile, other profile
-        _print_profiles(runtime, profile_id="p2")
+        # Cover branches: active profile and inactive profile.
+        _print_profiles(application, profile_id="p2")
         assert mock_print.called

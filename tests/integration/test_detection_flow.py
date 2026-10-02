@@ -1,14 +1,15 @@
 import pytest
 
-from helomi_app.core.detection import (
+from helomi_runtime.detection import (
     ConversationEndedEvent,
     DetectionMode,
     DetectionWorker,
+    TurnPrediction,
+    TurnStatus,
     UtteranceContinuedEvent,
     UtteranceDetectedEvent,
     WakeWordDetectedEvent,
 )
-from helomi_app.core.turn import TurnPrediction, TurnStatus
 from tests.fixtures.audio import create_audio_chunk, create_raw_audio
 from tests.fixtures.mocks import (
     MockTurnAdapter,

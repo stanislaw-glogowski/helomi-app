@@ -16,7 +16,7 @@ mkdir -p \
 
 AUDIO_PKG_PATH="$CWD/avfaudio"
 AUDIO_BUILD_PATH="$AUDIO_PKG_PATH/.build/release/avfaudio"
-AUDIO_DST_PATH="$REPO_ROOT/src/helomi_app/core/audio/avfaudio/bin"
+AUDIO_DST_PATH="$REPO_ROOT/src/helomi_runtime/audio/avfaudio/bin"
 
 swift build --package-path "$AUDIO_PKG_PATH" -c release
 mkdir -p "$AUDIO_DST_PATH"

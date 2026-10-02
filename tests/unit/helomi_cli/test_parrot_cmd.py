@@ -3,9 +3,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from helomi_app import Profile
-from helomi_app.pipeline import (
-    ActivateProfileCmd,
+from helomi_app import (
+    ActivationSource,
+    CallEndedEvent,
+    CallStartedEvent,
+    CommandRejectionCode,
+    CommandResult,
+    ConversationState,
+    DriverChangedEvent,
     ProfileActivatedEvent,
     ProfileDeactivatedEvent,
     TranscriptionReadyEvent,
@@ -14,82 +19,71 @@ from helomi_cli.commands.parrot import run_parrot_cmd
 from helomi_cli.widgets import Spinner
 
 
-@pytest.fixture
-def mock_runtime():
-    mock_profile = MagicMock()
-    mock_profile.id = "test_profile"
-    mock_profile.name = "Test Profile"
+def _application(events=()):
+    application = MagicMock()
+    application.state = ConversationState.ARMED
+    application.activate_profile = AsyncMock(return_value=CommandResult.ok())
 
-    mock_profiles = MagicMock()
-    mock_profiles.get.return_value = mock_profile
-    mock_profiles.__iter__.return_value = iter([mock_profile])
+    async def subscribe():
+        for event in events:
+            yield event
 
-    settings = MagicMock()
-    settings.audio.adapter = "avfaudio"
-    settings.wakeword.adapter = "openwakeword"
-    settings.vad.adapter = "silero_vad"
-    settings.turn.adapter = "smart_turn"
-    settings.stt.adapter = "parakeet"
-    settings.tts.adapter = "voxcpm2"
-
-    mock_pipeline = MagicMock()
-    mock_pipeline.execute_command = AsyncMock(return_value=True)
-
-    runtime = MagicMock()
-    runtime.profiles = mock_profiles
-    runtime.settings = settings
-    runtime.get_pipeline_parrot_extension = AsyncMock()
-    runtime.get_pipeline_service = AsyncMock(return_value=mock_pipeline)
-    return runtime, mock_pipeline
+    application.subscribe_events = subscribe
+    return application
 
 
 @pytest.mark.asyncio
-async def test_run_parrot_cmd_lifecycle(mock_runtime):
-    """Verify run_parrot_cmd starts extension, activates profile, monitors events."""
-    runtime, mock_pipeline = mock_runtime
-
-    async def mock_events():
-        yield ProfileActivatedEvent(profile_id="test_profile")
-        yield TranscriptionReadyEvent(profile_id="test_profile", text="Hello world")
-        yield ProfileDeactivatedEvent(profile_id="test_profile")
-
-    mock_pipeline.subscribe_event = mock_events
-
-    spinner = Spinner(disabled=True)
+async def test_run_parrot_activates_profile_and_monitors_events():
+    events = (
+        ProfileActivatedEvent(profile_id="alexa", source=ActivationSource.CLI),
+        TranscriptionReadyEvent(profile_id="alexa", text="Hello"),
+        DriverChangedEvent(driver_id="avfaudio"),
+        CallStartedEvent(profile_id="alexa", caller="***1234", monitoring=True),
+        CallEndedEvent(profile_id="alexa"),
+        ProfileDeactivatedEvent(profile_id="alexa"),
+    )
+    application = _application(events)
     shutdown = asyncio.Event()
 
-    async def trigger_shutdown():
-        await asyncio.sleep(0.05)
+    async def stop():
+        await asyncio.sleep(0.01)
         shutdown.set()
 
-    task = asyncio.create_task(trigger_shutdown())
-    await run_parrot_cmd(runtime, shutdown, "test_profile", spinner)
-    await task
-
-    runtime.get_pipeline_parrot_extension.assert_called_once()
-    runtime.get_pipeline_service.assert_called_once()
-    mock_pipeline.execute_command.assert_called_once_with(
-        ActivateProfileCmd(profile_id="test_profile")
+    stop_task = asyncio.create_task(stop())
+    await run_parrot_cmd(
+        application,
+        shutdown,
+        "alexa",
+        Spinner(disabled=True),
     )
+    await stop_task
+
+    application.activate_profile.assert_awaited_once_with("alexa", ActivationSource.CLI)
 
 
 @pytest.mark.asyncio
-async def test_run_parrot_cmd_no_profile(mock_runtime):
-    """Verify run_parrot_cmd without profile_id activates default profile."""
-    runtime, mock_pipeline = mock_runtime
-
-    async def empty_events():
-        if False:
-            yield None
-
-    mock_pipeline.subscribe_event = empty_events
-
-    spinner = Spinner(disabled=True)
+async def test_run_parrot_without_profile_requires_armed_state():
+    application = _application()
     shutdown = asyncio.Event()
     shutdown.set()
+    await run_parrot_cmd(application, shutdown, None, Spinner(disabled=True))
+    application.activate_profile.assert_not_awaited()
 
-    await run_parrot_cmd(runtime, shutdown, None, spinner)
+    application.state = ConversationState.IDLE
+    with pytest.raises(RuntimeError, match="profile_id is required"):
+        await run_parrot_cmd(application, shutdown, None, Spinner(disabled=True))
 
-    mock_pipeline.execute_command.assert_called_once_with(
-        ActivateProfileCmd(profile_id=Profile.DEFAULT_ID)
+
+@pytest.mark.asyncio
+async def test_run_parrot_reports_profile_rejection():
+    application = _application()
+    application.activate_profile.return_value = CommandResult.reject(
+        CommandRejectionCode.PROFILE_NOT_FOUND, "Unknown profile"
     )
+    with pytest.raises(RuntimeError, match="Unknown profile"):
+        await run_parrot_cmd(
+            application,
+            asyncio.Event(),
+            "missing",
+            Spinner(disabled=True),
+        )

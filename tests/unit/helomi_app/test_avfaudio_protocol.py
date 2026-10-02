@@ -1,8 +1,8 @@
 import pytest
 
-from helomi_app.core.audio.avfaudio.protocol import (
+from helomi_runtime.audio.avfaudio.protocol import (
     PROTOCOL_VERSION,
-    HandshakePacked,
+    HandshakePayload,
     MessageKind,
     WireFrame,
 )
@@ -36,19 +36,19 @@ def test_avfaudio_protocol_unpack_bool():
 
 
 def test_avfaudio_protocol_handshake_packed():
-    """Verify HandshakePacked pack/unpack and version verification."""
-    packed = HandshakePacked(version=PROTOCOL_VERSION)
+    """Verify HandshakePayload pack/unpack and version verification."""
+    packed = HandshakePayload(version=PROTOCOL_VERSION)
     raw = packed.pack()
-    unpacked = HandshakePacked.unpack(raw)
+    unpacked = HandshakePayload.unpack(raw)
     assert unpacked.version == PROTOCOL_VERSION
     unpacked.verify()
 
     # Invalid length
     with pytest.raises(RuntimeError, match="expected 2 bytes"):
-        HandshakePacked.unpack(b"\x01")
+        HandshakePayload.unpack(b"\x01")
 
     # Mismatched version
-    wrong_version = HandshakePacked(version=9999)
+    wrong_version = HandshakePayload(version=9999)
     with pytest.raises(
         RuntimeError, match="Unsupported avfaudio audio protocol version"
     ):

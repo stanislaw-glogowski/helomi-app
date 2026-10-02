@@ -1,739 +1,250 @@
-import asyncio
-import runpy
-import sys
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
-from helomi_app.core.audio import AudioDriverKind
-from helomi_app.pipeline import (
-    ActivateProfileCmd,
-    DeactivateProfileCmd,
+from helomi_app import (
+    ActivationSource,
+    CallEndedEvent,
+    CallStartedEvent,
+    CommandResult,
+    ConversationOptionsChangedEvent,
+    ConversationState,
+    ConversationStateChangedEvent,
+    DriverChangedEvent,
     ProfileActivatedEvent,
     ProfileDeactivatedEvent,
-    SayTextCmd,
-    SetOptionsCmd,
-    SynthesisReadyEvent,
+    ResponseMode,
+    ResponseModeChangedEvent,
 )
-from helomi_app.pipeline.parrot import ParrotExtension
-from helomi_app.pipeline.server import ServerExtension
-from helomi_tray.app import (
-    App,
-    AppIcon,
-    AppMode,
-    AppState,
-    AppStatus,
+from helomi_app.config import ApplicationSettings
+from helomi_runtime.audio import (
+    AudioDriverCapabilities,
+    AudioDriverDescriptor,
+    AudioDriverKind,
 )
-from helomi_tray.app.menu import MenuItem
-from helomi_tray.main import main, parse_args, run
+from helomi_tray.app import TrayApplication, TrayState, TrayStatus
 
 
-@pytest.fixture
-def mock_runtime():
-    runtime = MagicMock()
-
-    mock_profile1 = MagicMock()
-    mock_profile1.id = "alexa"
-    mock_profile1.name = "Alexa"
-    mock_profile1.emoji = "👩🏻"
-    mock_profile1.audio.room_voice_path = None
-
-    mock_profile2 = MagicMock()
-    mock_profile2.id = "gizmo"
-    mock_profile2.name = "Gizmo"
-    mock_profile2.emoji = "👤"
-    mock_profile2.audio.room_voice_path = None
-
-    profiles = MagicMock()
-    profiles.__iter__.return_value = [mock_profile1, mock_profile2]
-
-    def _get_profile(pid: str | None):
-        return mock_profile1 if pid in ("alexa", None) else mock_profile2
-
-    profiles.get.side_effect = _get_profile
-
-    runtime.profiles = profiles
-    return runtime
-
-
-def test_tray_app_initialization(mock_runtime):
-    """Verify App initializes menus, default state, and title."""
-    app = App(runtime=mock_runtime)
-
-    assert app.title == "Helomi"
-    assert app._state.status == AppStatus.STARTING
-    assert app._state.profile_id is None
-    assert app._state.mode == AppMode.SERVER
-    assert app._state.api_url is None
-    assert app._state.room_voice_enabled is False
-    assert app._state.wakeword_enabled is False
-    assert app._state.reactions_enabled is False
-    assert app._state.persistent_profile_enabled is False
-
-    assert app._menu_profiles.get_action("alexa").key == "0"
-    assert app._menu_profiles.get_action("gizmo").key == "1"
-
-    assert app._menu_settings.title == "Settings"
-    assert app._menu_settings.get_action("room_voice").title == "Room Voice"
-    assert app._menu_settings.get_action("wakeword").title == "Wake Word"
-    assert app._menu_settings.get_action("reactions").title == "Reactions"
-    assert (
-        app._menu_settings.get_action("persistent_profile").title
-        == "Persistent Profile"
+def _info(
+    driver_id: str,
+    *,
+    remote: bool = False,
+    selectable: bool = True,
+) -> AudioDriverDescriptor:
+    return AudioDriverDescriptor(
+        id=driver_id,
+        name="Twilio" if remote else "Mac audio",
+        kind=AudioDriverKind.GSM if remote else AudioDriverKind.LOCAL,
+        capabilities=AudioDriverCapabilities(
+            capture=True,
+            playback=True,
+            interrupt=True,
+            room_voice=True,
+            remote_session=remote,
+            local_monitoring=not remote,
+            manual_profile_selection=selectable,
+        ),
     )
-    assert app._menu_settings.get_action("room_voice").state == 0
-    assert app._menu_settings.get_action("wakeword").state == 0
-
-    assert app._menu_server.title == "Starting Server"
-    assert app._menu_parrot.title == "Parrot Mode"
-    assert app._menu_parrot.key == "p"
-    assert app._menu_tts.title == "Text-to-Speech"
-    assert app._menu_tts.key == "t"
 
 
-def test_tray_app_icon_start():
-    """Verify AppIcon.Start cycles through spinner states correctly."""
-    start = AppIcon.Start()
-    assert iter(start) is start
-    assert str(start) == "⠋"
-    assert str(start) == "⠙"
+class FakeProfiles:
+    def __init__(self):
+        self.profile = SimpleNamespace(
+            id="alexa", name="Alexa", emoji="👩🏻", has_room_voice=True
+        )
 
-    # Cycle through remaining states
-    cycle = [str(start) for _ in range(8)]
-    assert cycle == ["⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    def __iter__(self):
+        return iter([self.profile])
 
-    # Cycles back to the beginning
-    assert str(start) == "⠋"
-
-
-def test_tray_app_animate_start_icon(mock_runtime):
-    """Verify _animate_start_icon updates title and stops timer when not starting."""
-    app = App(runtime=mock_runtime)
-    assert app.title == "Helomi"
-
-    app._animate_start_icon(None)
-    assert app.title == "⠋ Helomi"
-
-    app._animate_start_icon(None)
-    assert app.title == "⠙ Helomi"
-
-    # When status is no longer STARTING, stops timer
-    mock_timer = MagicMock()
-    app._state = replace(app._state, status=AppStatus.RUNNING)
-    app._animate_start_icon(mock_timer)
-    mock_timer.stop.assert_called_once()
+    def get(self, profile_id):
+        assert profile_id == "alexa"
+        return self.profile
 
 
-def test_tray_app_sync_state_running(mock_runtime):
-    """Verify _sync_state updates menus, title, and extension states when running."""
-    app = App(runtime=mock_runtime)
+class FakeApplication:
+    def __init__(self):
+        self.app_settings = ApplicationSettings()
+        self.settings = SimpleNamespace(
+            audio=SimpleNamespace(
+                initial_driver="avfaudio",
+                drivers=[
+                    "avfaudio",
+                    "twilio",
+                ],
+            ),
+            detection=SimpleNamespace(wakeword=SimpleNamespace()),
+        )
+        self.profiles = FakeProfiles()
+        self.execute_command = AsyncMock(return_value=CommandResult.ok())
+        self.events = []
 
-    # 1. Transition from STARTING to RUNNING with SERVER mode and alexa profile
-    app._state = AppState(
-        status=AppStatus.RUNNING,
+    async def subscribe_events(self):
+        for event in self.events:
+            yield event
+
+
+def _running_state(**updates) -> TrayState:
+    base = TrayState(
+        status=TrayStatus.RUNNING,
+        response_mode=ResponseMode.PARROT,
+        conversation_state=ConversationState.LISTENING,
         profile_id="alexa",
-        mode=AppMode.SERVER,
-        api_url="http://127.0.0.1:8181",
-        room_voice_enabled=True,
-        room_voice_supported=True,
-        wakeword_enabled=True,
-        wakeword_supported=True,
-        reactions_enabled=True,
-        reactions_supported=True,
+        api_url="http://127.0.0.1:4356/docs",
+        persistent_profile=True,
+        reactions=True,
+        room_voice=True,
+        wakeword=True,
+        active_driver_id="avfaudio",
+        driver_descriptors=(
+            _info("avfaudio"),
+            _info("twilio", remote=True, selectable=False),
+        ),
+        monitoring=True,
+    )
+    return replace(base, **updates)
+
+
+def test_tray_initialization_and_state_rendering():
+    app = TrayApplication(FakeApplication())  # type: ignore[arg-type]
+    assert app._state.status == TrayStatus.STARTING
+    assert app._menu_profiles.get_action("alexa").title == "Alexa"
+    assert "default" not in app._menu_profiles.get_action("alexa").title.lower()
+
+    app._state = _running_state()
+    app._sync_state(None)
+    assert app._menu_profiles.get_action("alexa").enabled
+    assert app._menu_drivers.get_action("avfaudio").checked
+    assert not app._menu_drivers.get_action("twilio").enabled
+    assert app._menu_modes.get_action("parrot").checked
+    assert app._menu_settings.get_action("room_voice").enabled
+    assert app._menu_server.enabled
+    assert "Alexa" in app.title
+
+    app._state = _running_state(
+        active_driver_id="twilio", remote_session=True, response_mode=ResponseMode.API
     )
     app._sync_state(None)
+    assert not app._menu_profiles.get_action("alexa").enabled
+    assert app._menu_drivers.get_action("twilio").checked
+    assert app._menu_modes.get_action("api").checked
 
-    assert app.title == f"👩🏻 Alexa {AppIcon.ROOM_VOICE}"
-    assert app._menu_profiles.get_action("alexa").checked is True
-    assert app._menu_profiles.get_action("gizmo").checked is False
-    assert app._menu_server.title == "API Documentation"
-    assert app._menu_parrot.checked is False
-    assert app._menu_tts.enabled is True
-    assert app._menu_settings.get_action("room_voice").checked is True
-    assert app._menu_settings.get_action("wakeword").checked is True
-    assert app._menu_settings.get_action("reactions").checked is True
-
-    # 2. Transition with gizmo profile (emoji is 👤)
-    app._state = AppState(
-        status=AppStatus.RUNNING,
-        profile_id="gizmo",
-        mode=AppMode.SERVER,
-        api_url="http://127.0.0.1:8181",
-    )
+    app._state = replace(app._state, status=TrayStatus.QUITTING)
     app._sync_state(None)
-    assert app.title == "👤 Gizmo"
-    assert app._menu_profiles.get_action("alexa").checked is False
-    assert app._menu_profiles.get_action("gizmo").checked is True
-
-    # 3. Transition with active profile and Parrot mode
-    app._state = AppState(
-        status=AppStatus.RUNNING,
-        profile_id="alexa",
-        mode=AppMode.PARROT,
-        api_url="http://127.0.0.1:8181",
-    )
-    app._sync_state(None)
-    assert app.title == f"{AppIcon.PARROT_MODE} Alexa"
-    assert app._menu_server.title == "API Disabled"
-    assert app._menu_parrot.checked is True
-
-    # 4. Switch profile to None in Parrot mode
-    app._state = AppState(
-        status=AppStatus.RUNNING,
-        profile_id=None,
-        mode=AppMode.PARROT,
-        api_url="http://127.0.0.1:8181",
-    )
-    app._sync_state(None)
-    assert app.title == f"{AppIcon.PARROT_MODE} Helomi"
-    assert app._menu_profiles.get_action("alexa").checked is False
-    assert app._menu_profiles.get_action("gizmo").checked is False
-    assert app._menu_parrot.checked is True
-
-    # 5. Switch to TTS mode (Settings items disabled)
-    app._state = AppState(
-        status=AppStatus.RUNNING,
-        profile_id=None,
-        mode=AppMode.TTS,
-        api_url="http://127.0.0.1:8181",
-    )
-    app._sync_state(None)
-    assert app.title == f"{AppIcon.TTS_MODE} Helomi"
-    assert app._menu_server.title == "API Disabled"
-    assert app._menu_parrot.checked is False
-    assert app._menu_settings.get_action("room_voice").enabled is False
-    assert app._menu_settings.get_action("wakeword").enabled is False
-
-    # 6. Idle in SERVER mode with wakeword_enabled=True and no profile
-    app._state = AppState(
-        status=AppStatus.RUNNING,
-        profile_id=None,
-        mode=AppMode.SERVER,
-        api_url="http://127.0.0.1:8181",
-        wakeword_enabled=True,
-    )
-    app._sync_state(None)
-    assert app.title == f"{AppIcon.WAKEWORD_ACTIVE} Helomi"
-
-    # 7. Idle in SERVER mode with wakeword_enabled=False and no profile
-    app._state = AppState(
-        status=AppStatus.RUNNING,
-        profile_id=None,
-        mode=AppMode.SERVER,
-        api_url="http://127.0.0.1:8181",
-        wakeword_enabled=False,
-    )
-    app._sync_state(None)
-    assert app.title == f"{AppIcon.WAKEWORD_IDLE} Helomi"
-
-    # 8. GSM driver mode with profile
-    app._state = AppState(
-        status=AppStatus.RUNNING,
-        profile_id="alexa",
-        audio_driver=AudioDriverKind.GSM,
-    )
-    app._sync_state(None)
-    assert app.title == f"{AppIcon.PHONE_ACTIVE} Alexa"
-    assert all(a.enabled is False for a in app._menu_profiles._actions.values())
-
-    # 9. GSM driver mode without profile
-    app._state = AppState(
-        status=AppStatus.RUNNING,
-        profile_id=None,
-        audio_driver=AudioDriverKind.GSM,
-    )
-    app._sync_state(None)
-    assert app.title == f"{AppIcon.PHONE_IDLE} Helomi"
+    assert not app._menu_settings.get_action("wakeword").enabled
 
 
-def test_tray_app_sync_state_quiting(mock_runtime):
-    """Verify _sync_state sets EXIT icon and clears callbacks on quiting."""
-    app = App(runtime=mock_runtime)
-    app._last_state = AppState(status=AppStatus.RUNNING)
-    app._state = AppState(status=AppStatus.QUITING)
+def test_tray_callbacks_issue_public_commands():
+    app = TrayApplication(FakeApplication())  # type: ignore[arg-type]
+    app._state = _running_state()
+    app._execute = MagicMock()
 
-    app._sync_state(None)
+    profile = app._menu_profiles.get_action("alexa")
+    app._on_profile_click(profile)
+    assert app._execute.call_args.args[0].source == ActivationSource.TRAY
+    profile.set_checked(True)
+    app._on_profile_click(profile)
+    assert app._execute.call_args.args[0].type == "deactivate_profile"
 
-    assert app.title == f"{AppIcon.QUITING} Helomi"
-    assert app._menu_server.title == "Stopping Server"
-    assert app._menu_parrot.enabled is False
-    assert app._menu_tts.enabled is False
-    for action in app._menu_profiles._actions.values():
-        assert action.enabled is False
+    app._on_mode_click(app._menu_modes.get_action("api"))
+    assert app._execute.call_args.args[0].mode == ResponseMode.API
+    app._on_setting_click(app._menu_settings.get_action("wakeword"))
+    assert app._execute.call_args.args[0].wakeword is True
 
+    with patch("helomi_tray.app.app.webbrowser.open") as opened:
+        app._on_server_click(app._menu_server)
+    opened.assert_called_once_with("http://127.0.0.1:4356/docs")
 
-def test_tray_app_handle_profile_toggle(mock_runtime):
-    """Verify clicking profile menu items activates or deactivates profiles."""
-    app = App(runtime=mock_runtime)
-    app._pipeline_execute_command = MagicMock()
-
-    # If item is currently active, clicking deactivates
-    item = app._menu_profiles.get_action("alexa")
-    item.set_checked(True)
-    app._on_profile_click(item)
-    app._pipeline_execute_command.assert_called_once()
-    cmd = app._pipeline_execute_command.call_args[0][0]
-    assert isinstance(cmd, DeactivateProfileCmd)
-
-    # If item is inactive, clicking activates
-    item.set_checked(False)
-    app._pipeline_execute_command.reset_mock()
-    app._on_profile_click(item)
-    app._pipeline_execute_command.assert_called_once()
-    cmd = app._pipeline_execute_command.call_args[0][0]
-    assert isinstance(cmd, ActivateProfileCmd)
-    assert cmd.profile_id == "alexa"
+    driver = app._menu_drivers.get_action("twilio")
+    app._on_driver_click(driver)
+    assert app._execute.call_args.args[0].driver_id == "twilio"
+    app._state = replace(app._state, remote_session=True)
+    with patch("helomi_tray.app.app.ConfirmDialog.open", return_value=False):
+        before = app._execute.call_count
+        app._on_driver_click(driver)
+        assert app._execute.call_count == before
+    with patch("helomi_tray.app.app.ConfirmDialog.open", return_value=True):
+        app._on_driver_click(driver)
+        assert app._execute.call_args.args[0].end_remote_session is True
 
 
-def test_tray_app_handle_parrot_toggle(mock_runtime):
-    """Verify clicking parrot menu item toggles mode and closes active window."""
-    app = App(runtime=mock_runtime)
-    app._set_mode = MagicMock()
-
-    mock_win = MagicMock()
-    app._window = mock_win
-
-    # When checked is False, switches to PARROT and closes open window
-    app._menu_parrot.set_checked(False)
-    app._on_parrot_click(app._menu_parrot)
-    mock_win.close.assert_called_once()
-    assert app._window is None
-    assert app._set_mode.call_args_list == [
-        ((AppMode.SERVER,),),
-        ((AppMode.PARROT,),),
-    ]
-
-    # When checked is True, switches back to SERVER
-    app._set_mode.reset_mock()
-    app._menu_parrot.set_checked(True)
-    app._on_parrot_click(app._menu_parrot)
-    app._set_mode.assert_called_once_with(AppMode.SERVER)
-
-
-def test_tray_app_handle_settings_toggles(mock_runtime):
-    """Verify clicking Settings items executes SetOptionsCmd."""
-    app = App(runtime=mock_runtime)
-    app._pipeline_execute_command = MagicMock()
-
-    # Toggle Room Voice off (from checked True -> False)
-    room_voice = app._menu_settings.get_action("room_voice")
-    room_voice.set_checked(True)
-    app._on_setting_click(room_voice)
-    app._pipeline_execute_command.assert_called_once_with(
-        SetOptionsCmd(room_voice_enabled=False)
-    )
-
-    # Toggle Room Voice on (from checked False -> True)
-    app._pipeline_execute_command.reset_mock()
-    room_voice.set_checked(False)
-    app._on_setting_click(room_voice)
-    app._pipeline_execute_command.assert_called_once_with(
-        SetOptionsCmd(room_voice_enabled=True)
-    )
-
-    # Toggle Wake Word
-    wakeword = app._menu_settings.get_action("wakeword")
-    app._pipeline_execute_command.reset_mock()
-    wakeword.set_checked(True)
-    app._on_setting_click(wakeword)
-    app._pipeline_execute_command.assert_called_once_with(
-        SetOptionsCmd(wakeword_enabled=False)
-    )
-
-    # Toggle Reactions
-    reactions = app._menu_settings.get_action("reactions")
-    app._pipeline_execute_command.reset_mock()
-    reactions.set_checked(False)
-    app._on_setting_click(reactions)
-    app._pipeline_execute_command.assert_called_once_with(
-        SetOptionsCmd(reactions_enabled=True)
-    )
-
-    # Toggle Persistent Profile
-    persistent_profile = app._menu_settings.get_action("persistent_profile")
-    app._pipeline_execute_command.reset_mock()
-    persistent_profile.set_checked(False)
-    app._on_setting_click(persistent_profile)
-    app._pipeline_execute_command.assert_called_once_with(
-        SetOptionsCmd(persistent_profile_enabled=True)
-    )
-
-
-def test_tray_app_set_mode(mock_runtime):
-    """Verify _set_mode sets appropriate extension and dispatches to pipeline."""
-    app = App(runtime=mock_runtime)
-    app._pipeline = MagicMock()
-    mock_loop = MagicMock()
-    mock_loop.is_closed.return_value = False
-    app._loop = mock_loop
-
-    with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
-        app._set_mode(AppMode.PARROT)
-        assert app._state.mode == AppMode.PARROT
-        mock_run_coro.assert_called_once()
-        app._pipeline.activate_extension.assert_called_once_with(ParrotExtension)
-
-    app._pipeline.activate_extension.reset_mock()
-    with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
-        app._set_mode(AppMode.SERVER)
-        assert app._state.mode == AppMode.SERVER
-        mock_run_coro.assert_called_once()
-        app._pipeline.activate_extension.assert_called_once_with(ServerExtension)
-
-    with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
-        app._set_mode(AppMode.TTS)
-        assert app._state.mode == AppMode.TTS
-        mock_run_coro.assert_called_once()
-        app._pipeline.deactivate_extension.assert_called_once()
-
-    # Without pipeline or loop, does nothing
-    app._pipeline = None
-    with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
-        app._set_mode(AppMode.SERVER)
-        mock_run_coro.assert_not_called()
-
-    # When loop is closed, does nothing
-    app._pipeline = MagicMock()
-    mock_loop.is_closed.return_value = True
-    with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
-        app._set_mode(AppMode.PARROT)
-        mock_run_coro.assert_not_called()
-
-
-def test_tray_app_handle_window_lifecycle(mock_runtime):
-    """Verify _handle_open_window and _handle_close_window manage window lifecycle."""
-    from helomi_tray.app.windows import TTSWindow
-
-    app = App(runtime=mock_runtime)
-    app._state = replace(app._state, mode=AppMode.SERVER)
-
-    def _mock_set_mode(mode: AppMode) -> None:
-        app._state = replace(app._state, mode=mode)
-
-    app._set_mode = MagicMock(side_effect=_mock_set_mode)
-
-    action = app._menu_tts
-
+def test_tts_and_call_windows_are_independent():
+    app = TrayApplication(FakeApplication())  # type: ignore[arg-type]
+    app._state = _running_state()
+    app._execute = MagicMock()
+    tts = MagicMock()
+    call = MagicMock()
     with (
-        patch.object(TTSWindow, "__init__", return_value=None) as mock_init,
-        patch.object(TTSWindow, "show") as mock_show,
-        patch.object(TTSWindow, "close") as mock_close,
+        patch("helomi_tray.app.app.TTSWindow", return_value=tts),
+        patch("helomi_tray.app.app.CallWindow", return_value=call),
     ):
-        # 1. Open TTS window
-        app._handle_open_window(action)
-        assert isinstance(app._window, TTSWindow)
-        app._set_mode.assert_called_once_with(AppMode.TTS)
-        mock_init.assert_called_once()
-        mock_show.assert_called_once()
+        app._on_tts_click()
+        assert app._tts_window is tts
+        tts.show.assert_called_once()
+        assert app._execute.call_args.args[0].mode == ResponseMode.OPERATOR
+        app._handle_tts_send("Hello")
+        assert app._execute.call_args.args[0].text == "Hello"
 
-        # 2. Non-matching sender action does nothing
-        dummy_action = MenuItem(id="unknown", title="Unknown", callback=lambda _: None)
-        app._handle_open_window(dummy_action)
+        event = CallStartedEvent(profile_id="alexa", caller="****6789", monitoring=True)
+        app._open_call_window(event)
+        assert app._call_window is call
+        call.show.assert_called_once()
+        assert app._tts_window is tts
 
-        # 3. Closing window restores mode
-        app._handle_close_window()
-        assert app._window is None
-        mock_close.assert_called_once()
-        app._set_mode.assert_called_with(AppMode.SERVER)
-
-        # 4. Closing when no window is open does nothing
-        app._handle_close_window()
-
-        # 5. Restores non-server mode (e.g. Parrot mode)
-        app._state = replace(app._state, mode=AppMode.PARROT)
-        app._set_mode.reset_mock()
-        mock_close.reset_mock()
-        app._handle_open_window(action)
-        app._set_mode.assert_called_once_with(AppMode.TTS)
-        app._handle_close_window()
-        mock_close.assert_called_once()
-        app._set_mode.assert_called_with(AppMode.PARROT)
+        app._set_monitoring(False)
+        assert app._state.monitoring is False
+        app._end_call()
+        assert app._execute.call_args.args[0].type == "end_conversation"
+        app._handle_call_closed()
+        assert app._call_window is None
+        app._handle_tts_closed()
+        assert app._tts_window is None
+        assert app._execute.call_args.args[0].mode == ResponseMode.PARROT
 
 
-def test_tray_app_handle_tts_send(mock_runtime):
-    """Verify _handle_tts_send executes SayText pipeline command with active profile."""
-    app = App(runtime=mock_runtime)
-    app._state = replace(app._state, profile_id="test_pid")
-    app._pipeline_execute_command = MagicMock()
+async def test_event_loop_updates_state_and_forwards_windows():
+    application = FakeApplication()
+    application.events = [
+        ProfileActivatedEvent(profile_id="alexa", source=ActivationSource.TWILIO),
+        DriverChangedEvent(driver_id="twilio", previous_driver_id="avfaudio"),
+        CallStartedEvent(profile_id="alexa", caller="****6789", monitoring=True),
+        ResponseModeChangedEvent(
+            mode=ResponseMode.API, previous_mode=ResponseMode.PARROT
+        ),
+        ConversationStateChangedEvent(
+            state=ConversationState.PROCESSING,
+            previous_state=ConversationState.LISTENING,
+        ),
+        ConversationOptionsChangedEvent(
+            persistent_profile=False,
+            reactions=False,
+            room_voice=False,
+            wakeword=False,
+        ),
+        CallEndedEvent(profile_id="alexa"),
+        ProfileDeactivatedEvent(profile_id="alexa"),
+    ]
+    app = TrayApplication(application)  # type: ignore[arg-type]
+    app._state = _running_state()
+    app._tts_window = MagicMock()
+    app._open_call_window = MagicMock()
+    with patch(
+        "helomi_tray.app.app.PyObjCTools.AppHelper.callAfter",
+        side_effect=lambda callback, *args: callback(*args),
+    ):
+        await app._event_loop()
+    assert app._state.profile_id is None
+    assert app._state.response_mode == ResponseMode.API
+    assert app._state.conversation_state == ConversationState.PROCESSING
+    assert not app._state.persistent_profile
+    app._open_call_window.assert_called_once()
 
-    app._handle_tts_send("Hello from TTS")
-    app._pipeline_execute_command.assert_called_once()
-    cmd = app._pipeline_execute_command.call_args[0][0]
-    assert isinstance(cmd, SayTextCmd)
-    assert cmd.text == "Hello from TTS"
-    assert cmd.profile_id == "test_pid"
 
-
-def test_tray_app_pipeline_execute_command(mock_runtime):
-    """Verify _pipeline_execute_command runs pipeline command on event loop."""
-    app = App(runtime=mock_runtime)
-    app._pipeline = MagicMock()
-    mock_loop = MagicMock()
-    mock_loop.is_closed.return_value = False
-    app._loop = mock_loop
-
-    with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
-        cmd = DeactivateProfileCmd()
-        app._pipeline_execute_command(cmd)
-        mock_run_coro.assert_called_once()
-
-    # Without pipeline or loop, does nothing
-    app._pipeline = None
-    app._pipeline_execute_command(cmd)
-
-    # When loop is closed, does nothing
-    app._pipeline = MagicMock()
-    mock_loop.is_closed.return_value = True
-    with patch("asyncio.run_coroutine_threadsafe") as mock_run_coro:
-        app._pipeline_execute_command(cmd)
-        mock_run_coro.assert_not_called()
-
-
-def test_tray_app_handle_quit_and_exit(mock_runtime):
-    """Verify quit flow signals shutdown, closes window, and exits cleanly."""
-    app = App(runtime=mock_runtime)
-    mock_timer_item = MagicMock()
-
-    with patch("rumps.Timer") as mock_timer_cls:
-        app._on_quit_click(mock_timer_item)
-        assert app._state.status == AppStatus.QUITING
-        assert mock_timer_cls.called
-
-    # Test _handle_exit
-    mock_win = MagicMock()
-    app._window = mock_win
-
+def test_start_animation_and_command_without_loop():
+    app = TrayApplication(FakeApplication())  # type: ignore[arg-type]
+    app._animate_start_icon(None)
+    assert app.title.startswith("⠋")
+    app._state = replace(app._state, status=TrayStatus.RUNNING)
     timer = MagicMock()
-    mock_loop = MagicMock()
-    mock_loop.is_closed.return_value = False
-    app._loop = mock_loop
-    app._shutdown_signal = MagicMock()
-    app._thread = MagicMock()
-    app._thread.is_alive.return_value = True
-
-    with patch("rumps.quit_application") as mock_quit_app:
-        app._handle_exit(timer)
-        timer.stop.assert_called_once()
-        mock_win.close.assert_called_once()
-        assert app._window is None
-        mock_loop.call_soon_threadsafe.assert_called_once_with(app._shutdown_signal.set)
-        app._thread.join.assert_called_once_with(timeout=5.0)
-        mock_quit_app.assert_called_once()
-
-
-def test_tray_app_update_state(mock_runtime):
-    """Verify _update_state updates state fields and handles options."""
-    app = App(runtime=mock_runtime)
-
-    app._update_state(api_url="http://new-url")
-    assert app._state.api_url == "http://new-url"
-
-    # force_sync calls _sync_state
-    with patch.object(app, "_sync_state") as mock_sync:
-        app._update_state(force_sync=True)
-        mock_sync.assert_called_once_with(None)
-
-    # When status is QUITING, updates are ignored
-    app._state = replace(app._state, status=AppStatus.QUITING)
-    app._update_state(api_url="http://ignored-url")
-    assert app._state.api_url == "http://new-url"
-
-
-@pytest.mark.asyncio
-async def test_tray_app_pipeline_loop(mock_runtime):
-    """Verify _pipeline_loop listens to pipeline events and forwards to window."""
-    app = App(runtime=mock_runtime)
-    mock_win = MagicMock()
-    app._window = mock_win
-
-    mock_pipeline = MagicMock()
-    synthesis_event = SynthesisReadyEvent(profile_id="gizmo", text="hello", audio=None)
-
-    async def mock_subscribe():
-        yield ProfileActivatedEvent(profile_id="gizmo")
-        yield synthesis_event
-        yield ProfileDeactivatedEvent(profile_id="gizmo")
-
-    mock_pipeline.subscribe_event = mock_subscribe
-    app._pipeline = mock_pipeline
-
-    await app._pipeline_loop()
-
-    assert app._state.profile_id is None
-    assert mock_win.handle_event.call_count == 3
-    mock_win.handle_event.assert_any_call(synthesis_event)
-
-    # Without pipeline, returns early
-    app._pipeline = None
-    await app._pipeline_loop()
-
-
-@pytest.mark.asyncio
-async def test_tray_app_runtime_loop(mock_runtime):
-    """Verify _runtime_loop initializes components and awaits shutdown."""
-    app = App(runtime=mock_runtime)
-
-    mock_pipeline = MagicMock()
-    mock_profile = MagicMock(id="prof1")
-    mock_pipeline.active_profile = mock_profile
-
-    async def empty_events():
-        if False:
-            yield None
-
-    mock_pipeline.subscribe_event = empty_events
-
-    mock_server_ext = MagicMock()
-    mock_server_ext.docs_url = "http://localhost:8181/docs"
-    mock_parrot_ext = MagicMock()
-    mock_audio_driver = MagicMock()
-    mock_audio_driver.kind = AudioDriverKind.LOCAL
-
-    mock_runtime.__aenter__.return_value = mock_runtime
-    mock_runtime.__aexit__.return_value = None
-    mock_runtime.get_audio_driver = AsyncMock(return_value=mock_audio_driver)
-    mock_runtime.get_pipeline_service = AsyncMock(return_value=mock_pipeline)
-    mock_runtime.get_pipeline_parrot_extension = AsyncMock(return_value=mock_parrot_ext)
-    mock_runtime.get_pipeline_server_extension = AsyncMock(return_value=mock_server_ext)
-
-    loop_task = asyncio.create_task(app._runtime_loop())
-    await asyncio.sleep(0.05)
-
-    assert app._pipeline is mock_pipeline
-    assert app._state.status == AppStatus.RUNNING
-    assert app._state.api_url == "http://localhost:8181/docs"
-    assert app._state.profile_id == "prof1"
-
-    app._shutdown_signal.set()
-    await loop_task
-
-
-def test_tray_app_thread_worker(mock_runtime):
-    """Verify _thread_worker initializes event loop and executes runtime loop."""
-    app = App(runtime=mock_runtime)
-    with patch.object(app, "_runtime_loop", new_callable=AsyncMock) as mock_r_loop:
-        app._thread_worker()
-        assert app._loop is not None
-        mock_r_loop.assert_called_once()
-
-
-def test_tray_app_thread_worker_exception(mock_runtime):
-    """Verify _thread_worker logs exception when runtime loop fails."""
-    app = App(runtime=mock_runtime)
-    with (
-        patch.object(app, "_runtime_loop", side_effect=RuntimeError("boom")),
-        patch.object(app._logger, "exception") as mock_log,
-    ):
-        app._thread_worker()
-        mock_log.assert_called_once()
-
-
-def test_tray_app_thread_worker_cancelled(mock_runtime):
-    """Verify _thread_worker cleanly suppresses CancelledError and KeyboardInterrupt."""
-    app = App(runtime=mock_runtime)
-    with patch.object(app, "_runtime_loop", side_effect=asyncio.CancelledError):
-        app._thread_worker()
-
-    with patch.object(app, "_runtime_loop", side_effect=KeyboardInterrupt):
-        app._thread_worker()
-
-
-def test_tray_app_many_profiles_keys():
-    """Verify profiles with index >= 9 do not receive a single-digit shortcut."""
-    runtime = MagicMock()
-    mock_profiles = [
-        MagicMock(id=f"prof_{i}", name=f"Profile {i}", emoji=None) for i in range(12)
-    ]
-    profiles = MagicMock()
-    profiles.__iter__.return_value = mock_profiles
-    profiles.get.return_value = mock_profiles[0]
-    runtime.profiles = profiles
-
-    app = App(runtime=runtime)
-    assert app._menu_profiles.get_action("prof_0").key == "0"
-    assert app._menu_profiles.get_action("prof_8").key == "8"
-    assert not app._menu_profiles.get_action("prof_9").key
-    assert not app._menu_profiles.get_action("prof_10").key
-
-
-def test_tray_app_run(mock_runtime):
-    """Verify run starts worker thread and calls rumps.App.run."""
-    app = App(runtime=mock_runtime)
-    with (
-        patch.object(app, "_before_run") as mock_before_run,
-        patch("rumps.App.run") as mock_super_run,
-    ):
-        app.run()
-        mock_before_run.assert_called_once()
-        mock_super_run.assert_called_once()
-
-
-def test_tray_main_and_run():
-    """Verify helomi_tray.main entrypoints."""
-    with patch.object(sys, "argv", ["helomi-tray"]):
-        args = parse_args()
-        assert not args.debug
-
-    with patch.object(sys, "argv", ["helomi-tray", "-d"]):
-        args = parse_args()
-        assert args.debug
-
-    with (
-        patch("helomi_tray.main.run") as mock_run,
-        patch.object(sys, "argv", ["helomi-tray"]),
-    ):
-        main()
-        mock_run.assert_called_once()
-
-
-def test_tray_run_function():
-    """Verify run instantiates Runtime and App and handles signals."""
-    with (
-        patch("helomi_tray.main.Runtime") as mock_runtime_cls,
-        patch("helomi_tray.main.App") as mock_tray_cls,
-        patch("signal.signal") as mock_signal,
-    ):
-        mock_app = mock_tray_cls.return_value
-        args = MagicMock()
-        args.debug = False
-        run(args)
-        mock_runtime_cls.assert_called_once()
-        mock_tray_cls.assert_called_once_with(runtime=mock_runtime_cls.return_value)
-        mock_app.run.assert_called_once()
-        assert mock_signal.call_count == 2
-
-        # Test signal handler
-        handler = mock_signal.call_args_list[0][0][1]
-        handler(2, None)
-        mock_app.quit.assert_called_once()
-
-    # Test KeyboardInterrupt
-    with (
-        patch("helomi_tray.main.Runtime"),
-        patch("helomi_tray.main.App") as mock_tray_cls,
-        patch("signal.signal"),
-    ):
-        mock_app = mock_tray_cls.return_value
-        mock_app.run.side_effect = KeyboardInterrupt
-        args = MagicMock()
-        run(args)
-        mock_app.quit.assert_called_once()
-
-
-def test_tray_quit_calls_handle_quit(mock_runtime):
-    """Verify app.quit delegates to _handle_quit."""
-    app = App(runtime=mock_runtime)
-    with patch.object(app, "_on_quit_click") as mock_handle:
-        app.quit()
-        mock_handle.assert_called_once_with(None)
-
-
-def test_tray_package_main_execution():
-    """Verify running helomi_tray __main__."""
-    with (
-        patch("helomi_tray.main.run") as mock_run,
-        patch.object(sys, "argv", ["helomi-tray"]),
-    ):
-        runpy.run_module("helomi_tray", run_name="__main__")
-        mock_run.assert_called_once()
+    app._animate_start_icon(timer)
+    timer.stop.assert_called_once()
+    assert app._execute(MagicMock()) is None

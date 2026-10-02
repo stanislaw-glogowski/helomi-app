@@ -1,15 +1,16 @@
 import pytest
 
-from helomi_app.core.detection import (
+from helomi_runtime.detection import (
     ConversationEndedEvent,
     DetectionMode,
     DetectionWorker,
+    TurnPrediction,
+    TurnStatus,
     UtteranceContinuedEvent,
     UtteranceDetectedEvent,
     UtteranceStartedEvent,
     WakeWordDetectedEvent,
 )
-from helomi_app.core.turn import TurnPrediction, TurnStatus
 from tests.fixtures.audio import create_audio_chunk, create_raw_audio
 from tests.fixtures.mocks import (
     MockTurnAdapter,
@@ -58,7 +59,7 @@ async def test_detection_worker_wakeword_in_utterance_mode():
     )
 
     async with worker:
-        await worker.change_mode(DetectionMode.UTTERANCE)
+        await worker.set_mode(DetectionMode.UTTERANCE)
         assert worker.current_mode == DetectionMode.UTTERANCE
 
         raw = create_raw_audio(sample_rate=16000, num_samples=1024)
@@ -163,7 +164,7 @@ async def test_detection_worker_timeout_and_conversation_ended():
 
     async with worker:
         # Force switch to UTTERANCE mode while worker is open
-        await worker.change_mode(DetectionMode.UTTERANCE)
+        await worker.set_mode(DetectionMode.UTTERANCE)
         assert worker.current_mode == DetectionMode.UTTERANCE
 
         results = [r async for r in worker.detect(raw)]
@@ -184,5 +185,5 @@ async def test_detection_worker_change_mode_noop():
     )
     async with worker:
         # Already in UTTERANCE mode
-        await worker.change_mode(DetectionMode.UTTERANCE)
+        await worker.set_mode(DetectionMode.UTTERANCE)
         assert worker.current_mode == DetectionMode.UTTERANCE

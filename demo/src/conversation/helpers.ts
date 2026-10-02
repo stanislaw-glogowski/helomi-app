@@ -28,7 +28,9 @@ export async function ollamaFetch(
       const body = JSON.parse(init.body);
       body.think = false;
       return fetch(input, { ...init, body: JSON.stringify(body) });
-    } catch {}
+    } catch {
+      // Preserve the original request when the body is not JSON.
+    }
   }
   return fetch(input, init);
 }

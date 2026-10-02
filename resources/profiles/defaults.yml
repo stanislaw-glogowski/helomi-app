@@ -5,51 +5,15 @@ disabled: false
 readonly: false
 
 reactions:
-  greeting: # optional list
-  farewell: # optional list
-  interrupted: # optional list
+  connected:
+  greeting:
+  farewell:
 
 audio:
-  avfaudio:
-    room_voice_path: # optional
-  twilio:
-    callee: # optional
+  avfaudio: {}
 
-stt:
-  parakeet:
-    language: # optional
-  whisper:
-    language: # optional
-    initial_prompt: # optional
+transcription: {}
 
-tts:
-  supertonic:
-    language: # optional
-    voice_name: "F1" # female: F[1-5], male: M[1-5]
-    voice_path: # optional
-    quality: 8
-    speed: 1.0
-    max_chunk_length: # optional
-    silence_duration: 0.3
-  voxcpm2:
-    ref_audio: # optional
-    inference: 7
-    cfg_value: 2.6
-    min_len: 2
-    max_len: 1024
-    normalize: false
-    denoise: false
-  piper:
-    model_path: # required
-    config_path: # required
-    speaker_id: # optional
-    length_scale: # optional
-    noise_scale: # optional
-    noise_w_scale: # optional
+synthesis: {}
 
-wakeword:
-  openwakeword:
-    label: # optional
-    model_path: # required
-    threshold: 0.75
-    patience: # optional
+wakeword: {}

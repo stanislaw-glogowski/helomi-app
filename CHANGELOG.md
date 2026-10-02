@@ -2,50 +2,48 @@
 
 All notable changes to Helomi are documented in this file.
 
-## [Unreleased] - (0.7.0)
+## [0.8.0] - 2026-10-02
 
 ### Added
 
-- **Continuous Conversation Mode (`persistent_profile`)**:
-    - Added `persistent_profile` pipeline option (`PipelineSettings.persistent_profile: bool = True`,
-      `PipelineOptions.persistent_profile_enabled: bool = True`) to keep the active profile engaged across conversation
-      turns without deactivating on silence timeouts (`ConversationEndedEvent`).
-    - Added `Persistent Profile` toggle to macOS System Tray menu (`helomi_tray`) Settings submenu.
-- **Wake Word Detection in Utterance Mode (`DetectionMode.UTTERANCE`)**:
-    - Added wake-word evaluation during active utterance / conversation mode in `DetectionWorker.detect()`, enabling
-      wake-word re-triggering and on-the-fly vocal switching between assistant profiles without waiting for silence
-      timeout.
-    - Implemented automatic adapter reset (`vad_adapter.reset()`, `turn_adapter.reset()`, `wakeword_adapter.reset()`)
-      upon wake-word detection to immediately start a fresh turn.
-- **Spoken Interruption Reaction Handling (`ReactionKind.INTERRUPTED`)**:
-    - Added instant spoken reaction triggering (`ReactionKind.INTERRUPTED`) upon user speech onset barge-in
-      (`UtteranceStartedEvent`) and audio driver `InterruptedEvent`.
-    - Curated short, personality-tailored `interrupted` reaction variants for assistant profiles (e.g. `alexa`).
-- **Graceful Profile Farewell Reaction (`ReactionKind.FAREWELL`)**:
-    - Added farewell reaction playback upon manual profile deactivation or when `persistent_profile` is disabled,
-      deferring actual deactivation until playback finishes (`DisconnectedEvent`).
-- **Pipeline Configuration in `settings.yml`**:
-    - Added `pipeline:` section in `Settings` schema (`PipelineSettings`: `persistent_profile`, `reactions`,
-      `room_voice`, `wakeword`), allowing global defaults configuration via `resources/settings.yml`.
+- Added streamed audio playback, per-request processing failure events, optional stale-turn protection, and a
+  phone-specific `connected` reaction with five Alexa variants.
+- Added strict `helomi_foundation`, `helomi_runtime`, `helomi_app`, `helomi_cli`, and `helomi_tray` package layers.
+- Added typed public application commands, events, rejection codes, and API, Parrot, and Operator response modes.
+- Added a reusable conversation state machine with session/turn identity, follow-up listening, silent barge-in, and
+  playback-aware greetings and farewells.
+- Added multi-driver audio routing with capability metadata, atomic remote takeover/restore, caller-only monitoring,
+  and confirmed route switching during remote calls.
+- Added complete inbound Twilio webhook and bidirectional Media Streams support: request signatures, expiring one-time
+  sessions, callee-to-profile mapping, caller allowlists, busy handling, handshake validation, μ-law/8 kHz transport,
+  real-time bounded mixing, room voice ducking, `mark` acknowledgements, and `clear` interruption.
+- Added an independent tray Call window with masked caller, duration, live transcript, response mode, monitoring,
+  Operator TTS, and End Call controls.
 
 ### Changed
 
-- **Pipeline Service Lifecycle & Re-activation**:
-    - Re-activating the currently active profile via wake-word now seamlessly increments the audio generation counter,
-      clears the playback buffer, optionally speaks greeting reactions, and maintains active conversation state.
-    - Wrapped `start_room_voice()` with error handling to avoid disrupting pipeline commands if room voice audio fails
-      to start.
-- **System Tray Settings Menu (`helomi_tray`)**:
-    - Reorganized Settings submenu actions to reflect all pipeline options: `Persistent Profile`, `Wake Word`,
-      `Reactions`, `Room Voice`.
+- Separated adapter selectors, shared domain `options`, and named adapter configurations; audio now lists enabled driver IDs.
+- Discarded inactive configurations before resolving references and validating local model availability.
+- Excluded profiles without selected synthesis support while retaining profiles without wake-word activation.
+- Moved typed application settings into `helomi_app`; runtime retains the renamed `app` section as a dictionary.
+- Removed the default-profile concept. Activation now requires tray/CLI selection, wake word, or Twilio number mapping.
+- Moved room voice to per-driver profile settings and kept exported/event synthesis free of ambient audio.
+- Made CLI and tray consume only the `Application` façade; runtime composition is no longer duplicated in interfaces.
+- Rebuilt component lifecycle handling for reusable mount/unmount, reverse cleanup, task cancellation, aggregated
+  failures, and synchronous iterator thread affinity.
+- Standardized public names around application commands, audio drivers, transcription, and synthesis; added concise
+  API documentation and lifecycle comments.
+- Reduced repository agent instructions to project-specific commands, boundaries, and validation rules.
+- Updated package metadata and bundled native AVFAudio artifact locations for the new architecture.
 
 ### Fixed
 
-- Fixed wake word detection being completely bypassed once entering `DetectionMode.UTTERANCE`.
-- Fixed unintended profile deactivation on conversation silence timeouts when `persistent_profile` is enabled.
-- Fixed Pyrefly type checking issues in `Runtime._get_component` and Twilio message schemas (`StartEvent`,
-  `MediaEvent`).
-- Added missing `room_voice_supported` property to `MockAudioDriver` test fixture.
+- Fixed silently dropped speech, synthesis loops stopping after adapter failures, premature inactivity timeouts,
+  AVFAudio acknowledgement correlation after interruption, and Twilio turn state surviving between calls.
+- Prevented stale synthesis/playback from a previous turn after barge-in.
+- Prevented local microphone capture and duplicated local playback while Twilio owns the route.
+- Prevented inactive response modules from producing a second response.
+- Fixed configuration override discovery and SSE session release when a client disconnects after the initial event.
 
 ## [0.6.5] - 2026-09-15
 
@@ -127,8 +125,8 @@ All notable changes to Helomi are documented in this file.
       `prompt`, `task`, `validation`).
     - Standardized detection events with `*Event` naming convention (`WakeWordDetectedEvent`, `UtteranceStartedEvent`,
       `UtteranceContinuedEvent`, `UtteranceDetectedEvent`, `ConversationEndedEvent`).
-    - Standardized model settings schemas into typed `*Settings` and `*Profile` (`SileroVADMLXSettings`,
-      `SileroVADONNXSettings`, `OpenWakeWordSettings`, `OpenWakeWordProfile`).
+    - Standardized model settings schemas into typed `*Settings` and `*Profile` (`SileroVADMLXConfig`,
+      `SileroVADONNXConfig`, `OpenWakeWordConfig`, `OpenWakeWordProfile`).
     - Consolidated ML adapters resolution through `helomi_app.adapters` and `Runtime`.
 - **Demo Prompt Relocation to Resources**:
     - Relocated demo prompt definitions from `demo/prompts/` to centralized `resources/`

@@ -1,6 +1,6 @@
 import * as process from 'node:process';
 import type { Profile } from './api';
-import { Client, ClientError } from './api';
+import { ClientError, HelomiClient } from './api';
 import { LlmProvider, MessageManager } from './conversation';
 import type { Color } from './ui';
 import { print, printBanner } from './ui';
@@ -19,7 +19,7 @@ const {
  */
 async function subscribeToProfile(
   profile: Profile<string>,
-  api: Client,
+  api: HelomiClient,
   llm: LlmProvider,
 ): Promise<void> {
   const session = api.createSession(profile.id);
@@ -40,11 +40,11 @@ async function subscribeToProfile(
   for await (const event of session.subscribe()) {
     switch (event.type) {
       case 'session_started':
-        log(['● Session connected', 'green'], ' (listening for speech)');
+        log(['● HelomiSession connected', 'green'], ' (listening for speech)');
         break;
 
       case 'session_ended':
-        log(['○ Session ended', 'gray']);
+        log(['○ HelomiSession ended', 'gray']);
         break;
 
       case 'profile_activated':
@@ -93,9 +93,9 @@ async function subscribeToProfile(
               lines.push(line);
               await session.sayText(line);
             }
-          } catch (err) {
+          } catch (error) {
             // Silently ignore aborted requests on interruption
-            if (err instanceof Error && err.name === 'AbortError') {
+            if (error instanceof Error && error.name === 'AbortError') {
               return;
             }
           }
@@ -107,13 +107,13 @@ async function subscribeToProfile(
               content: lines.join('\n'),
             });
           }
-        })().catch((err) => {
-          if (err instanceof Error && err.name === 'AbortError') {
+        })().catch((error) => {
+          if (error instanceof Error && error.name === 'AbortError') {
             return;
           }
           print(
             ['[ERROR]', 'red'],
-            ` ${err instanceof Error ? err.message : String(err)}`,
+            ` ${error instanceof Error ? error.message : String(error)}`,
           );
         });
         break;
@@ -127,11 +127,11 @@ async function subscribeToProfile(
  * Connects to Helomi API, discovers profiles, loads prompts, and subscribes to SSE streams.
  */
 async function main(): Promise<void> {
-  const api = new Client({
-    baseURL: API_BASE_URL,
+  const api = new HelomiClient({
+    baseUrl: API_BASE_URL,
   });
   const llm = new LlmProvider({
-    baseURL: LLM_BASE_URL,
+    baseUrl: LLM_BASE_URL,
     apiKey: LLM_API_KEY,
     modelId: LLM_MODEL_ID,
   });
@@ -154,10 +154,7 @@ async function main(): Promise<void> {
   if (promises.length === 0) {
     print();
     print(['[WARN]', 'yellow'], ' No active profiles found with matching prompt files.');
-    print([
-      'Create a prompt file under prompts/profiles/<profile_id>.md (e.g. prompts/profiles/alexa.md).\n',
-      'dim',
-    ]);
+    print(['Create resources/profiles/alexa/prompts/demo.md.\n', 'dim']);
     return;
   }
 
@@ -166,8 +163,8 @@ async function main(): Promise<void> {
 
 try {
   await main();
-} catch (err) {
-  if (err instanceof ClientError || (err instanceof Error && 'cause' in err)) {
+} catch (error) {
+  if (error instanceof ClientError || (error instanceof Error && 'cause' in error)) {
     print();
     print(
       ['[ERROR]', 'bold', 'red'],
@@ -178,7 +175,7 @@ try {
     print();
     print(
       ['[ERROR]', 'bold', 'red'],
-      ` ${err instanceof Error ? err.message : String(err)}\n`,
+      ` ${error instanceof Error ? error.message : String(error)}\n`,
     );
   }
 }

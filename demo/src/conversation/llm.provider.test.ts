@@ -19,7 +19,7 @@ describe('LlmProvider', () => {
 
     const providerWithOpenAI = new LlmProvider({
       modelId: 'custom-model',
-      baseURL: 'http://localhost:11434/v1',
+      baseUrl: 'http://localhost:11434/v1',
       apiKey: 'test-key',
     });
     expect(providerWithOpenAI).toBeDefined();

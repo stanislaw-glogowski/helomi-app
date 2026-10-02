@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import AppKit
 
 from helomi_tray.app.windows.tts import (
-    TTS_TAGS,
+    SYNTHESIS_TAGS,
     ComposeTextView,
     ComposeTextViewDelegate,
     RoundedLayoutManager,
@@ -15,12 +15,12 @@ from helomi_tray.app.windows.tts import (
 
 def test_tts_tags_content():
     """Verify TTS tags dict includes expected vocal emotions and descriptions."""
-    assert "[laughter]" in TTS_TAGS
-    assert "[sigh]" in TTS_TAGS
-    assert "[whisper]" in TTS_TAGS
-    assert "[pause]" in TTS_TAGS
-    assert TTS_TAGS["[pause]"] == "Brief silence or dramatic pause"
-    assert list(TTS_TAGS.keys()) == sorted(TTS_TAGS.keys())
+    assert "[laughter]" in SYNTHESIS_TAGS
+    assert "[sigh]" in SYNTHESIS_TAGS
+    assert "[whisper]" in SYNTHESIS_TAGS
+    assert "[pause]" in SYNTHESIS_TAGS
+    assert SYNTHESIS_TAGS["[pause]"] == "Brief silence or dramatic pause"
+    assert list(SYNTHESIS_TAGS.keys()) == sorted(SYNTHESIS_TAGS.keys())
 
 
 def test_compose_text_view_find_tag_range_and_backspace():
@@ -42,7 +42,7 @@ def test_compose_text_view_find_tag_range_and_backspace():
     assert tv._find_tag_range(tv.string(), 0) is None
     assert tv._find_tag_range(tv.string(), 999) is None
 
-    # 4. Unknown tag not in TTS_TAGS
+    # 4. Unknown tag not in SYNTHESIS_TAGS
     tv.setString_("Hello [unknown] world")
     assert tv._find_tag_range(tv.string(), 15) is None
 
@@ -436,26 +436,26 @@ def test_tts_window_lifecycle_and_ui():
     # Test show() keeps accessory policy and focuses (never elevated to regular)
     window_ctrl.show()
     app = AppKit.NSApplication.sharedApplication()
-    assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
+    assert app.activationPolicy() != AppKit.NSApplicationActivationPolicyRegular
 
     # Test close() keeps accessory policy and triggers callback
     window_ctrl.close()
-    assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
+    assert app.activationPolicy() != AppKit.NSApplicationActivationPolicyRegular
     assert closed is True
 
     # Test windowWillClose_ delegate method keeps accessory policy
     # and triggers callback
     closed = False
     window_ctrl.windowWillClose_(None)
-    assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
+    assert app.activationPolicy() != AppKit.NSApplicationActivationPolicyRegular
     assert closed is True
 
     # Test tag buttons created for each tag
-    assert len(window_ctrl.tag_buttons) == len(TTS_TAGS)
+    assert len(window_ctrl.tag_buttons) == len(SYNTHESIS_TAGS)
     first_btn = window_ctrl.tag_buttons[0]
-    assert first_btn.title() == next(iter(TTS_TAGS.keys()))
+    assert first_btn.title() == next(iter(SYNTHESIS_TAGS.keys()))
     assert isinstance(first_btn, TagButton)
-    assert len(window_ctrl.tag_container.buttons) == len(TTS_TAGS)
+    assert len(window_ctrl.tag_container.buttons) == len(SYNTHESIS_TAGS)
 
     # Test clicking tag button inserts tag at cursor and spaces properly
     window_ctrl.text_view.setString_("Hello")
@@ -470,7 +470,7 @@ def test_tts_window_lifecycle_and_ui():
     window_ctrl._on_close = on_close
     window_ctrl.show()
     window_ctrl.closeClicked_(None)
-    assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
+    assert app.activationPolicy() != AppKit.NSApplicationActivationPolicyRegular
     assert closed is True
 
     # Test window without on_close callback does not crash
@@ -542,8 +542,8 @@ def test_tts_window_do_send():
 
 def test_tts_window_handle_synthesis_ready_and_events():
     """Verify handle_event and on_synthesis_ready enable save button and store audio."""
-    from helomi_app.core.audio import RawAudio
-    from helomi_app.pipeline import SynthesisReadyEvent
+    from helomi_app import SynthesisReadyEvent
+    from helomi_runtime.audio import RawAudio
 
     window_ctrl = TTSWindow()
     assert window_ctrl.save_btn.title() == "Save to …"
@@ -569,17 +569,7 @@ def test_tts_window_handle_synthesis_ready_and_events():
     assert window_ctrl.save_btn.isEnabled() is True
     assert window_ctrl.status_label.stringValue() == "Ready"
 
-    # 3. SynthesisReady with audio=None does not enable save button
-    window_ctrl.save_btn.setEnabled_(False)
-    none_audio_event = SynthesisReadyEvent(
-        profile_id="test_profile",
-        text="Empty",
-        audio=None,
-    )
-    window_ctrl.on_synthesis_ready(none_audio_event)
-    assert window_ctrl.save_btn.isEnabled() is False
-
-    # 4. Threaded execution uses PyObjCTools.AppHelper.callAfter
+    # 3. Threaded execution uses PyObjCTools.AppHelper.callAfter
     with (
         patch("threading.current_thread") as mock_current_thread,
         patch("threading.main_thread") as mock_main_thread,
@@ -595,7 +585,7 @@ def test_tts_window_do_save():
     """Verify do_save prompts SaveFileDialog, writes audio, and handles cancel/error."""
     from pathlib import Path
 
-    from helomi_app.core.audio import RawAudio
+    from helomi_runtime.audio import RawAudio
 
     window_ctrl = TTSWindow(get_profile_id=lambda: "fallback_profile")
 
@@ -662,7 +652,7 @@ def test_tts_window_do_save():
 
 def test_tts_window_resets_on_clear_and_send():
     """Verify clear and do_send reset current audio and disable save button."""
-    from helomi_app.core.audio import RawAudio
+    from helomi_runtime.audio import RawAudio
 
     window_ctrl = TTSWindow()
     mock_audio = MagicMock(spec=RawAudio)

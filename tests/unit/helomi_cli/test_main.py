@@ -50,14 +50,14 @@ def test_cli_parse_args_commands():
 async def test_cli_run_invokes_commands():
     """Verify _run dispatches commands to respective handlers within runtime context."""
     with (
-        patch("helomi_cli.main.Runtime") as mock_runtime_cls,
+        patch("helomi_cli.main.Application") as mock_application_cls,
         patch("helomi_cli.main.run_install_cmd", new_callable=AsyncMock) as mock_inst,
         patch("helomi_cli.main.run_parrot_cmd", new_callable=AsyncMock) as mock_parrot,
         patch("helomi_cli.main.run_serve_cmd", new_callable=AsyncMock) as mock_serve,
     ):
-        mock_runtime = mock_runtime_cls.return_value
-        mock_runtime.__aenter__.return_value = mock_runtime
-        mock_runtime.__aexit__.return_value = None
+        mock_application = mock_application_cls.return_value
+        mock_application.__aenter__.return_value = mock_application
+        mock_application.__aexit__.return_value = None
 
         # 1. install
         args = MagicMock()
@@ -99,16 +99,16 @@ def test_cli_main_entrypoint():
 @pytest.mark.asyncio
 async def test_cli_run_logger_configuration():
     """Verify run configures logger based on debug flag."""
-    from helomi_app.common import LogLevel
+    from helomi_foundation import LogLevel
 
     with (
         patch("helomi_cli.main.configure_logger") as mock_conf,
-        patch("helomi_cli.main.Runtime") as mock_runtime_cls,
+        patch("helomi_cli.main.Application") as mock_application_cls,
         patch("helomi_cli.main.run_install_cmd", new_callable=AsyncMock),
     ):
-        mock_runtime = mock_runtime_cls.return_value
-        mock_runtime.__aenter__.return_value = mock_runtime
-        mock_runtime.__aexit__.return_value = None
+        mock_application = mock_application_cls.return_value
+        mock_application.__aenter__.return_value = mock_application
+        mock_application.__aexit__.return_value = None
 
         # debug=False -> LogLevel.INFO
         args = MagicMock(command="install", debug=False, profile_id=None)
@@ -126,7 +126,7 @@ async def test_cli_run_exception_handling():
     """Verify run re-raises exceptions if debug=True and logs them if debug=False."""
     with (
         patch("helomi_cli.main.configure_logger") as mock_conf,
-        patch("helomi_cli.main.Runtime") as mock_runtime_cls,
+        patch("helomi_cli.main.Application") as mock_application_cls,
         patch(
             "helomi_cli.main.run_install_cmd",
             side_effect=RuntimeError("command failed"),
@@ -134,9 +134,9 @@ async def test_cli_run_exception_handling():
     ):
         mock_logger = MagicMock()
         mock_conf.return_value = mock_logger
-        mock_runtime = mock_runtime_cls.return_value
-        mock_runtime.__aenter__.return_value = mock_runtime
-        mock_runtime.__aexit__.return_value = None
+        mock_application = mock_application_cls.return_value
+        mock_application.__aenter__.return_value = mock_application
+        mock_application.__aexit__.return_value = None
 
         # When debug=True, exception is re-raised
         args = MagicMock(command="install", debug=True, profile_id=None)
@@ -155,30 +155,22 @@ async def test_cli_run_exception_handling():
 async def test_cli_run_suppresses_cancelled_and_timeout():
     """Verify run cleanly suppresses CancelledError and TimeoutError."""
     with (
-        patch("helomi_cli.main.Runtime") as mock_runtime_cls,
+        patch("helomi_cli.main.Application"),
         patch(
             "helomi_cli.main.run_install_cmd",
             side_effect=asyncio.CancelledError,
         ),
     ):
-        mock_runtime = mock_runtime_cls.return_value
-        mock_runtime.__aenter__.return_value = mock_runtime
-        mock_runtime.__aexit__.return_value = None
-
         args = MagicMock(command="install", debug=False, profile_id=None)
         await run(args)
 
     with (
-        patch("helomi_cli.main.Runtime") as mock_runtime_cls,
+        patch("helomi_cli.main.Application"),
         patch(
             "helomi_cli.main.run_install_cmd",
             side_effect=TimeoutError,
         ),
     ):
-        mock_runtime = mock_runtime_cls.return_value
-        mock_runtime.__aenter__.return_value = mock_runtime
-        mock_runtime.__aexit__.return_value = None
-
         args = MagicMock(command="install", debug=False, profile_id=None)
         await run(args)
 

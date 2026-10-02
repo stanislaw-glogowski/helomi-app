@@ -4,7 +4,7 @@ from urllib.request import urlretrieve
 
 from rich import print
 
-from helomi_app import Profile, Runtime
+from helomi_app import Application
 
 from ..widgets import Spinner
 
@@ -15,13 +15,14 @@ _OWW_ROOT_MODELS = [
     "silero_vad.onnx",
 ]
 _OWW_PROFILE_MODEL = "alexa_v0.1.onnx"
+_SUPPORTED_PROFILE_ID = "alexa"
 
 
 async def run_install_cmd(
-    runtime: Runtime,
+    application: Application,
     spinner: Spinner,
 ):
-    models_root = runtime.resources.build_path("models")
+    models_root = application.resources.path_for("models")
 
     print(
         "[italic cyan]Installing [magenta]OpenWakeWord[/magenta] models:[/italic cyan]"
@@ -29,7 +30,7 @@ async def run_install_cmd(
     for file_name in _OWW_ROOT_MODELS:
         await _install_oww_model(spinner, file_name, models_root)
 
-    models_root = runtime.resources.build_path("models", Profile.DEFAULT_ID)
+    models_root = application.resources.path_for("models", _SUPPORTED_PROFILE_ID)
 
     await _install_oww_model(spinner, _OWW_PROFILE_MODEL, models_root)
 

@@ -3,31 +3,55 @@ from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-from helomi_app.core.audio import (
+from helomi_runtime.audio import (
     AudioChunk,
-    AudioCmd,
+    AudioCommand,
     AudioDriver,
+    AudioDriverCapabilities,
+    AudioDriverDescriptor,
     AudioDriverKind,
     AudioEvent,
     AudioFormat,
     CapturedEvent,
-    DisconnectCmd,
+    DisconnectCommand,
     DisconnectedEvent,
-    InterruptCmd,
-    PlayCmd,
+    InterruptCommand,
+    PlayCommand,
     RawAudio,
-    StartRoomVoiceCmd,
-    StopRoomVoiceCmd,
+    StartRoomVoiceCommand,
+    StopRoomVoiceCommand,
 )
-from helomi_app.core.stt import STTAdapter, STTChunk, STTRequest
-from helomi_app.core.tts import TTSAdapter, TTSChunk, TTSRequest
-from helomi_app.core.turn import TurnAdapter, TurnPrediction
-from helomi_app.core.vad import VADAdapter, VADPrediction
-from helomi_app.core.wakeword import WakeWordAdapter, WakeWordPrediction
-from helomi_app.resources import ResourceCatalog
+from helomi_runtime.detection import TurnAdapter, VADAdapter, WakeWordAdapter
+from helomi_runtime.detection.domain import (
+    TurnPrediction,
+    VADPrediction,
+    WakeWordPrediction,
+)
+from helomi_runtime.resources import ResourceCatalog
+from helomi_runtime.synthesis import SynthesisAdapter, SynthesisChunk, SynthesisRequest
+from helomi_runtime.transcription import (
+    TranscriptionAdapter,
+    TranscriptionChunk,
+    TranscriptionRequest,
+)
 
 
 class MockAudioDriver(AudioDriver[Any, Any]):
+    _DESCRIPTOR = AudioDriverDescriptor(
+        id="avfaudio",
+        name="Mock audio",
+        kind=AudioDriverKind.LOCAL,
+        capabilities=AudioDriverCapabilities(
+            capture=True,
+            playback=True,
+            interrupt=True,
+            room_voice=True,
+            remote_session=False,
+            local_monitoring=True,
+            manual_profile_selection=True,
+        ),
+    )
+
     def __init__(
         self,
         settings: Any = None,
@@ -42,12 +66,8 @@ class MockAudioDriver(AudioDriver[Any, Any]):
         self._queued_chunks: list[RawAudio] = list(incoming_chunks or [])
 
     @property
-    def kind(self) -> AudioDriverKind:
-        return AudioDriverKind.LOCAL
-
-    @property
-    def room_voice_supported(self) -> bool:
-        return True
+    def descriptor(self) -> AudioDriverDescriptor:
+        return self._DESCRIPTOR
 
     def enqueue_capture(self, raw: RawAudio) -> None:
         if self._subscriptions:
@@ -55,7 +75,7 @@ class MockAudioDriver(AudioDriver[Any, Any]):
         else:
             self._queued_chunks.append(raw)
 
-    async def subscribe_event(self) -> AsyncIterator[AudioEvent]:
+    async def subscribe_events(self) -> AsyncIterator[AudioEvent]:
         subscription = asyncio.Queue[AudioEvent | None]()
         self._subscriptions.add(subscription)
         while self._queued_chunks:
@@ -72,36 +92,36 @@ class MockAudioDriver(AudioDriver[Any, Any]):
             self._subscriptions.discard(subscription)
 
     async def capture(self) -> AsyncIterator[RawAudio]:
-        async for event in self.subscribe_event():
+        async for event in self.subscribe_events():
             if isinstance(event, CapturedEvent):
                 yield event.audio
 
-    async def execute_command(self, cmd: AudioCmd) -> bool:
+    async def execute_command(self, cmd: AudioCommand) -> bool:
         match cmd:
-            case PlayCmd():
+            case PlayCommand():
                 self.played_audio.append(cmd.audio)
                 return True
-            case InterruptCmd():
+            case InterruptCommand():
                 self.interrupt_count += 1
                 return True
-            case StartRoomVoiceCmd():
+            case StartRoomVoiceCommand():
                 self.room_voice_started = True
                 self.room_voice_profile_id = cmd.profile_id
                 return True
-            case StopRoomVoiceCmd():
+            case StopRoomVoiceCommand():
                 self.room_voice_started = False
                 self.room_voice_profile_id = None
                 return True
-            case DisconnectCmd():
+            case DisconnectCommand():
                 self._dispatch_event(DisconnectedEvent())
                 return True
             case _:
                 return False
 
 
-class MockVADAdapter(VADAdapter[Any]):
+class MockVADAdapter(VADAdapter):
     def __init__(self, settings: Any = None, default_detected: bool = True) -> None:
-        super().__init__(settings)
+        super().__init__()
         self.detected = default_detected
         self.score = 0.95
         self.predict_hook: Callable[[AudioChunk], VADPrediction] | None = None
@@ -116,14 +136,14 @@ class MockVADAdapter(VADAdapter[Any]):
         self.reset_count += 1
 
 
-class MockWakeWordAdapter(WakeWordAdapter[Any, Any]):
+class MockWakeWordAdapter(WakeWordAdapter):
     def __init__(
         self,
         settings: Any = None,
         profiles: dict[str, Any] | None = None,
         matched: str | None = None,
     ) -> None:
-        super().__init__(settings, profiles or {})
+        super().__init__()
         self.matched = matched
         self.scores: dict[str, float] = {}
         self.predict_hook: Callable[[AudioChunk, bool], WakeWordPrediction] | None = (
@@ -140,13 +160,13 @@ class MockWakeWordAdapter(WakeWordAdapter[Any, Any]):
         self.reset_count += 1
 
 
-class MockTurnAdapter(TurnAdapter[Any]):
+class MockTurnAdapter(TurnAdapter):
     def __init__(
         self,
         settings: Any = None,
         prediction: TurnPrediction | None = None,
     ) -> None:
-        super().__init__(settings)
+        super().__init__()
         self.next_prediction = prediction
         self.predictions: list[TurnPrediction | None] = []
         self.predict_hook: (
@@ -165,38 +185,40 @@ class MockTurnAdapter(TurnAdapter[Any]):
         self.reset_count += 1
 
 
-class MockSTTAdapter(STTAdapter[Any, Any]):
+class MockTranscriptionAdapter(TranscriptionAdapter[Any, Any]):
     def __init__(
         self,
         settings: Any = None,
         profiles: dict[str, Any] | None = None,
-        chunks: list[STTChunk | Exception] | None = None,
+        chunks: list[TranscriptionChunk | Exception] | None = None,
     ) -> None:
         super().__init__(settings, profiles or {})
-        self.chunks: list[STTChunk | Exception] = (
-            chunks if chunks is not None else [STTChunk(text="Hello world")]
+        self.chunks: list[TranscriptionChunk | Exception] = (
+            chunks if chunks is not None else [TranscriptionChunk(text="Hello world")]
         )
-        self.calls: list[STTRequest] = []
+        self.calls: list[TranscriptionRequest] = []
 
-    def transcribe(self, request: STTRequest) -> Iterator[Exception | STTChunk]:
+    def transcribe(
+        self, request: TranscriptionRequest
+    ) -> Iterator[Exception | TranscriptionChunk]:
         self.calls.append(request)
         yield from self.chunks
         yield StopIteration()
 
 
-class MockTTSAdapter(TTSAdapter[Any, Any]):
+class MockSynthesisAdapter(SynthesisAdapter[Any, Any]):
     def __init__(
         self,
         settings: Any = None,
         profiles: dict[str, Any] | None = None,
-        chunks: list[TTSChunk | Exception] | None = None,
+        chunks: list[SynthesisChunk | Exception] | None = None,
     ) -> None:
         super().__init__(settings, profiles or {})
-        self.chunks: list[TTSChunk | Exception] = (
+        self.chunks: list[SynthesisChunk | Exception] = (
             chunks
             if chunks is not None
             else [
-                TTSChunk(
+                SynthesisChunk(
                     audio=RawAudio(
                         format=AudioFormat.MONO_16,
                         data=b"\x00" * 1024,
@@ -204,9 +226,11 @@ class MockTTSAdapter(TTSAdapter[Any, Any]):
                 )
             ]
         )
-        self.calls: list[TTSRequest] = []
+        self.calls: list[SynthesisRequest] = []
 
-    def synthesize(self, request: TTSRequest) -> Iterator[Exception | TTSChunk]:
+    def synthesize(
+        self, request: SynthesisRequest
+    ) -> Iterator[Exception | SynthesisChunk]:
         self.calls.append(request)
         yield from self.chunks
         yield StopIteration()

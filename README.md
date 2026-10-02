@@ -2,193 +2,89 @@
 
 # Helomi
 
-**Local, privacy-first voice assistant optimized for Apple Silicon Macs.**
+**Local, privacy-first voice assistant for Apple Silicon Macs.**
 
 [![Python 3.14+](https://img.shields.io/badge/Python-3.14+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)](https://support.apple.com/)
+[![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple)](https://support.apple.com/)
 [![Built with MLX](https://img.shields.io/badge/ML-Apple%20MLX-F56300?logo=apple)](https://github.com/ml-explore/mlx)
-[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Type checked by pyrefly](https://img.shields.io/badge/type%20checker-pyrefly-blueviolet)](https://github.com/facebook/pyrefly)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 </div>
 
----
+Helomi runs wake-word detection, voice activity detection, turn detection, transcription, and synthesis locally. The
+default AVFAudio route does not send audio to a cloud service. Optional inbound Twilio support necessarily transports
+call audio through Twilio.
 
-## Overview
+## Capabilities
 
-Helomi runs entirely on-device, processing audio streams locally with hardware acceleration on Apple Silicon unified
-memory. Zero telemetry, zero cloud audio streaming.
-
-### Key Capabilities
-
-- **Native Audio Pipeline**: Low-latency capture and playback powered by Swift (`AVAudioEngine` + Apple Voice
-  Processing / Echo Cancellation).
-- **On-Device Speech Stack**:
-    - **Wake-Word & Continuous Detection**: OpenWakeWord engine with continuous tracking even during active dialogue,
-      enabling vocal profile switching on the fly.
-    - **VAD & Turn-Taking**: Silero VAD (MLX and ONNX backends) + Smart Turn detection.
-    - **Continuous Conversation & Persistent Profiles**: Profiles remain engaged across conversation turns without
-      abrupt session timeouts.
-    - **Conversational Reactions & Instant Barge-In**: Instant audio interruption with punchy, personality-tailored
-      reactions (`INTERRUPTED`), activation greetings (`GREETING`), and graceful farewells (`FAREWELL`).
-    - **STT (Speech-to-Text)**: Fast inference with Parakeet and MLX-Whisper.
-    - **TTS (Text-to-Speech)**: Streaming neural voice synthesis via VoxCPM2 and Supertonic (with voice style cloning &
-      presets).
-    - **Model Management**: Automatic local Hugging Face model cache resolution (`HFModel`).
-- **Modular Architecture**: Clean separation between core audio orchestration, speech engines, and interfaces.
-
----
+- Multiple mounted audio drivers behind one active conversation route.
+- Native AVFAudio capture and playback with Apple voice processing.
+- Inbound Twilio calls with signature validation, callee-to-profile mapping, caller monitoring, room voice, barge-in,
+  and playback acknowledgements.
+- On-device Parakeet or Whisper transcription and VoxCPM2, Supertonic, or Piper synthesis.
+- Continuous dialogue with follow-up listening, persistent profiles, silent interruption, greetings, and farewells.
+- API, Parrot, and Operator response modes that can change without restarting audio.
+- A macOS system tray application, developer CLI, REST/SSE API, and TypeScript demo client.
 
 ## Quickstart
 
-### Prerequisites
-
-- macOS running on Apple Silicon
-- [uv](https://docs.astral.sh/uv/) package manager
-- Xcode Command Line Tools (`xcode-select --install`)
-- [Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/guides/cli)
-
-### Download Speech Models
-
-Helomi runs inference completely on-device using local Hugging Face models. Download the default models before starting
-the application:
-
-#### Default Models (~7.5 GB total)
-
-| Component | Model Repository                     |    Size    | Description                                       |
-|-----------|--------------------------------------|:----------:|---------------------------------------------------|
-| **STT**   | `mlx-community/parakeet-tdt-0.6b-v3` | `~2.5 GB`  | Fast, low-latency Speech-to-Text                  |
-| **TTS**   | `openbmb/VoxCPM2`                    | `~5.0 GB`  | Expressive neural voice synthesis & voice cloning |
-| **Turn**  | `mlx-community/smart-turn-v3`        | `~32.0 MB` | Intelligent conversational turn-taking detection  |
-| **VAD**   | `mlx-community/silero-vad`           | `~2.2 MB`  | Voice activity detection (MLX engine)             |
+Requirements: Apple Silicon macOS, Python 3.14+, [uv](https://docs.astral.sh/uv/), Xcode Command Line Tools, and the
+[Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/guides/cli).
 
 ```bash
-hf download mlx-community/parakeet-tdt-0.6b-v3
-hf download openbmb/VoxCPM2
-hf download mlx-community/smart-turn-v3
-hf download mlx-community/silero-vad
-```
-
-### Installation & Setup
-
-```bash
-# 1. Clone repository
 git clone https://github.com/stanislaw-glogowski/helomi-app.git
 cd helomi-app
-
-# 2. Build native Swift audio helper, sync environment, and install wake-word models
 make init
-```
-
-#### Optional Alternative Models
-
-| Component              | Model Repository                       |    Size     | Description                                         |
-|------------------------|----------------------------------------|:-----------:|-----------------------------------------------------|
-| **TTS (Lightweight)**  | `Supertone/supertonic-3`               | `~414.7 MB` | Ultra-fast, lightweight voice synthesis alternative |
-| **STT (Multilingual)** | `mlx-community/whisper-large-v3-turbo` |  `~1.6 GB`  | Multilingual Whisper Speech-to-Text                 |
-
-```bash
-# Optional: alternative TTS adapter (supertonic)
-hf download Supertone/supertonic-3
-
-# Optional: alternative STT adapter (whisper)
-hf download mlx-community/whisper-large-v3-turbo
-```
-
-### Running the Application (`helomi-tray`)
-
-The primary way to use Helomi is via the **macOS System Tray application (`helomi-tray`)**. It runs in your macOS menu
-bar, manages continuous on-device audio processing, displays real-time status indicators, provides hotkeys to switch
-voice profiles and modes (Parrot mode or API server), configures pipeline options (Persistent Profile, Wake Word,
-Reactions, Room Voice), and includes an interactive Text-to-Speech window (`t`) with speech synthesis and WAV export:
-
-```bash
-# Launch the macOS system tray application
 make run-tray
-# or directly via uv:
-uv run helomi-tray
 ```
 
-### Developer CLI (`helomi-cli`)
+`make init` installs dependencies, builds the Swift AVFAudio helper, and installs wake-word assets. Speech models must
+exist in the local Hugging Face cache; see [Models and Adapters](docs/models.md) for download commands and sizes.
 
-For headless environments, automated CI provisioning, or debugging, a developer CLI is also available:
+The supported public profile is `alexa`. There is no implicit profile: select it explicitly, activate it by wake word,
+or map an inbound Twilio number to it.
+
+## Commands
 
 ```bash
-# List all available commands and options
-make run-cli -- -h
-# or: uv run helomi-cli -h
-
-# 1. Install required acoustic models (OpenWakeWord, VAD) - already performed by make init
-make run-cli install
-# or directly via uv:
-uv run helomi-cli install
-
-# 2. Run developer parrot mode (live speech recognition and spoken echo in terminal)
-make run-cli parrot
-# or specify an active profile:
-make run-cli parrot alexa
-# or directly via uv:
-uv run helomi-cli parrot [profile_id]
-
-# 3. Start standalone local FastAPI server directly in terminal
-make run-cli serve
-# or directly via uv:
-uv run helomi-cli serve
-
-# 4. Enable debug logging with -d
-make run-cli -- -d parrot
-# or: uv run helomi-cli -d parrot
+make run-tray                  # Start the primary menu bar application
+make run-cli -- parrot alexa  # Run local echo mode with an explicit profile
+make run-cli parrot           # Wait for a configured wake word
+make run-cli serve            # Start the REST/SSE API in API response mode
+make run-cli install          # Install shared wake-word assets
 ```
 
----
+Use `uv run helomi-tray` or `uv run helomi-cli ...` when invoking entry points directly.
+
+## Architecture
+
+```text
+helomi_foundation <- helomi_runtime <- helomi_app <- helomi_cli
+                                              `---- helomi_tray
+```
+
+- `helomi_foundation` contains neutral lifecycle, configuration, logging, and concurrency primitives.
+- `helomi_runtime` owns profiles, resources, audio routing, adapters, and speech workers.
+- `helomi_app` exposes the conversation state machine, messages, response modes, and public `Application` facade.
+- CLI and tray depend only on that facade. The Swift AVFAudio helper lives under `native/macos/avfaudio`.
 
 ## Documentation
 
-For more detailed information on configuring and extending Helomi, please refer to the documentation:
+- [Settings](docs/settings.md)
+- [Profiles](docs/profiles.md)
+- [Models and Adapters](docs/models.md)
+- [Audio Routing and Twilio](docs/audio.md)
+- [Applications](docs/apps.md)
+- [Server API](docs/api.md)
+- [Examples](docs/examples.md)
+- [TypeScript Demo](demo/README.md)
 
-- [Settings Configuration](docs/settings.md)
-- [Profiles Configuration](docs/profiles.md)
-- [Models & Adapters](docs/models.md)
-- [Reference Audio (Voice Cloning)](docs/audio.md)
-- [Server API Specification](docs/api.md)
-- [System Tray & CLI Applications](docs/apps.md)
-- [TypeScript Demo Application](demo/README.md)
-- [Configuration Examples](docs/examples.md)
-
----
-
-## Project Structure
-
-```text
-helomi-app/
-├── src/
-│   ├── helomi_app/      # Core audio orchestration, ML adapters, pipeline service, server API, and common foundation
-│   ├── helomi_tray/     # Primary macOS system tray application (rumps)
-│   └── helomi_cli/      # Developer CLI & terminal UI (install, parrot, serve)
-├── native/
-│   └── macos/avfaudio/  # Swift package for macOS CoreAudio/AVFAudio bridge
-├── resources/           # Local configuration, profiles, and acoustic models
-├── demo/                # Interactive TypeScript & Bun voice assistant demo client
-└── tests/               # Unit, integration, and architecture test suite
-```
-
----
-
-## Development & Quality Assurance
-
-All modifications are enforced with strict typing and $\ge 90\%$ branch coverage:
+## Development
 
 ```bash
-make test        # Run pytest suite with coverage check (>=90%)
-make lint        # Run ruff + pyrefly + swift format checks
-make format      # Auto-format Python and Swift code
-make verify      # Full validation pipeline (Lint + Test + Native + Build)
+make test        # Python tests with at least 90% branch coverage
+make lint        # Ruff, pyrefly, and Swift Format
+make verify      # Lint, tests, Swift tests, demo checks, and package build
 ```
 
----
-
-## License
-
-Helomi is licensed under the [MIT License](LICENSE). Third-party models and acoustic assets retain their respective
-licenses.
+Helomi is available under the [MIT License](LICENSE). Model and acoustic asset licenses remain their own.

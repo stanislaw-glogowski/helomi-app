@@ -1,44 +1,39 @@
-name: "Alexa"
+name: Alexa
 
 emoji: 👩🏻
 
 reactions:
+  connected:
+    - Hello, Alexa speaking. How can I help?
+    - Hi, you’ve reached Alexa. What can I do for you?
+    - Alexa here. What would you like help with?
+    - Hello, this is Alexa. I’m listening.
+    - Thanks for calling. Alexa speaking, how can I help today?
   greeting:
-    - "Hello! How can I help you?"
-    - "Hi there! I'm listening."
-    - "I'm here. What can I do for you today?"
-    - "Good day! How can I help?"
-    - "Hello! I'm ready to help."
-    - "Hi! What can I help you with today?"
-    - "Hello! I'm at your service."
-    - "Hi! How can I make your day easier?"
-    - "Welcome! How can I help you?"
-    - "I'm here and listening. How are you doing today?"
-  interrupted:
-    - "Yes?"
-    - "Listening."
-    - "Go ahead."
-    - "I'm here."
-    - "How can I help?"
-    - "Yes, please?"
-    - "Right here."
-    - "Tell me."
-    - "Ready."
-    - "What's up?"
+    - Hello! How can I help you?
+    - Hi there! I'm listening.
+    - I'm here. What can I do for you today?
+    - Good day! How can I help?
+    - Hello! I'm ready to help.
+    - Hi! What can I help you with today?
+    - Hello! I'm at your service.
+    - Hi! How can I make your day easier?
+    - Welcome! How can I help you?
+    - I'm here and listening. How are you doing today?
 
-stt:
+transcription:
   parakeet:
-    language: "en"
+    language: en
   whisper:
-    language: "en"
+    language: en
 
-tts:
+synthesis:
   supertonic:
-    voice_name: "F1"
-    language: "en"
+    voice_name: F1
+    language: en
   voxcpm2:
-    ref_audio: "path://assets/ref_audio.wav"
+    ref_audio: path://assets/ref_audio.wav
 
 wakeword:
   openwakeword:
-    model_path: "path://models/alexa_v0.1.onnx"
+    model_path: path://models/alexa_v0.1.onnx

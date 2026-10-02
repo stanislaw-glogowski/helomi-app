@@ -1,73 +1,79 @@
-pipeline:
-  persistent_profile: true
-  wakeword: true
-  reactions: true
-  room_voice: true
-
-server:
-  host: "127.0.0.1"
-  port: 4356
+app:
+  conversation:
+    persistent_profile: true
+    wakeword: false
+    reactions: true
+    room_voice: true
+    playback_ack_timeout: 5.0
+  server:
+    host: 127.0.0.1
+    port: 4356
+  response_mode: api # supported: api, parrot, operator
 
 audio:
-  adapter: "avfaudio" # options: avfaudio, twilio
+  initial_driver: avfaudio
+  monitor_driver: avfaudio
+  drivers: # supported: twilio, avfaudio
+    - avfaudio
   avfaudio:
     voice_processing: true
   twilio:
-    auth_token: "env://TWILIO_AUTH_TOKEN" # required (see .env.example)
-    public_url: "env://TWILIO_PUBLIC_URL" # required (see .env.example)
+    auth_token: env://TWILIO_AUTH_TOKEN
+    public_url: env://TWILIO_PUBLIC_URL
     port: 4357
-    allowed_callers: # optional
-    handshake_timeout: 30
+    allowed_callers: # optional list of phone numbers
+    handshake_timeout: 10.0
+    session_ttl: 30.0
+    validate_signature: true
+    output_buffer_chunks: 50
 
-stt:
-  adapter: "parakeet" # options: parakeet, whisper
+detection:
+  turn:
+    adapter: smart_turn
+    smart_turn:
+      model_id: mlx-community/smart-turn-v3 # huggingface model id
+      threshold: 0.5
+      max_audio_seconds: 30.0
+      pre_roll_seconds: 0.5
+      post_roll_seconds: 0.2
+      min_speech_seconds: 0.3
+      silence_seconds: 0.5
+      fallback_silence_seconds: 1.8
+      conversation_timeout_seconds: 30.0
+  vad:
+    adapter: silero_vad
+    options:
+      threshold: 0.5
+    silero_vad:
+      engine: mlx
+      model_id: mlx-community/silero-vad # huggingface model id
+  wakeword:
+    adapter: openwakeword
+    openwakeword:
+      threshold: 0.75
+      patience: 2
+      embedding_path: path://models/embedding_model.onnx
+      melspec_path: path://models/melspectrogram.onnx
+      frame_size: 1280
+
+transcription:
+  adapter: parakeet
+  options:
+    language: en
   parakeet:
-    model_id: "mlx-community/parakeet-tdt-0.6b-v3" # huggingface model id
-    language: "en"
+    model_id: mlx-community/parakeet-tdt-0.6b-v3 # huggingface model id
   whisper:
-    model_id: "mlx-community/whisper-large-v3-turbo" # huggingface model id
-    language: "en"
+    model_id: mlx-community/whisper-large-v3-turbo # huggingface model id
 
-tts:
-  adapter: "voxcpm2" # options: supertonic, voxcpm2, piper
+synthesis:
+  adapter: voxcpm2 # supported: supertonic, voxcpm2, piper
+  voxcpm2:
+    model_id: openbmb/VoxCPM2
+    load_denoiser: false
   supertonic:
-    model_id: "Supertone/supertonic-3" # huggingface model id
-    language: "en"
+    model_id: Supertone/supertonic-3 # huggingface model id
+    language: en
     intra_threads: # optional
     inter_threads: # optional
-  voxcpm2:
-    model_id: "openbmb/VoxCPM2" # huggingface model id
-    load_denoiser: false
   piper:
     normalize_audio: true
-    volume: 1.0
-
-turn:
-  adapter: "smart_turn"
-  smart_turn:
-    model_id: "mlx-community/smart-turn-v3" # huggingface model id
-    threshold: 0.5
-    max_audio_seconds: 30.0
-    pre_roll_seconds: 0.5
-    post_roll_seconds: 0.2
-    min_speech_seconds: 0.3
-    silence_seconds: 0.5
-    fallback_silence_seconds: 1.8
-    conversation_timeout_seconds: 30.0
-
-vad:
-  adapter: "silero_vad"
-  silero_vad:
-    engine: "mlx" # options: mlx, onnx
-    model_id: "mlx-community/silero-vad" # huggingface model id
-    model_path: "path://models/silero_vad.onnx" # required for onnx engine
-    threshold: 0.5
-
-wakeword:
-  adapter: "openwakeword"
-  openwakeword:
-    threshold: 0.75
-    patience: 2
-    embedding_path: "path://models/embedding_model.onnx"
-    melspec_path: "path://models/melspectrogram.onnx"
-    frame_size: 1280

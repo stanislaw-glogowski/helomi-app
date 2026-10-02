@@ -30,11 +30,11 @@ export class LlmProvider {
 
   constructor(options: {
     modelId?: string;
-    baseURL?: string;
+    baseUrl?: string;
     apiKey?: string;
     model?: LanguageModel;
   }) {
-    const { modelId = 'gpt-5.6-luna', baseURL, apiKey, model } = options;
+    const { modelId = 'gpt-5.6-luna', baseUrl, apiKey, model } = options;
 
     if (model) {
       this.model = model;
@@ -42,9 +42,9 @@ export class LlmProvider {
     }
 
     const openai = createOpenAI({
-      baseURL,
+      baseURL: baseUrl,
       apiKey,
-      fetch: baseURL
+      fetch: baseUrl
         ? (ollamaFetch as unknown as OpenAIProviderSettings['fetch'])
         : undefined,
     });

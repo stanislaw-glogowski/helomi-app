@@ -4,9 +4,8 @@ import warnings
 
 from dotenv import load_dotenv
 
-from helomi_app import Runtime, __version__
-from helomi_app.common import LogLevel, configure_logger
-from helomi_tray import App
+from helomi_app import Application, LogLevel, __version__, configure_logger
+from helomi_tray import TrayApplication
 
 warnings.filterwarnings(
     "ignore",
@@ -19,7 +18,7 @@ warnings.filterwarnings(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="helomi-tray",
-        description="Helomi System Tray App",
+        description="Helomi system tray application",
     )
 
     parser.add_argument(
@@ -40,14 +39,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run(args: argparse.Namespace):
+def run(args: argparse.Namespace) -> None:
     configure_logger(
         LogLevel.DEBUG if args.debug else LogLevel.INFO,
     )
-    runtime = Runtime()
-    app = App(runtime=runtime)
+    application = Application(serve_api=True)
+    app = TrayApplication(application=application)
 
-    def _signal_handler(_sig: int, _frame: object):
+    def _signal_handler(_sig: int, _frame: object) -> None:
         app.quit()
 
     signal.signal(signal.SIGINT, _signal_handler)
@@ -59,7 +58,7 @@ def run(args: argparse.Namespace):
         app.quit()
 
 
-def main():
+def main() -> None:
     load_dotenv()
     args = parse_args()
     run(args)

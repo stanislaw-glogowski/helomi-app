@@ -6,8 +6,13 @@ from contextlib import suppress
 
 from dotenv import load_dotenv
 
-from helomi_app import Runtime, __version__
-from helomi_app.common import LogLevel, configure_logger
+from helomi_app import (
+    Application,
+    LogLevel,
+    ResponseMode,
+    __version__,
+    configure_logger,
+)
 from helomi_cli import Spinner, run_install_cmd, run_parrot_cmd, run_serve_cmd
 
 
@@ -32,20 +37,17 @@ def parse_args(default_cmd="install") -> argparse.Namespace:
         help="Enable debug mode",
     )
 
-    # Top-level commands
     cmd_parsers = parser.add_subparsers(
         dest="command",
         required=False,
         help="Supported commands:",
     )
 
-    # cli install
     cmd_parsers.add_parser(
         "install",
         help="Installs models and dependencies",
     )
 
-    # cli parrot
     cmd_parsers.add_parser(
         "parrot",
         help="Live speech-to-text with hybrid voice/text input",
@@ -56,11 +58,10 @@ def parse_args(default_cmd="install") -> argparse.Namespace:
         help="Optional profile ID to activate",
     )
 
-    # cli serve
     cmd_parsers.add_parser(
         "serve",
         aliases=["server"],
-        help="Start local FastAPI server for speech pipeline",
+        help="Start the local FastAPI application server",
     )
 
     parser.set_defaults(
@@ -73,7 +74,6 @@ def parse_args(default_cmd="install") -> argparse.Namespace:
 
 async def run(args: argparse.Namespace):
     logger = configure_logger(LogLevel.DEBUG if args.debug else LogLevel.INFO)
-    runtime = Runtime()
     spinner = Spinner(args.debug)
     shutdown = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -85,24 +85,28 @@ async def run(args: argparse.Namespace):
         with suppress(asyncio.exceptions.CancelledError, TimeoutError):
             profile_id = args.profile_id if isinstance(args.profile_id, str) else None
 
-            async with runtime:
-                match args.command:
-                    case "install":
-                        await run_install_cmd(runtime, spinner)
-                    case "parrot":
-                        await run_parrot_cmd(runtime, shutdown, profile_id, spinner)
-                    case "serve" | "server":
-                        await run_serve_cmd(runtime, shutdown, spinner)
-    except Exception as err:
+            match args.command:
+                case "install":
+                    await run_install_cmd(Application(), spinner)
+                case "parrot":
+                    async with Application(response_mode=ResponseMode.PARROT) as app:
+                        await run_parrot_cmd(app, shutdown, profile_id, spinner)
+                case "serve" | "server":
+                    async with Application(
+                        serve_api=True,
+                        response_mode=ResponseMode.API,
+                    ) as app:
+                        await run_serve_cmd(app, shutdown, spinner)
+    except Exception as error:
         if args.debug:
-            raise err
+            raise error
         else:
-            logger.exception(err)
+            logger.exception(error)
             sys.exit(1)
 
 
 def main():
-    load_dotenv()
+    load_dotenv(dotenv_path=".env")
     args = parse_args()
     asyncio.run(run(args))
 

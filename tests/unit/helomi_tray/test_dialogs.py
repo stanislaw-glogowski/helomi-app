@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import AppKit
 import pytest
 
-from helomi_tray.app.dialogs import BaseDialog, SaveFileDialog
+from helomi_tray.app.dialogs import BaseDialog, ConfirmDialog, SaveFileDialog
 
 
 def test_base_dialog_activate_lifecycle():
@@ -124,3 +124,16 @@ def test_save_file_dialog_none_url():
         mock_app.setActivationPolicy_.assert_called_with(
             AppKit.NSApplicationActivationPolicyAccessory
         )
+
+
+def test_confirm_dialog():
+    with patch("helomi_tray.app.dialogs.confirm.NSAlert") as alert_class:
+        alert = alert_class.alloc.return_value.init.return_value
+        alert.runModal.return_value = AppKit.NSAlertFirstButtonReturn
+        assert ConfirmDialog("End call?", "This ends the call.", "End").open()
+        alert.setMessageText_.assert_called_once_with("End call?")
+        alert.setInformativeText_.assert_called_once_with("This ends the call.")
+        assert alert.addButtonWithTitle_.call_count == 2
+
+        alert.runModal.return_value = AppKit.NSAlertSecondButtonReturn
+        assert not ConfirmDialog("End call?", "This ends the call.").open()

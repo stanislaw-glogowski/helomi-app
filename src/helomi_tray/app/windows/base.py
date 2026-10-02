@@ -3,7 +3,7 @@ from typing import Any, Self
 
 import AppKit
 
-from helomi_app.pipeline import PipelineEvent
+from helomi_app import ApplicationEvent
 
 
 class _WindowDelegate(AppKit.NSObject):
@@ -29,13 +29,11 @@ def _ensure_edit_menu():
 
     main_menu = AppKit.NSMenu.alloc().init()
 
-    # Application menu
     app_menu_item = AppKit.NSMenuItem.alloc().init()
     app_menu = AppKit.NSMenu.alloc().init()
     app_menu_item.setSubmenu_(app_menu)
     main_menu.addItem_(app_menu_item)
 
-    # Edit menu
     edit_menu_item = AppKit.NSMenuItem.alloc().init()
     edit_menu = AppKit.NSMenu.alloc().initWithTitle_("Edit")
     edit_menu.addItemWithTitle_action_keyEquivalent_("Undo", "undo:", "z")
@@ -98,8 +96,8 @@ class BaseWindow:
         """Subclasses construct their subviews here."""
         pass
 
-    def handle_event(self, event: PipelineEvent):
-        """Handle incoming pipeline events. Subclasses can override."""
+    def handle_event(self, event: ApplicationEvent):
+        """Handle incoming application events. Subclasses can override."""
         pass
 
     def activate(self):

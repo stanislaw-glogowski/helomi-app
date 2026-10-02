@@ -1,26 +1,29 @@
-from .app import App
+from .app import TrayApplication
 from .dialogs import (
     BaseDialog,
+    ConfirmDialog,
     SaveFileDialog,
 )
 from .icons import AppIcon, Icon
-from .state import AppMode, AppState, AppStatus
+from .state import TrayState, TrayStatus
 from .windows import (
-    TTS_TAGS,
+    SYNTHESIS_TAGS,
     BaseWindow,
+    CallWindow,
     TTSWindow,
 )
 
 __all__ = [
-    "TTS_TAGS",
-    "App",
+    "SYNTHESIS_TAGS",
     "AppIcon",
-    "AppMode",
-    "AppState",
-    "AppStatus",
     "BaseDialog",
     "BaseWindow",
+    "CallWindow",
+    "ConfirmDialog",
     "Icon",
     "SaveFileDialog",
     "TTSWindow",
+    "TrayApplication",
+    "TrayState",
+    "TrayStatus",
 ]

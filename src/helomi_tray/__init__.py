@@ -1,5 +1,5 @@
-from .app import App
+from .app import TrayApplication
 
 __all__ = [
-    "App",
+    "TrayApplication",
 ]

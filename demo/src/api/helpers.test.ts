@@ -26,7 +26,7 @@ describe('snakeToCamel', () => {
 describe('toSnakeCase', () => {
   it('recursively converts object keys to snake_case', () => {
     const input = {
-      profileId: 'default',
+      profileId: 'alexa',
       isActive: true,
       commandPayload: {
         traceId: '123',
@@ -35,7 +35,7 @@ describe('toSnakeCase', () => {
     };
 
     expect(toSnakeCase(input)).toEqual({
-      profile_id: 'default',
+      profile_id: 'alexa',
       is_active: true,
       command_payload: {
         trace_id: '123',
@@ -59,7 +59,7 @@ describe('toSnakeCase', () => {
 describe('toCamelCase', () => {
   it('recursively converts object keys to camelCase', () => {
     const input = {
-      profile_id: 'default',
+      profile_id: 'alexa',
       is_active: true,
       nested_data: {
         user_prompt: 'Hello',
@@ -67,7 +67,7 @@ describe('toCamelCase', () => {
     };
 
     expect(toCamelCase<Record<string, unknown>>(input)).toEqual({
-      profileId: 'default',
+      profileId: 'alexa',
       isActive: true,
       nestedData: {
         userPrompt: 'Hello',

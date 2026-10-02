@@ -1,13 +1,19 @@
-import type { Client } from './client';
+import type { HelomiClient } from './client';
 import { ClientError } from './client.error';
 import { toCamelCase } from './helpers';
-import type { Command, CommandOptions, Reaction, SessionEvent } from './types';
+import type {
+  Command,
+  CommandOptions,
+  CommandResult,
+  ReactionKind,
+  SessionEvent,
+} from './types';
 
 /**
  * Manages an active speech session for a specific voice profile.
- * Handles SSE event subscription and command dispatching (`say_text`, `activate_profile`, etc.).
+ * Handles SSE event subscription and API response command dispatching.
  */
-export class Session {
+export class HelomiSession {
   /** HTTP header name used for session authentication. */
   static readonly HEADER_KEY = 'x-session-id';
 
@@ -15,34 +21,32 @@ export class Session {
 
   constructor(
     private readonly profileId: string,
-    private readonly client: Client,
-  ) {
-    //
-  }
+    private readonly client: HelomiClient,
+  ) {}
 
   /**
-   * Sends synthesized speech text to the audio pipeline for playback.
+   * Sends synthesized speech text to the application for playback.
    */
   async sayText(text: string, options?: CommandOptions): Promise<boolean> {
     return this.sendCommand(
       {
         type: 'say_text',
         text,
-        profileId: this.profileId,
+        mode: 'api',
       },
       options,
     );
   }
 
   /**
-   * Sends synthesized speech text to the audio pipeline for playback.
+   * Sends a configured spoken reaction to the application.
    */
-  async sayReaction(reaction: Reaction, options?: CommandOptions): Promise<boolean> {
+  async sayReaction(reaction: ReactionKind, options?: CommandOptions): Promise<boolean> {
     return this.sendCommand(
       {
         type: 'say_reaction',
         reaction,
-        profileId: this.profileId,
+        mode: 'api',
       },
       options,
     );
@@ -51,7 +55,8 @@ export class Session {
   async close(options?: CommandOptions): Promise<boolean> {
     return this.sendCommand(
       {
-        type: 'deactivate_profile',
+        type: 'end_conversation',
+        playFarewell: true,
       },
       options,
     );
@@ -63,15 +68,15 @@ export class Session {
    */
   async *subscribe(): AsyncIterable<SessionEvent> {
     if (this.sessionId) {
-      throw new ClientError('Session already started');
+      throw new ClientError('HelomiSession already started');
     }
 
     const response = await this.client.fetch(`/profile/${this.profileId}/stream`);
 
-    const sessionId = response.headers.get(Session.HEADER_KEY);
+    const sessionId = response.headers.get(HelomiSession.HEADER_KEY);
 
     if (!sessionId) {
-      throw new ClientError('Session ID not found in response headers');
+      throw new ClientError('HelomiSession ID not found in response headers');
     }
 
     this.sessionId = sessionId;
@@ -107,8 +112,8 @@ export class Session {
             type,
             ...toCamelCase<object>(JSON.parse(data)),
           } as SessionEvent;
-        } catch {
-          //
+        } catch (cause) {
+          throw new ClientError(`Invalid SSE payload for event ${type}`, { cause });
         }
       }
     }
@@ -124,10 +129,10 @@ export class Session {
 
   private get headers(): Record<string, string> {
     if (!this.sessionId) {
-      throw new ClientError('Session not started');
+      throw new ClientError('HelomiSession not started');
     }
     return {
-      [Session.HEADER_KEY]: this.sessionId,
+      [HelomiSession.HEADER_KEY]: this.sessionId,
     };
   }
 
@@ -136,13 +141,11 @@ export class Session {
     options: CommandOptions = {},
   ): Promise<boolean> {
     return this.client
-      .send<{
-        success: boolean;
-      }>('/command', {
+      .send<CommandResult>('/command', {
         headers: this.headers,
         command,
         ...options,
       })
-      .then(({ success }) => success);
+      .then(({ accepted }) => accepted);
   }
 }

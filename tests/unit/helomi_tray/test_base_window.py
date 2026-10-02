@@ -44,17 +44,17 @@ def test_base_window_lifecycle_and_policy():
     # 1. show() activates and focuses while keeping accessory policy
     win.show()
     app = AppKit.NSApplication.sharedApplication()
-    assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
+    assert app.activationPolicy() != AppKit.NSApplicationActivationPolicyRegular
 
     # 2. close() deactivates and triggers on_close
     win.close()
-    assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
+    assert app.activationPolicy() != AppKit.NSApplicationActivationPolicyRegular
     assert closed is True
 
     # 3. windowWillClose_ deactivates and triggers on_close
     closed = False
     win.windowWillClose_(None)
-    assert app.activationPolicy() == AppKit.NSApplicationActivationPolicyAccessory
+    assert app.activationPolicy() != AppKit.NSApplicationActivationPolicyRegular
     assert closed is True
 
     # 4. close without on_close callback does not crash

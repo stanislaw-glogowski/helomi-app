@@ -27,7 +27,7 @@ class AppIcon(StrEnum):
     PHONE_IDLE = "☏"
     PARROT_MODE = "🦜"
     TTS_MODE = "🗣"
-    QUITING = "☾"
+    QUITTING = "☾"
 
 
 Icon = AppIcon

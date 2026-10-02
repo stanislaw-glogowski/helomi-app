@@ -1,26 +1,27 @@
 import { describe, expect, it } from 'bun:test';
-import { Client } from './client';
-import { Session } from './session';
+import { HelomiClient } from './client';
+import { HelomiSession } from './session';
 import type { SessionEvent } from './types';
 
-describe('Session', () => {
+describe('HelomiSession', () => {
   it('throws when sending command before session started', async () => {
-    const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
-    const session = new Session('alexa', client);
+    const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
+    const session = new HelomiSession('alexa', client);
 
-    await expect(session.sayText('Hello')).rejects.toThrow('Session not started');
-    await expect(session.sayReaction('greeting')).rejects.toThrow('Session not started');
-    await expect(session.close()).rejects.toThrow('Session not started');
+    await expect(session.sayText('Hello')).rejects.toThrow('HelomiSession not started');
+    await expect(session.sayReaction('greeting')).rejects.toThrow(
+      'HelomiSession not started',
+    );
+    await expect(session.close()).rejects.toThrow('HelomiSession not started');
   });
 
   it('subscribes to SSE stream and receives events', async () => {
-    const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+    const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
     const ssePayload = [
       'event: session_started\ndata: {}\n\n',
       'event: transcription_ready\ndata: {"text": "Hello assistant", "profile_id": "alexa"}\n\n',
       'event: speech_interrupted\ndata: {"profile_id": "alexa"}\n\n',
       'event: invalid_block\n\n',
-      'event: corrupt_json\ndata: {invalid\n\n',
     ].join('');
 
     const encoder = new TextEncoder();
@@ -34,7 +35,7 @@ describe('Session', () => {
     client.fetch = (async () => {
       return new Response(stream, {
         headers: {
-          [Session.HEADER_KEY]: 'test-session-123',
+          [HelomiSession.HEADER_KEY]: 'test-session-123',
         },
       });
     }) as unknown as typeof client.fetch;
@@ -61,15 +62,36 @@ describe('Session', () => {
     ]);
   });
 
+  it('rejects malformed SSE payloads', async () => {
+    const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode('event: corrupt_json\ndata: {invalid\n\n'),
+        );
+        controller.close();
+      },
+    });
+    client.fetch = (async () =>
+      new Response(stream, {
+        headers: { [HelomiSession.HEADER_KEY]: 'test-session-123' },
+      })) as unknown as typeof client.fetch;
+
+    const iterator = client.createSession('alexa').subscribe()[Symbol.asyncIterator]();
+    await expect(iterator.next()).rejects.toThrow(
+      'Invalid SSE payload for event corrupt_json',
+    );
+  });
+
   it('sends commands while session is active', async () => {
-    const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+    const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
     let capturedPath: string | undefined;
     let capturedOptions: unknown;
 
     client.send = (async (path: string, options?: unknown) => {
       capturedPath = path;
       capturedOptions = options;
-      return { success: true };
+      return { accepted: true, rejectionCode: null, detail: null };
     }) as unknown as typeof client.send;
 
     const encoder = new TextEncoder();
@@ -84,7 +106,7 @@ describe('Session', () => {
     client.fetch = (async () => {
       return new Response(stream, {
         headers: {
-          [Session.HEADER_KEY]: 'active-session-id',
+          [HelomiSession.HEADER_KEY]: 'active-session-id',
         },
       });
     }) as unknown as typeof client.fetch;
@@ -98,12 +120,12 @@ describe('Session', () => {
     expect(sayRes).toBe(true);
     expect(capturedPath).toBe('/command');
     expect((capturedOptions as { headers: Record<string, string> }).headers).toEqual({
-      [Session.HEADER_KEY]: 'active-session-id',
+      [HelomiSession.HEADER_KEY]: 'active-session-id',
     });
     expect((capturedOptions as { command: unknown }).command).toEqual({
       type: 'say_text',
       text: 'Test message',
-      profileId: 'alexa',
+      mode: 'api',
     });
 
     const reactionRes = await session.sayReaction('interrupted');
@@ -111,13 +133,14 @@ describe('Session', () => {
     expect((capturedOptions as { command: unknown }).command).toEqual({
       type: 'say_reaction',
       reaction: 'interrupted',
-      profileId: 'alexa',
+      mode: 'api',
     });
 
     const closeRes = await session.close();
     expect(closeRes).toBe(true);
     expect((capturedOptions as { command: unknown }).command).toEqual({
-      type: 'deactivate_profile',
+      type: 'end_conversation',
+      playFarewell: true,
     });
 
     // Clean up iterator
@@ -126,7 +149,7 @@ describe('Session', () => {
   });
 
   it('throws if trying to subscribe when session already started', async () => {
-    const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+    const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
     const encoder = new TextEncoder();
     let streamController: ReadableStreamDefaultController | undefined;
     const stream = new ReadableStream({
@@ -139,7 +162,7 @@ describe('Session', () => {
     client.fetch = (async () => {
       return new Response(stream, {
         headers: {
-          [Session.HEADER_KEY]: 'session-456',
+          [HelomiSession.HEADER_KEY]: 'session-456',
         },
       });
     }) as unknown as typeof client.fetch;
@@ -149,7 +172,7 @@ describe('Session', () => {
     await iter.next();
 
     await expect(session.subscribe()[Symbol.asyncIterator]().next()).rejects.toThrow(
-      'Session already started',
+      'HelomiSession already started',
     );
 
     streamController?.close();
@@ -157,7 +180,7 @@ describe('Session', () => {
   });
 
   it('throws ClientError if session header is missing in response', async () => {
-    const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+    const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
     client.fetch = (async () => {
       return new Response('ok', {
         headers: {},
@@ -166,16 +189,16 @@ describe('Session', () => {
 
     const session = client.createSession('alexa');
     await expect(session.subscribe()[Symbol.asyncIterator]().next()).rejects.toThrow(
-      'Session ID not found in response headers',
+      'HelomiSession ID not found in response headers',
     );
   });
 
   it('throws ClientError if response body is missing', async () => {
-    const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+    const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
     client.fetch = (async () => {
       const resp = new Response(null, {
         headers: {
-          [Session.HEADER_KEY]: 'sess-789',
+          [HelomiSession.HEADER_KEY]: 'sess-789',
         },
       });
       Object.defineProperty(resp, 'body', { value: null });

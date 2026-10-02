@@ -1,18 +1,11 @@
-# Helomi – Native Subsystem (Swift / macOS)
-
-Package: `native/macos/avfaudio` -> Output: `src/helomi_app/audio/avfaudio/bin/avfaudio`
-
-## Commands
+# Native AVFAudio
 
 ```bash
-./native/macos/build.sh                                           # Build & copy binary
-swift format lint --recursive native/macos/avfaudio               # Lint
-swift format format --in-place --recursive native/macos/avfaudio  # Format
-swift test --package-path native/macos/avfaudio                   # Run Swift tests
+./native/macos/build.sh
+swift format lint --recursive native/macos/avfaudio
+swift test --package-path native/macos/avfaudio
 ```
 
-## Rules
-
-- **Zero Python dependency**: Standalone Swift binary communicating over stdio IPC (JSON/binary).
-- **Concurrency & Memory**: Use `AVAudioEngine`/`CoreAudio`. Enforce Swift concurrency (`Sendable`, actors). No leaks in audio queues.
-- **Distribution**: Binary is bundled via `hatch_build.py`. Touching `.swift` sources updates executable mtime.
+Keep the Swift helper standalone and communicate only through its versioned stdio wire protocol. Preserve message
+IDs and payload compatibility across Python and Swift. Enforce Swift concurrency and avoid blocking audio callbacks.
+The bundled binary belongs in `src/helomi_runtime/audio/avfaudio/bin/avfaudio`.

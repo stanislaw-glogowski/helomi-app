@@ -3,8 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from helomi_app import Runtime
-from helomi_app.pipeline.server.extension import ServerExtension
+from helomi_app import Application
 from helomi_cli.commands.serve import run_serve_cmd
 from helomi_cli.widgets import Spinner
 
@@ -20,28 +19,26 @@ async def test_run_serve_cmd() -> None:
     prof.name = "Default Profile"
 
     settings = MagicMock()
-    settings.audio.adapter = "avfaudio"
-    settings.wakeword.adapter = "openwakeword"
-    settings.vad.adapter = "silero_vad"
-    settings.turn.adapter = "smart_turn"
-    settings.stt.adapter = "parakeet"
-    settings.tts.adapter = "voxcpm2"
+    settings.audio.drivers = ["avfaudio"]
+    settings.detection.wakeword.adapter = "openwakeword"
+    settings.detection.vad.adapter = "silero_vad"
+    settings.detection.turn.adapter = "smart_turn"
+    settings.transcription.adapter = "parakeet"
+    settings.synthesis.adapter = "voxcpm2"
 
-    runtime = MagicMock(spec=Runtime)
-    runtime.settings = settings
-    runtime.profiles = MagicMock()
-    runtime.profiles.__iter__ = MagicMock(return_value=iter([prof]))
-    runtime.profiles.get = MagicMock(return_value=prof)
+    application = MagicMock(spec=Application)
+    application.settings = settings
+    application.profiles = MagicMock()
+    application.profiles.__iter__ = MagicMock(return_value=iter([prof]))
 
-    server = MagicMock(spec=ServerExtension)
+    server = MagicMock()
     server.url = "http://127.0.0.1:8000"
-    runtime.get_pipeline_server_extension = AsyncMock(return_value=server)
+    application.server = server
 
     shutdown = asyncio.Event()
     shutdown.set()
 
-    await run_serve_cmd(runtime, shutdown, spinner)
+    await run_serve_cmd(application, shutdown, spinner)
 
-    runtime.get_pipeline_server_extension.assert_called_once_with(True)
     assert spinner.start.call_count == 2
     assert spinner.stop.call_count == 2

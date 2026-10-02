@@ -2,25 +2,27 @@ import asyncio
 
 from rich import print
 
-from helomi_app import Runtime
+from helomi_app import Application
 
 from ..widgets import Spinner, print_exit, print_welcome
 
 
 async def run_serve_cmd(
-    runtime: Runtime,
+    application: Application,
     shutdown: asyncio.Event,
     spinner: Spinner,
 ):
     print()
     await spinner.start("Starting Helomi speech server...")
-    server = await runtime.get_pipeline_server_extension(True)
+    server = application.server
+    if server is None:
+        raise RuntimeError("API server is not enabled")
     await spinner.stop("Server ready")
 
     url = server.url
 
     print_welcome(
-        runtime,
+        application,
         f"[bold green]Helomi Server running at[/bold green] [blue]{url}[/blue]",
     )
 

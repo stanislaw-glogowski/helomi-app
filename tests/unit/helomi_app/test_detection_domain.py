@@ -1,7 +1,7 @@
 import numpy as np
 
-from helomi_app.core.audio import AudioChunk, AudioFormat
-from helomi_app.core.detection import (
+from helomi_runtime.audio import AudioChunk, AudioFormat
+from helomi_runtime.detection import (
     ConversationEndedEvent,
     DetectionMode,
     UtteranceContinuedEvent,

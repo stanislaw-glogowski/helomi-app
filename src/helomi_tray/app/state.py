@@ -2,48 +2,42 @@ from dataclasses import dataclass
 from enum import StrEnum, auto
 from typing import TypedDict
 
-from helomi_app.core.audio import AudioDriverKind
+from helomi_app import AudioDriverDescriptor, ConversationState, ResponseMode
 
 
-class AppStatus(StrEnum):
+class TrayStatus(StrEnum):
     STARTING = auto()
     RUNNING = auto()
-    QUITING = auto()
-
-
-class AppMode(StrEnum):
-    SERVER = auto()
-    PARROT = auto()
-    TTS = auto()
+    QUITTING = auto()
 
 
 @dataclass(frozen=True, slots=True)
-class AppState:
+class TrayState:
     class Update(TypedDict, total=False):
-        status: AppStatus
-        mode: AppMode
+        status: TrayStatus
+        response_mode: ResponseMode
+        conversation_state: ConversationState
         profile_id: str | None
         api_url: str | None
-        persistent_profile_enabled: bool
-        persistent_profile_supported: bool
-        reactions_enabled: bool
-        reactions_supported: bool
-        room_voice_enabled: bool
-        room_voice_supported: bool
-        wakeword_enabled: bool
-        wakeword_supported: bool
-        audio_driver: AudioDriverKind
+        persistent_profile: bool
+        reactions: bool
+        room_voice: bool
+        wakeword: bool
+        active_driver_id: str | None
+        driver_descriptors: tuple[AudioDriverDescriptor, ...]
+        remote_session: bool
+        monitoring: bool
 
-    status: AppStatus = AppStatus.STARTING
-    mode: AppMode = AppMode.SERVER
+    status: TrayStatus = TrayStatus.STARTING
+    response_mode: ResponseMode = ResponseMode.PARROT
+    conversation_state: ConversationState = ConversationState.IDLE
     profile_id: str | None = None
     api_url: str | None = None
-    persistent_profile_enabled: bool = False
-    persistent_profile_supported: bool = False
-    reactions_enabled: bool = False
-    reactions_supported: bool = False
-    room_voice_enabled: bool = False
-    room_voice_supported: bool = False
-    wakeword_enabled: bool = False
-    wakeword_supported: bool = False
-    audio_driver: AudioDriverKind = AudioDriverKind.LOCAL
+    persistent_profile: bool = False
+    reactions: bool = False
+    room_voice: bool = False
+    wakeword: bool = False
+    active_driver_id: str | None = None
+    driver_descriptors: tuple[AudioDriverDescriptor, ...] = ()
+    remote_session: bool = False
+    monitoring: bool = False

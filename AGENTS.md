@@ -1,45 +1,40 @@
-# Helomi – Agent Rules
+# Helomi Agent Rules
 
-Privacy-first voice assistant for Apple Silicon macOS (Python >=3.14 + Swift).
+Privacy-first voice assistant for Apple Silicon macOS (Python 3.14+ and Swift).
 
 ## Commands
 
 ```bash
-make verify      # Full CI validation (lint + tests + swift + build)
-make test        # Fast pytest suite with >=90% branch coverage check
-make lint        # ruff + pyrefly (do NOT use mypy/pyright) + swift format
-make format      # Auto-format Python and Swift
-make typecheck   # Fast pyrefly typecheck
-make init        # Build Swift helper & sync uv
+make verify
+make test
+make format
+UV_CACHE_DIR=/private/tmp/uv-cache uv run pytest tests/unit/test_xxx.py
 ```
 
-Targeted test: `UV_CACHE_DIR=/private/tmp/uv-cache uv run pytest tests/unit/test_xxx.py`
+Use Ruff and pyrefly, never mypy or pyright. `make verify` is the release gate and requires at least 90% branch
+coverage.
 
-## Architecture Boundaries
+## Boundaries
 
-- `helomi_app.common`: Shared models/utils. **Zero inward dependencies** (cannot import other `helomi_app` modules, `helomi_cli`,
-  `helomi_tray`).
-- `helomi_app`: Audio orchestration, VAD, STT, TTS, turn, wakeword adapters/workers, application runtime, pipeline
-  service, config, resources, server API/extension, parrot extension. Cannot import `helomi_cli` or `helomi_tray`.
-- `helomi_cli`: Terminal user interface. Interacts with `helomi_app`. Cannot import `helomi_tray`.
-- `helomi_tray`: macOS system tray interface. Interacts with `helomi_app`. Cannot import `helomi_cli`.
-- `native/`: Swift package. See `native/AGENTS.md`.
+Dependencies flow in one direction:
 
-*Boundaries enforced by `tests/unit/test_architecture.py`.*
+`helomi_foundation <- helomi_runtime <- helomi_app <- {helomi_cli, helomi_tray}`
 
-## Coding & Testing Standards
+Foundation stays technically neutral. Runtime owns profiles, resources, audio, adapters, and workers. CLI and tray use
+only the public `helomi_app.Application` facade. Architecture tests enforce these rules.
 
-- **Language**: All code, docstrings, comments, log messages, error messages, and CLI/tray output must strictly be in
-  **English**.
-- **Python 3.14**: Use `T | None` (never legacy `Optional`/`Union`), Pydantic v2 `BaseModel`, strict types (`pyrefly`).
-- **Async**: Native `asyncio`. Offload blocking audio/C calls to threadpools.
-- **Coverage**: `>=90%` branch coverage required (`--cov-fail-under=90`). Test all branches.
-- **Mocks & Fixtures**: Never access real mic or heavy MLX models in tests. Use `tests/fixtures/audio.py`
-  (`create_raw_audio`, `create_silence_raw_audio`, `create_noise_raw_audio`) and `tests/fixtures/mocks.py`.
+## Code
 
-## Profiles Policy
+- Write all code, docstrings, comments, logs, errors, and UI output in English.
+- Use Python 3.14 syntax, strict types, Pydantic v2, and native asyncio.
+- Use full domain names in types; reserve common acronyms such as API, HTTP, SSE, VAD, STT, and TTS for established
+  protocols or user-facing text.
+- Comment non-obvious invariants and reasons, not visible control flow.
+- Never use a real microphone, Twilio account, or heavyweight model in tests. Use fixtures under `tests/fixtures/`.
 
-- **Public / Supported Profile**: Only `alexa` is the official, publicly documented assistant profile.
-- **Ignored / Local Profiles**: Any other profiles (e.g. experimental or local test profiles) are gitignored and
-  **must NEVER be mentioned** in documentation, `README.md`, `CHANGELOG.md`, public docstrings, or examples.
+## Public Profile
 
+Only `alexa` may appear in public documentation, examples, docstrings, or the changelog. Other profiles are local and
+gitignored.
+
+Swift-specific rules live in `native/AGENTS.md`.

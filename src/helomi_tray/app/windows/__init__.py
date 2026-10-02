@@ -1,8 +1,10 @@
 from .base import BaseWindow
-from .tts import TTS_TAGS, TTSWindow
+from .call import CallWindow
+from .tts import SYNTHESIS_TAGS, TTSWindow
 
 __all__ = [
-    "TTS_TAGS",
+    "SYNTHESIS_TAGS",
     "BaseWindow",
+    "CallWindow",
     "TTSWindow",
 ]

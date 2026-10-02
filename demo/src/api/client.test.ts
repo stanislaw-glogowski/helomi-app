@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'bun:test';
-import { Client } from './client';
+import { HelomiClient } from './client';
 import { ClientError } from './client.error';
-import { Session } from './session';
+import { HelomiSession } from './session';
 
-describe('Client', () => {
-  it('initializes with baseURL and creates session', () => {
-    const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+describe('HelomiClient', () => {
+  it('initializes with baseUrl and creates session', () => {
+    const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
     const session = client.createSession('alexa');
 
-    expect(session).toBeInstanceOf(Session);
+    expect(session).toBeInstanceOf(HelomiSession);
   });
 
   it('sends getProfile request and returns profile', async () => {
@@ -23,7 +23,6 @@ describe('Client', () => {
           name: 'Alexa',
           is_active: true,
           has_wakeword: true,
-          is_default: true,
           is_readonly: false,
           prompt: 'system prompt',
           emoji: '🤖',
@@ -33,7 +32,7 @@ describe('Client', () => {
     }) as unknown as typeof fetch;
 
     try {
-      const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+      const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
       const profile = await client.getProfile('alexa', 'demo');
 
       expect(profile).toEqual({
@@ -41,7 +40,6 @@ describe('Client', () => {
         name: 'Alexa',
         isActive: true,
         hasWakeword: true,
-        isDefault: true,
         isReadonly: false,
         prompt: 'system prompt',
         emoji: '🤖',
@@ -65,7 +63,7 @@ describe('Client', () => {
     }) as unknown as typeof fetch;
 
     try {
-      const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+      const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
       const profile = await client.getProfile('unknown');
       expect(profile).toBeNull();
     } finally {
@@ -84,7 +82,7 @@ describe('Client', () => {
     }) as unknown as typeof fetch;
 
     try {
-      const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+      const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
       await expect(client.getProfile('alexa')).rejects.toThrow(ClientError);
     } finally {
       globalThis.fetch = originalFetch;
@@ -104,7 +102,6 @@ describe('Client', () => {
             name: 'Alexa',
             is_active: true,
             has_wakeword: true,
-            is_default: true,
             is_readonly: false,
             prompt: null,
             emoji: '🤖',
@@ -115,7 +112,7 @@ describe('Client', () => {
     }) as unknown as typeof fetch;
 
     try {
-      const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+      const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
       const profiles = await client.getProfiles();
 
       expect(profiles).toHaveLength(1);
@@ -138,25 +135,25 @@ describe('Client', () => {
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       interceptedUrl = String(input);
       interceptedInit = init;
-      return new Response(JSON.stringify({ success: true }), {
+      return new Response(JSON.stringify({ accepted: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
     }) as unknown as typeof fetch;
 
     try {
-      const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+      const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
       const res = await client.fetch('/command', {
         headers: { 'X-Custom': 'val' },
-        trace_id: 'trace-123',
+        traceId: 'trace-123',
         query: {
           testParam: 'hello',
           emptyParam: undefined,
         },
         command: {
           type: 'say_text',
-          profileId: 'alexa',
           text: 'Hello world',
+          mode: 'api',
         },
       });
 
@@ -171,9 +168,9 @@ describe('Client', () => {
 
       const body = JSON.parse(interceptedInit?.body as string);
       expect(body.trace_id).toBe('trace-123');
-      expect(body.profile_id).toBe('alexa');
       expect(body.type).toBe('say_text');
       expect(body.text).toBe('Hello world');
+      expect(body.mode).toBe('api');
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -187,7 +184,7 @@ describe('Client', () => {
     }) as unknown as typeof fetch;
 
     try {
-      const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+      const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
       await expect(client.fetch('/health')).rejects.toThrow('Failed to send request');
     } finally {
       globalThis.fetch = originalFetch;
@@ -205,11 +202,11 @@ describe('Client', () => {
     }) as unknown as typeof fetch;
 
     try {
-      const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
-      const err = await client.fetch('/bad').catch((e) => e);
-      expect(err).toBeInstanceOf(ClientError);
-      expect(err.message).toBe('Bad Gateway');
-      expect(err.status).toBe(502);
+      const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
+      const error = await client.fetch('/bad').catch((e) => e);
+      expect(error).toBeInstanceOf(ClientError);
+      expect(error.message).toBe('Bad Gateway');
+      expect(error.status).toBe(502);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -226,7 +223,7 @@ describe('Client', () => {
     }) as unknown as typeof fetch;
 
     try {
-      const client = new Client({ baseURL: 'http://127.0.0.1:4356' });
+      const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
       await expect(client.send('/invalid')).rejects.toThrow('Failed to parse response');
     } finally {
       globalThis.fetch = originalFetch;

@@ -1,6 +1,6 @@
 import numpy as np
 
-from helomi_app.core.audio import AudioChunk, AudioFormat, RawAudio
+from helomi_runtime.audio import AudioChunk, AudioFormat, RawAudio
 
 
 def generate_sine_wave(
