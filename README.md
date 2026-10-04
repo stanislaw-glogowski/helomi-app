@@ -86,4 +86,6 @@ make lint        # Ruff, pyrefly, and Swift Format
 make verify      # Lint, tests, Swift tests, demo checks, and package build
 ```
 
+## License
+
 Helomi is available under the [MIT License](LICENSE). Model and acoustic asset licenses remain their own.
