@@ -243,6 +243,24 @@ async def test_greeting_plays_once_for_same_active_profile(tmp_path: Path):
     assert len(router.played) == 1
 
 
+async def test_manual_profile_activation_does_not_play_greeting(tmp_path: Path):
+    greeting = raw_audio()
+
+    for source in (ActivationSource.CLI, ActivationSource.TRAY):
+        service, router, _ = create_service(
+            tmp_path,
+            reactions={ReactionKind.GREETING: greeting},
+        )
+        async with router, service:
+            result = await service.execute_command(
+                ActivateProfileCommand(profile_id="alexa", source=source)
+            )
+            assert result.accepted
+            assert service._speech_queue.empty()
+
+        assert not router.played
+
+
 async def test_barge_in_is_silent_and_invalidates_current_turn(tmp_path: Path):
     service, router, _ = create_service(tmp_path)
     events = []

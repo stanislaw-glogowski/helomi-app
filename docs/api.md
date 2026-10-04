@@ -95,8 +95,9 @@ A stale conversation identity returns `stale_turn`; omitting these fields retain
 `end_conversation` also accepts `wait_for_speech: true` to finish queued speech before closing. Its default is `false`.
 Waiting does not block barge-in; an interrupted or replaced conversation returns `stale_turn`.
 
-The `connected` reaction plays once after an inbound phone call starts, replacing `greeting` for that activation.
-Local activation continues to use `greeting`. Both respect the reactions option; an absent reaction remains silent.
+The `connected` reaction plays once, two seconds after an inbound phone call starts. A new local profile session plays
+`greeting` only when activated by wake word; CLI and tray activation remain silent. Both automatic reactions respect
+the reactions option, and an absent reaction remains silent. Explicit `say_reaction` commands remain immediate.
 
 `processing_failed` contains `stage` (`detection`, `transcription`, `synthesis`, or `playback`) and `detail`, plus the
 available profile, trace, session, and turn identity. Failures are reported without terminating the request loops.

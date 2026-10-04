@@ -78,6 +78,7 @@ class _SpeechRequest:
     token: TurnToken
     trace_id: str | None
     audio: RawAudio | None = None
+    delay_seconds: float = 0.0
     id: str = field(default_factory=lambda: uuid4().hex)
 
 
@@ -96,6 +97,7 @@ class ConversationService(EventSource[ApplicationEvent]):
 
     _AUDIO_BUFFER_SECONDS: ClassVar[float] = 1.0
     _CAPTURE_BUFFER_SECONDS: ClassVar[float] = 2.0
+    _CONNECTED_REACTION_DELAY_SECONDS: ClassVar[float] = 2.0
 
     _ALLOWED_TRANSITIONS: ClassVar[dict[ConversationState, set[ConversationState]]] = {
         ConversationState.IDLE: {
@@ -369,6 +371,10 @@ class ConversationService(EventSource[ApplicationEvent]):
                 yield chunk.audio
 
     async def _produce_speech(self, request: _SpeechRequest) -> None:
+        if request.delay_seconds:
+            await asyncio.sleep(request.delay_seconds)
+            if not self._request_is_current(request):
+                return
         buffer = AudioStreamBuffer()
         chunks: list[RawAudio] = []
         async with aclosing(self._speech_audio(request)) as stream:
@@ -772,15 +778,26 @@ class ConversationService(EventSource[ApplicationEvent]):
         )
         if self._options.room_voice:
             await self._audio_router.start_room_voice(profile.id)
-        reaction = (
-            ReactionKind.CONNECTED
-            if command.source == ActivationSource.TWILIO
-            else ReactionKind.GREETING
-        )
-        if (audio := self._reaction_audio(profile.id, reaction)) is not None:
+        reaction: ReactionKind | None = None
+        delay_seconds = 0.0
+        if command.source == ActivationSource.WAKEWORD:
+            reaction = ReactionKind.GREETING
+        elif command.source == ActivationSource.TWILIO:
+            reaction = ReactionKind.CONNECTED
+            delay_seconds = self._CONNECTED_REACTION_DELAY_SECONDS
+        if (
+            reaction is not None
+            and (audio := self._reaction_audio(profile.id, reaction)) is not None
+        ):
             self._enqueue_speech(
                 _SpeechRequest(
-                    "", profile.id, self._response_mode, token, command.trace_id, audio
+                    text="",
+                    profile_id=profile.id,
+                    mode=self._response_mode,
+                    token=token,
+                    trace_id=command.trace_id,
+                    audio=audio,
+                    delay_seconds=delay_seconds,
                 )
             )
         return CommandResult.ok()

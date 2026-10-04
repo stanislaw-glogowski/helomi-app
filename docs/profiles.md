@@ -87,9 +87,11 @@ Room voice is configured independently for each audio driver. `volume` and `duck
 to `1.0`. Twilio mixes the loop with clean speech before μ-law/8 kHz encoding; exported TTS audio never contains the
 ambient track.
 
-Greetings play once when a new profile session begins. Farewells are used for controlled shutdown and wait for a
-bounded playback acknowledgement. Barge-in is deliberately silent: it clears stale playback immediately and does not
-speak an interruption reaction.
+Automatic greetings play once when a new profile session begins through wake-word activation; CLI and tray activation
+remain silent. The automatic `connected` reaction starts two seconds after an inbound phone call begins. Explicit
+reaction commands remain immediate. Farewells are used for controlled shutdown and wait for a bounded playback
+acknowledgement. Barge-in is deliberately silent: it clears stale playback immediately and does not speak an
+interruption reaction.
 
 ## Prompts
 

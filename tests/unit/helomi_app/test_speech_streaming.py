@@ -8,11 +8,13 @@ from pydantic import ValidationError
 from helomi_app.messages import (
     ActivateProfileCommand,
     ActivationSource,
+    CallStartedEvent,
     CommandRejectionCode,
     ConversationState,
     EndConversationCommand,
     ProcessingFailedEvent,
     ResponseMode,
+    SayReactionCommand,
     SayTextCommand,
     SynthesisReadyEvent,
 )
@@ -299,8 +301,8 @@ async def test_interruption_wakes_blocked_producer_and_discards_old_speech(
         assert all(turn_id == 0 for _, _, turn_id in router.played)
 
 
-async def test_connected_replaces_greeting_once_per_call_even_for_active_profile(
-    tmp_path: Path,
+async def test_connected_plays_once_per_call_without_manual_greeting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     greeting = raw_audio()
     connected = RawAudio(greeting.format, np.ones(320, dtype=np.float32).tobytes())
@@ -308,6 +310,7 @@ async def test_connected_replaces_greeting_once_per_call_even_for_active_profile
         tmp_path,
         reactions={ReactionKind.GREETING: greeting, ReactionKind.CONNECTED: connected},
     )
+    monkeypatch.setattr(service, "_CONNECTED_REACTION_DELAY_SECONDS", 0.0)
     router.remote_profile_id = "alexa"
     async with router, service:
         await activate(service)
@@ -324,7 +327,103 @@ async def test_connected_replaces_greeting_once_per_call_even_for_active_profile
             ConnectedEvent("twilio", "alexa", "CA2", "+15555550100")
         )
         await drain(service)
-    assert [item[0] for item in router.played] == [greeting, connected, connected]
+    assert [item[0] for item in router.played] == [connected, connected]
+
+
+async def test_connected_delay_does_not_block_call_started(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    connected = raw_audio()
+    service, router, _ = create_service(
+        tmp_path,
+        reactions={ReactionKind.CONNECTED: connected},
+    )
+    router.remote_profile_id = "alexa"
+    delay_started = asyncio.Event()
+    release_delay = asyncio.Event()
+    original_sleep = asyncio.sleep
+
+    async def controlled_sleep(delay_seconds: float):
+        if delay_seconds == service._CONNECTED_REACTION_DELAY_SECONDS:
+            delay_started.set()
+            await release_delay.wait()
+            return
+        await original_sleep(delay_seconds)
+
+    monkeypatch.setattr(asyncio, "sleep", controlled_sleep)
+    events = []
+    async with router, service:
+
+        async def collect():
+            async for event in service.subscribe_events():
+                events.append(event)
+                if isinstance(event, CallStartedEvent):
+                    return
+
+        collector = asyncio.create_task(collect())
+        await original_sleep(0)
+        await service._handle_audio_event(
+            ConnectedEvent("twilio", "alexa", "CA1", "+15555550100")
+        )
+        await asyncio.wait_for(collector, 1)
+        await asyncio.wait_for(delay_started.wait(), 1)
+
+        assert service._CONNECTED_REACTION_DELAY_SECONDS == 2.0
+        assert service.active_profile is not None
+        assert not router.played
+        assert any(isinstance(event, CallStartedEvent) for event in events)
+
+        release_delay.set()
+        await drain(service)
+
+    assert [item[0] for item in router.played] == [connected]
+
+
+async def test_disconnect_cancels_delayed_connected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    service, router, _ = create_service(
+        tmp_path,
+        reactions={ReactionKind.CONNECTED: raw_audio()},
+    )
+    router.remote_profile_id = "alexa"
+    delay_started = asyncio.Event()
+
+    async def blocked_sleep(delay_seconds: float):
+        assert delay_seconds == service._CONNECTED_REACTION_DELAY_SECONDS
+        delay_started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(asyncio, "sleep", blocked_sleep)
+    async with router, service:
+        await service._handle_audio_event(
+            ConnectedEvent("twilio", "alexa", "CA1", "+15555550100")
+        )
+        await asyncio.wait_for(delay_started.wait(), 1)
+        await service._handle_audio_event(DisconnectedEvent("twilio", "CA1"))
+        await drain(service)
+
+    assert service.active_profile is None
+    assert not router.played
+
+
+async def test_explicit_reactions_remain_immediate(tmp_path: Path):
+    greeting = raw_audio()
+    connected = RawAudio(greeting.format, np.ones(320, dtype=np.float32).tobytes())
+    service, router, _ = create_service(
+        tmp_path,
+        reactions={ReactionKind.GREETING: greeting, ReactionKind.CONNECTED: connected},
+    )
+    async with router, service:
+        await activate(service)
+        for reaction in (ReactionKind.GREETING, ReactionKind.CONNECTED):
+            result = await service.execute_command(
+                SayReactionCommand(reaction=reaction, mode=ResponseMode.PARROT)
+            )
+            assert result.accepted
+        await drain(service)
+
+    assert [item[0] for item in router.played] == [greeting, connected]
 
 
 @pytest.mark.parametrize(
