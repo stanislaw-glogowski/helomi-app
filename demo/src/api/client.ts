@@ -99,7 +99,7 @@ export class HelomiClient {
    */
   async fetch(path: string, options: RequestOptions = {}): Promise<Response> {
     const url = new URL(`/api/v${HelomiClient.VERSION}${path}`, this.baseUrl);
-    const { headers, command, abort, traceId, query } = options;
+    const { headers, command, abort, traceId, query, timeout } = options;
 
     if (query) {
       for (const [key, value] of Object.entries(query)) {
@@ -133,6 +133,7 @@ export class HelomiClient {
         },
         body: command ? JSON.stringify(toSnakeCase(command)) : undefined,
         signal: abort,
+        timeout,
       });
     } catch (cause) {
       throw new ClientError('Failed to send request', {

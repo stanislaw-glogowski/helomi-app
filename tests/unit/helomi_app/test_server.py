@@ -122,16 +122,23 @@ async def test_profile_functions_and_sse_lifecycle():
         await get_profile("missing", application)
     assert missing.value.status_code == 404
 
-    response = await get_profile_stream("alexa", application, sessions)
-    assert response.headers["x-session-id"]
-    with pytest.raises(HTTPException) as busy:
-        await get_profile_stream("alexa", application, sessions)
-    assert busy.value.status_code == 409
+    with patch("helomi_app.server.api.SSE_HEARTBEAT_INTERVAL_SECONDS", 0.001):
+        response = await get_profile_stream("alexa", application, sessions)
+        assert response.headers["x-session-id"]
+        with pytest.raises(HTTPException) as busy:
+            await get_profile_stream("alexa", application, sessions)
+        assert busy.value.status_code == 409
 
-    iterator = response.body_iterator
-    started = await anext(iterator)
-    assert "session_started" in started
-    await iterator.aclose()
+        iterator = response.body_iterator
+        started = await anext(iterator)
+        assert "session_started" in started
+        assert await anext(iterator) == ": keep-alive\n\n"
+
+        sessions.dispatch(
+            ProfileActivatedEvent(profile_id="alexa", source=ActivationSource.CLI)
+        )
+        assert "event: profile_activated" in await anext(iterator)
+        await iterator.aclose()
     assert sessions.get(response.headers["x-session-id"]) is None
 
     with pytest.raises(HTTPException) as unknown:

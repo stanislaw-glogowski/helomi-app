@@ -71,7 +71,9 @@ export class HelomiSession {
       throw new ClientError('HelomiSession already started');
     }
 
-    const response = await this.client.fetch(`/profile/${this.profileId}/stream`);
+    const response = await this.client.fetch(`/profile/${this.profileId}/stream`, {
+      timeout: false,
+    });
 
     const sessionId = response.headers.get(HelomiSession.HEADER_KEY);
 
@@ -79,52 +81,58 @@ export class HelomiSession {
       throw new ClientError('HelomiSession ID not found in response headers');
     }
 
-    this.sessionId = sessionId;
-
     if (!response.body) {
       throw new ClientError('No response body');
     }
 
+    this.sessionId = sessionId;
+
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
 
-    let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-      const events = buffer.split('\n\n');
-      buffer = events.pop() ?? '';
-
-      for (const block of events) {
-        const type = block.match(/^event:\s*(.+)$/m)?.[1]?.trim();
-        const data = block.match(/^data:\s*(.+)$/m)?.[1]?.trim();
-
-        if (!type || !data) {
-          continue;
+    try {
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
         }
 
-        try {
-          yield {
-            type,
-            ...toCamelCase<object>(JSON.parse(data)),
-          } as SessionEvent;
-        } catch (cause) {
-          throw new ClientError(`Invalid SSE payload for event ${type}`, { cause });
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() ?? '';
+
+        for (const block of events) {
+          const type = block.match(/^event:\s*(.+)$/m)?.[1]?.trim();
+          const data = block.match(/^data:\s*(.+)$/m)?.[1]?.trim();
+
+          if (!type || !data) {
+            continue;
+          }
+
+          try {
+            yield {
+              type,
+              ...toCamelCase<object>(JSON.parse(data)),
+            } as SessionEvent;
+          } catch (cause) {
+            throw new ClientError(`Invalid SSE payload for event ${type}`, { cause });
+          }
         }
       }
-    }
-
-    if (this.sessionId) {
+    } finally {
       this.sessionId = undefined;
-
-      yield {
-        type: 'session_ended',
-      };
+      try {
+        await reader.cancel();
+      } catch {
+        // The connection may already be closed by the server or network stack.
+      }
+      reader.releaseLock();
     }
+
+    yield {
+      type: 'session_ended',
+    };
   }
 
   private get headers(): Record<string, string> {

@@ -22,6 +22,8 @@ else:
 
 type APICommand = SayTextCommand | SayReactionCommand | EndConversationCommand
 
+SSE_HEARTBEAT_INTERVAL_SECONDS = 15.0
+
 
 def get_application(request: Request) -> Application:
     return request.app.state.application
@@ -131,7 +133,12 @@ async def get_profile_stream(
         )
         try:
             yield f"event: session_started\ndata: {payload}\n\n"
-            async for event in active_session.subscribe():
+            async for event in active_session.subscribe(
+                heartbeat_interval_seconds=SSE_HEARTBEAT_INTERVAL_SECONDS
+            ):
+                if event is None:
+                    yield ": keep-alive\n\n"
+                    continue
                 data = event.model_dump_json(exclude={"type"})
                 yield f"event: {event.type}\ndata: {data}\n\n"
         finally:

@@ -35,6 +35,7 @@ export type RequestOptions = CommandOptions & {
   headers?: Record<string, string>;
   command?: Command;
   query?: Record<string, string | undefined>;
+  timeout?: number | boolean;
 };
 
 /**

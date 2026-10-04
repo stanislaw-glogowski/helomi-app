@@ -19,6 +19,7 @@ describe('HelomiSession', () => {
     const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
     const ssePayload = [
       'event: session_started\ndata: {}\n\n',
+      ': keep-alive\n\n',
       'event: transcription_ready\ndata: {"text": "Hello assistant", "profile_id": "alexa"}\n\n',
       'event: speech_interrupted\ndata: {"profile_id": "alexa"}\n\n',
       'event: invalid_block\n\n',
@@ -60,6 +61,9 @@ describe('HelomiSession', () => {
       } as SessionEvent,
       { type: 'session_ended' },
     ]);
+    await expect(session.sayText('After disconnect')).rejects.toThrow(
+      'HelomiSession not started',
+    );
   });
 
   it('rejects malformed SSE payloads', async () => {
@@ -77,9 +81,13 @@ describe('HelomiSession', () => {
         headers: { [HelomiSession.HEADER_KEY]: 'test-session-123' },
       })) as unknown as typeof client.fetch;
 
-    const iterator = client.createSession('alexa').subscribe()[Symbol.asyncIterator]();
+    const session = client.createSession('alexa');
+    const iterator = session.subscribe()[Symbol.asyncIterator]();
     await expect(iterator.next()).rejects.toThrow(
       'Invalid SSE payload for event corrupt_json',
+    );
+    await expect(session.sayText('After error')).rejects.toThrow(
+      'HelomiSession not started',
     );
   });
 
@@ -146,6 +154,52 @@ describe('HelomiSession', () => {
     // Clean up iterator
     streamController?.close();
     await iterator.next();
+  });
+
+  it('disables the Bun idle timeout for the SSE request', async () => {
+    const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
+    let timeout: number | boolean | undefined;
+
+    client.fetch = (async (_path: string, options = {}) => {
+      timeout = options.timeout;
+      return new Response('event: session_started\ndata: {}\n\n', {
+        headers: {
+          [HelomiSession.HEADER_KEY]: 'session-without-timeout',
+        },
+      });
+    }) as typeof client.fetch;
+
+    const events: SessionEvent[] = [];
+    for await (const event of client.createSession('alexa').subscribe()) {
+      events.push(event);
+    }
+
+    expect(timeout).toBe(false);
+    expect(events).toEqual([{ type: 'session_started' }, { type: 'session_ended' }]);
+  });
+
+  it('clears the session when reading the SSE stream fails', async () => {
+    const client = new HelomiClient({ baseUrl: 'http://127.0.0.1:4356' });
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode('event: session_started\ndata: {}\n\n'),
+        );
+        controller.error(new Error('Connection reset'));
+      },
+    });
+
+    client.fetch = (async () =>
+      new Response(stream, {
+        headers: { [HelomiSession.HEADER_KEY]: 'failed-session' },
+      })) as unknown as typeof client.fetch;
+
+    const session = client.createSession('alexa');
+    const iterator = session.subscribe()[Symbol.asyncIterator]();
+    await expect(iterator.next()).rejects.toThrow('Connection reset');
+    await expect(session.sayText('After reset')).rejects.toThrow(
+      'HelomiSession not started',
+    );
   });
 
   it('throws if trying to subscribe when session already started', async () => {

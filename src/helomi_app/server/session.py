@@ -19,9 +19,20 @@ class Session:
     def close(self) -> None:
         self._events.put_nowait(None)
 
-    async def subscribe(self) -> AsyncIterator[ApplicationEvent]:
+    async def subscribe(
+        self,
+        heartbeat_interval_seconds: float | None = None,
+    ) -> AsyncIterator[ApplicationEvent | None]:
         while True:
-            event = await self._events.get()
+            try:
+                if heartbeat_interval_seconds is None:
+                    event = await self._events.get()
+                else:
+                    async with asyncio.timeout(heartbeat_interval_seconds):
+                        event = await self._events.get()
+            except TimeoutError:
+                yield None
+                continue
             try:
                 if event is None:
                     return

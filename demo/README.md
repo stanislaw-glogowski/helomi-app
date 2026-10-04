@@ -14,6 +14,8 @@ sentence-by-sentence back to Helomi's Text-to-Speech (TTS) synthesizer for low-l
 ### Key Capabilities
 
 - **Real-Time Speech Streaming**: Subscribes to SSE speech events via `GET /api/v1/profile/{profile_id}/stream`.
+- **Persistent Connections**: Disables Bun's request idle timeout, accepts server heartbeats, and reconnects after
+  network failures or server restarts with an exponential backoff capped at 30 seconds.
 - **Low-Latency Sentence Streaming**: LLM responses are streamed and synthesized sentence-by-sentence rather than
   waiting for full generation.
 - **Barge-in / Interruption Handling**: If you speak while the assistant is speaking, Helomi sends a
@@ -107,7 +109,8 @@ bun start
 ```
 
 Once connected, speak into your microphone. Transcriptions and generated spoken replies will stream directly in the
-terminal and through your speakers.
+terminal and through your speakers. The demo waits indefinitely if the Helomi API is unavailable and automatically
+reconnects when it returns. Stop the demo explicitly with `Ctrl+C`.
 
 ---
 

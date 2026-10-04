@@ -12,7 +12,7 @@ app:
 
 audio:
   initial_driver: avfaudio
-  monitor_driver: avfaudio
+  monitor_driver:
   drivers: # supported: twilio, avfaudio
     - avfaudio
   avfaudio:

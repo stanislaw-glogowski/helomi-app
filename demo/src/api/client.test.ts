@@ -146,6 +146,7 @@ describe('HelomiClient', () => {
       const res = await client.fetch('/command', {
         headers: { 'X-Custom': 'val' },
         traceId: 'trace-123',
+        timeout: 1_500,
         query: {
           testParam: 'hello',
           emptyParam: undefined,
@@ -162,6 +163,9 @@ describe('HelomiClient', () => {
         'http://127.0.0.1:4356/api/v1/command?test_param=hello',
       );
       expect(interceptedInit?.method).toBe('POST');
+      expect(
+        (interceptedInit as RequestInit & { timeout?: number | boolean }).timeout,
+      ).toBe(1_500);
       const headers = (interceptedInit?.headers ?? {}) as Record<string, string>;
       expect(headers['X-Custom']).toBe('val');
       expect(headers['Content-Type']).toBe('application/json');

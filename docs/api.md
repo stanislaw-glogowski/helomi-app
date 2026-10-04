@@ -44,6 +44,9 @@ The stream contains profile-scoped events: `profile_activated`, `profile_deactiv
 response-mode, state, or option changes, remain available through the in-process `Application` event subscription and
 are not copied to every profile stream. Audio bytes are excluded from serialized synthesis events.
 
+The server sends an SSE comment heartbeat every 15 seconds while the stream is otherwise idle. Heartbeats keep
+long-lived clients and intermediaries from expiring the connection and are not application events.
+
 ## Commands
 
 Send `POST /api/v1/command` with `X-Session-ID`. The endpoint returns a structured `CommandResult`:
