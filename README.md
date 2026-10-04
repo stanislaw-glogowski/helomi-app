@@ -59,8 +59,7 @@ Use `uv run helomi-tray` or `uv run helomi-cli ...` when invoking entry points d
 ## Architecture
 
 ```text
-helomi_foundation <- helomi_runtime <- helomi_app <- helomi_cli
-                                              `---- helomi_tray
+helomi_foundation <- helomi_runtime <- helomi_app <- helomi_cli / helomi_tray
 ```
 
 - `helomi_foundation` contains neutral lifecycle, configuration, logging, and concurrency primitives.
